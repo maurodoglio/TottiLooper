@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TottiLooper</title>
+  <link rel="stylesheet" href="src/style.css" />
+</head>
+<body>
+
+  <header>
+    <h1>🎸 TottiLooper</h1>
+    <p>Record riffs, layer them live – your one-man band starts here.</p>
+  </header>
+
+  <main>
+
+    <!-- Microphone permission -->
+    <div id="permission-banner">
+      <p>TottiLooper needs access to your microphone to record loops.</p>
+      <button id="btn-request-mic" class="btn-primary">🎤 Allow Microphone</button>
+    </div>
+
+    <!-- Recording controls -->
+    <div id="record-controls">
+      <div id="status-dot" class="status-dot"></div>
+      <span id="record-timer">0:00</span>
+      <span id="status-text">Press ● REC to start recording.</span>
+      <button id="btn-record" class="btn-record">● REC</button>
+      <button id="btn-stop-record" class="btn-stop" disabled>■ DISCARD</button>
+    </div>
+
+    <!-- Master playback -->
+    <div id="master-controls">
+      <button id="btn-play-all" class="btn-primary">▶ Play All</button>
+      <button id="btn-stop-all" class="btn-stop">■ Stop All</button>
+    </div>
+
+    <!-- Loops list -->
+    <section id="loops-section">
+      <h2>Loops</h2>
+      <div id="loops-list">
+        <div id="empty-state">
+          <div class="icon">🎵</div>
+          <p>No loops yet. Hit <strong>● REC</strong> to record your first loop!</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="src/app.js"></script>
+</body>
+</html>

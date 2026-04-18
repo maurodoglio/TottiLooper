@@ -1,0 +1,332 @@
+/* TottiLooper – styles */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #121212;
+  --surface: #1e1e1e;
+  --surface-raised: #2a2a2a;
+  --accent: #e84040;
+  --accent-hover: #ff5555;
+  --green: #4caf50;
+  --green-hover: #66bb6a;
+  --text: #f0f0f0;
+  --text-muted: #888;
+  --border: #333;
+  --radius: 8px;
+  --shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 16px 40px;
+}
+
+/* ── Header ── */
+header {
+  width: 100%;
+  max-width: 680px;
+  padding: 32px 0 20px;
+  text-align: center;
+}
+
+header h1 {
+  font-size: 2rem;
+  letter-spacing: 2px;
+  color: var(--accent);
+}
+
+header p {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* ── Main container ── */
+main {
+  width: 100%;
+  max-width: 680px;
+}
+
+/* ── Permission banner ── */
+#permission-banner {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+#permission-banner p {
+  margin-bottom: 16px;
+  color: var(--text-muted);
+}
+
+#permission-banner.hidden,
+.hidden {
+  display: none !important;
+}
+
+/* ── Record controls ── */
+#record-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow);
+}
+
+#record-timer {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.5rem;
+  font-weight: 600;
+  min-width: 62px;
+  color: var(--text-muted);
+}
+
+#record-timer.active {
+  color: var(--accent);
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.status-dot.recording {
+  background: var(--accent);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+#status-text {
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* ── Master controls ── */
+#master-controls {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+#master-controls button {
+  flex: 1;
+}
+
+/* ── Buttons ── */
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius);
+  padding: 10px 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: background 0.15s, transform 0.1s, opacity 0.15s;
+  user-select: none;
+}
+
+button:active {
+  transform: scale(0.96);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-record {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-record:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btn-record.recording {
+  background: #333;
+  color: var(--accent);
+  border: 2px solid var(--accent);
+}
+
+.btn-stop {
+  background: #333;
+  color: var(--text);
+}
+
+.btn-stop:hover:not(:disabled) {
+  background: #444;
+}
+
+.btn-primary {
+  background: var(--green);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--green-hover);
+}
+
+.btn-danger {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 6px 14px;
+  font-size: 0.8rem;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(232,64,64,0.15);
+}
+
+.btn-icon {
+  background: var(--surface-raised);
+  color: var(--text);
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+.btn-icon:hover:not(:disabled) {
+  background: #3a3a3a;
+}
+
+.btn-icon.active {
+  background: var(--green);
+  color: #fff;
+}
+
+/* ── Loops section ── */
+#loops-section h2 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+#loops-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Loop card ── */
+.loop-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: var(--shadow);
+  transition: border-color 0.2s;
+}
+
+.loop-card.playing {
+  border-color: var(--green);
+}
+
+.loop-card.muted {
+  opacity: 0.5;
+}
+
+.loop-number {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  min-width: 28px;
+  text-align: center;
+}
+
+.loop-waveform {
+  flex: 1;
+  height: 36px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface-raised);
+}
+
+.loop-waveform canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.loop-duration {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  min-width: 40px;
+  text-align: right;
+}
+
+.loop-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Empty state ── */
+#empty-state {
+  text-align: center;
+  padding: 40px 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+#empty-state .icon {
+  font-size: 2.5rem;
+  margin-bottom: 12px;
+}
+
+/* ── Error toast ── */
+#error-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #7b1f1f;
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  box-shadow: var(--shadow);
+  z-index: 100;
+  opacity: 1;
+  transition: opacity 0.4s;
+}
+
+#error-toast.fade-out {
+  opacity: 0;
+}
