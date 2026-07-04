@@ -8,13 +8,33 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   formatDuration,
+  formatBarBeatPosition,
   panText,
+  parseMidiMessage,
+  createMidiBinding,
+  matchesMidiBinding,
+  isMidiButtonPress,
+  scaleMidiValue,
+  formatMidiBinding,
   writeString,
   audioBufferToWav,
+  createBuiltinSampleLoop,
+  clickTrackToMidi,
   getSupportedMimeType,
   effectiveGain,
+  detectKey,
+  areKeysLikelyCompatible,
+  shouldWarnAboutKeyClash,
+  estimateTempo,
+  getBarBeatPosition,
+  packSharedSession,
   quantizeBuffer,
+  offsetBuffer,
   reverseBuffer,
+  resampleBuffer,
+  timeStretchBuffer,
+  transformBuffer,
+  unpackSharedSession,
 } from '../../src/utils.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -33,6 +53,35 @@ function makeMockAudioContext(sampleRate = 44100) {
         getChannelData: (ch) => channelData[ch],
       };
     },
+  };
+}
+
+function frequencyForMidi(midi) {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function makeMelodyBuffer(midis, sampleRate = 44100, noteDuration = 0.12) {
+  const FADE_SAMPLES = 256;
+  const samplesPerNote = Math.floor(sampleRate * noteDuration);
+  const totalSamples = samplesPerNote * midis.length;
+  const data = new Float32Array(totalSamples);
+
+  midis.forEach((midi, noteIndex) => {
+    const freq = frequencyForMidi(midi);
+    const start = noteIndex * samplesPerNote;
+    for (let i = 0; i < samplesPerNote; i++) {
+      const t = i / sampleRate;
+      const fade = Math.min(1, i / FADE_SAMPLES, (samplesPerNote - i) / FADE_SAMPLES);
+      data[start + i] = Math.sin(2 * Math.PI * freq * t) * 0.5 * fade;
+    }
+  });
+
+  return {
+    numberOfChannels: 1,
+    length: totalSamples,
+    sampleRate,
+    duration: totalSamples / sampleRate,
+    getChannelData: () => data,
   };
 }
 
@@ -93,6 +142,137 @@ describe('panText', () => {
   });
 });
 
+// ─── bar / beat position ──────────────────────────────────────────────────────
+
+describe('getBarBeatPosition', () => {
+  it('starts at bar 1 beat 1', () => {
+    expect(getBarBeatPosition(0, 120, 4)).toEqual({ bar: 1, beat: 1 });
+  });
+
+  it('advances beats based on the BPM', () => {
+    expect(getBarBeatPosition(0.5, 120, 4)).toEqual({ bar: 1, beat: 2 });
+  });
+
+  it('wraps to the next bar after the final beat', () => {
+    expect(getBarBeatPosition(2, 120, 4)).toEqual({ bar: 2, beat: 1 });
+  });
+
+  it('handles custom beats-per-bar values', () => {
+    expect(getBarBeatPosition(2, 120, 3)).toEqual({ bar: 2, beat: 2 });
+  });
+});
+
+describe('formatBarBeatPosition', () => {
+  it('formats the computed transport position', () => {
+    expect(formatBarBeatPosition(1.5, 120, 4)).toBe('Bar 1 • Beat 4');
+  });
+});
+
+// ─── MIDI helpers ─────────────────────────────────────────────────────────────
+
+describe('parseMidiMessage', () => {
+  it('parses note-on messages', () => {
+    expect(parseMidiMessage([0x90, 36, 127])).toEqual({
+      kind: 'noteon',
+      channel: 1,
+      number: 36,
+      value: 127,
+    });
+  });
+
+  it('treats note-on with zero velocity as note-off', () => {
+    expect(parseMidiMessage([0x90, 36, 0])).toEqual({
+      kind: 'noteoff',
+      channel: 1,
+      number: 36,
+      value: 0,
+    });
+  });
+
+  it('parses control-change messages', () => {
+    expect(parseMidiMessage([0xb2, 7, 99])).toEqual({
+      kind: 'cc',
+      channel: 3,
+      number: 7,
+      value: 99,
+    });
+  });
+
+  it('returns null for unsupported MIDI messages', () => {
+    expect(parseMidiMessage([0xe0, 0, 64])).toBeNull();
+  });
+});
+
+describe('createMidiBinding', () => {
+  it('creates button bindings from note messages', () => {
+    expect(createMidiBinding({ kind: 'noteon', channel: 2, number: 48, value: 100 }, 'button')).toEqual({
+      source: 'note',
+      channel: 2,
+      number: 48,
+      mode: 'button',
+    });
+  });
+
+  it('creates range bindings only from CC messages', () => {
+    expect(createMidiBinding({ kind: 'cc', channel: 1, number: 11, value: 64 }, 'range')).toEqual({
+      source: 'cc',
+      channel: 1,
+      number: 11,
+      mode: 'range',
+    });
+    expect(createMidiBinding({ kind: 'noteon', channel: 1, number: 11, value: 64 }, 'range')).toBeNull();
+  });
+});
+
+describe('matchesMidiBinding', () => {
+  it('matches note bindings against note-on and note-off messages on the same key and channel', () => {
+    const binding = { source: 'note', channel: 4, number: 60, mode: 'button' };
+    expect(matchesMidiBinding(binding, { kind: 'noteon', channel: 4, number: 60, value: 100 })).toBe(true);
+    expect(matchesMidiBinding(binding, { kind: 'noteoff', channel: 4, number: 60, value: 0 })).toBe(true);
+  });
+
+  it('does not match different channels or controller numbers', () => {
+    const binding = { source: 'cc', channel: 1, number: 7, mode: 'range' };
+    expect(matchesMidiBinding(binding, { kind: 'cc', channel: 2, number: 7, value: 64 })).toBe(false);
+    expect(matchesMidiBinding(binding, { kind: 'cc', channel: 1, number: 10, value: 64 })).toBe(false);
+  });
+});
+
+describe('isMidiButtonPress', () => {
+  it('returns true for note-on and non-zero CC messages', () => {
+    expect(isMidiButtonPress({ kind: 'noteon', channel: 1, number: 36, value: 1 })).toBe(true);
+    expect(isMidiButtonPress({ kind: 'cc', channel: 1, number: 36, value: 1 })).toBe(true);
+  });
+
+  it('returns false for note-off and zero-value CC messages', () => {
+    expect(isMidiButtonPress({ kind: 'noteoff', channel: 1, number: 36, value: 0 })).toBe(false);
+    expect(isMidiButtonPress({ kind: 'cc', channel: 1, number: 36, value: 0 })).toBe(false);
+  });
+});
+
+describe('scaleMidiValue', () => {
+  it('maps the full MIDI range into the requested output range', () => {
+    expect(scaleMidiValue(0, 0, 1.5)).toBe(0);
+    expect(scaleMidiValue(127, 0, 1.5)).toBe(1.5);
+  });
+
+  it('clamps values outside the MIDI range', () => {
+    expect(scaleMidiValue(-10, 0, 1)).toBe(0);
+    expect(scaleMidiValue(200, 0, 1)).toBe(1);
+  });
+});
+
+describe('formatMidiBinding', () => {
+  it('formats note and CC bindings for display', () => {
+    expect(formatMidiBinding({ source: 'note', channel: 1, number: 36, mode: 'button' })).toBe('Note 36 · Ch 1');
+    expect(formatMidiBinding({ source: 'cc', channel: 2, number: 7, mode: 'range' })).toBe('CC 7 · Ch 2');
+  });
+
+  it('formats empty bindings as Unassigned', () => {
+    expect(formatMidiBinding(null)).toBe('Unassigned');
+  });
+});
+
 // ─── effectiveGain ────────────────────────────────────────────────────────────
 
 describe('effectiveGain', () => {
@@ -126,6 +306,51 @@ describe('effectiveGain', () => {
   it('returns 0 for every loop when volume is 0', () => {
     const loop = { muted: false, soloed: false, volume: 0 };
     expect(effectiveGain(loop, [loop])).toBe(0);
+  });
+});
+
+// ─── key detection ─────────────────────────────────────────────────────────────
+
+describe('detectKey', () => {
+  it('identifies a C major scale phrase as C major', () => {
+    const buffer = makeMelodyBuffer([60, 62, 64, 65, 67, 69, 71, 72]);
+    expect(detectKey(buffer)).toMatchObject({ name: 'C major', mode: 'major', root: 0 });
+  });
+
+  it('identifies an A natural minor scale phrase as A minor', () => {
+    const buffer = makeMelodyBuffer([57, 59, 60, 62, 64, 65, 67, 69]);
+    expect(detectKey(buffer)).toMatchObject({ name: 'A minor', mode: 'minor', root: 9 });
+  });
+
+  it('returns null when there is not enough pitched content', () => {
+    const silent = {
+      numberOfChannels: 1,
+      length: 4096,
+      sampleRate: 44100,
+      duration: 4096 / 44100,
+      getChannelData: () => new Float32Array(4096),
+    };
+    expect(detectKey(silent)).toBeNull();
+  });
+});
+
+describe('key clash helpers', () => {
+  const cMajor = { name: 'C major', signature: 0 };
+  const aMinor = { name: 'A minor', signature: 0 };
+  const gMajor = { name: 'G major', signature: 1 };
+  const eMajor = { name: 'E major', signature: 4 };
+
+  it('treats relative major/minor keys as compatible', () => {
+    expect(areKeysLikelyCompatible(cMajor, aMinor)).toBe(true);
+  });
+
+  it('treats neighboring key signatures as compatible', () => {
+    expect(areKeysLikelyCompatible(cMajor, gMajor)).toBe(true);
+  });
+
+  it('warns only when every known existing key appears incompatible', () => {
+    expect(shouldWarnAboutKeyClash(eMajor, [cMajor, gMajor])).toBe(true);
+    expect(shouldWarnAboutKeyClash(gMajor, [cMajor, eMajor])).toBe(false);
   });
 });
 
@@ -231,6 +456,44 @@ describe('audioBufferToWav', () => {
   });
 });
 
+// ─── clickTrackToMidi ──────────────────────────────────────────────────────────
+
+describe('clickTrackToMidi', () => {
+  async function midiBytes(opts) {
+    return new Uint8Array(await clickTrackToMidi(opts).arrayBuffer());
+  }
+
+  it('returns a Blob with the audio/midi MIME type', () => {
+    const blob = clickTrackToMidi({ bpm: 120, beatsPerBar: 4, durationSeconds: 4 });
+    expect(blob.type).toBe('audio/midi');
+  });
+
+  it('writes a standard MIDI header with one track', async () => {
+    const bytes = await midiBytes({ bpm: 120, beatsPerBar: 4, durationSeconds: 4 });
+    expect(String.fromCharCode(...bytes.slice(0, 4))).toBe('MThd');
+    expect(String.fromCharCode(...bytes.slice(14, 18))).toBe('MTrk');
+    expect(bytes[11]).toBe(1);
+    expect(bytes[12]).toBe(0x01);
+    expect(bytes[13]).toBe(0xe0);
+  });
+
+  it('stores tempo and time-signature metadata for the session settings', async () => {
+    const bytes = await midiBytes({ bpm: 100, beatsPerBar: 3, durationSeconds: 4 });
+    const data = Array.from(bytes);
+    expect(data).toEqual(expect.arrayContaining([0xff, 0x51, 0x03, 0x09, 0x27, 0xc0]));
+    expect(data).toEqual(expect.arrayContaining([0xff, 0x58, 0x04, 0x03, 0x02, 0x18, 0x08]));
+  });
+
+  it('creates one click note per beat across the exported duration', async () => {
+    const bytes = await midiBytes({ bpm: 120, beatsPerBar: 4, durationSeconds: 4 });
+    const data = Array.from(bytes);
+    expect(data.filter((byte) => byte === 0x99)).toHaveLength(8);
+    // 76 = accented downbeat click, 77 = regular click.
+    expect(data.filter((byte, idx) => byte === 76 && data[idx - 1] === 0x99)).toHaveLength(2);
+    expect(data.filter((byte, idx) => byte === 77 && data[idx - 1] === 0x99)).toHaveLength(6);
+  });
+});
+
 // ─── getSupportedMimeType ─────────────────────────────────────────────────────
 
 describe('getSupportedMimeType', () => {
@@ -321,6 +584,118 @@ describe('quantizeBuffer', () => {
   });
 });
 
+// ─── estimateTempo ────────────────────────────────────────────────────────────
+
+describe('estimateTempo', () => {
+  function makePulseBuffer({ bpm = 120, beats = 8, sampleRate = 44100, channels = 1 }) {
+    const secondsPerBeat = 60 / bpm;
+    const length = Math.round((beats * secondsPerBeat + 0.25) * sampleRate);
+    const channelData = Array.from({ length: channels }, () => new Float32Array(length));
+
+    for (let beat = 0; beat < beats; beat++) {
+      const start = Math.round(beat * secondsPerBeat * sampleRate);
+      const pulseLength = Math.round(sampleRate * 0.02);
+      for (let i = 0; i < pulseLength; i++) {
+        const idx = start + i;
+        if (idx >= length) break;
+        const sample = 0.9 * (1 - i / pulseLength);
+        for (const data of channelData) data[idx] = sample;
+      }
+    }
+
+    return {
+      numberOfChannels: channels,
+      length,
+      sampleRate,
+      duration: length / sampleRate,
+      getChannelData: (ch) => channelData[ch],
+    };
+  }
+
+  function expectTempoClose(actual, expected) {
+    expect(actual).toBeGreaterThanOrEqual(expected - 2);
+    expect(actual).toBeLessThanOrEqual(expected + 2);
+  }
+
+  it('detects a 120 BPM pulse train', () => {
+    const detected = estimateTempo(makePulseBuffer({ bpm: 120 }));
+    expectTempoClose(detected, 120);
+  });
+
+  it('detects a slower 90 BPM pulse train', () => {
+    const detected = estimateTempo(makePulseBuffer({ bpm: 90, beats: 10 }));
+    expectTempoClose(detected, 90);
+  });
+
+  it('handles stereo buffers', () => {
+    const detected = estimateTempo(makePulseBuffer({ bpm: 140, channels: 2 }));
+    expectTempoClose(detected, 140);
+  });
+
+  it('returns null for a silent buffer', () => {
+    const silent = {
+      numberOfChannels: 1,
+      length: 44100,
+      sampleRate: 44100,
+      duration: 1,
+      getChannelData: () => new Float32Array(44100),
+    };
+    expect(estimateTempo(silent)).toBeNull();
+  });
+
+  it('returns null for very short buffers', () => {
+    const short = {
+      numberOfChannels: 1,
+      length: 256,
+      sampleRate: 44100,
+      duration: 256 / 44100,
+      getChannelData: () => new Float32Array(256),
+    };
+    expect(estimateTempo(short)).toBeNull();
+  });
+});
+
+// ─── offsetBuffer ──────────────────────────────────────────────────────────────
+
+describe('offsetBuffer', () => {
+  const ctx = makeMockAudioContext();
+
+  it('returns the original buffer when the offset is zero', () => {
+    const samples = new Float32Array([1, 2, 3]);
+    const src = {
+      numberOfChannels: 1,
+      length: 3,
+      sampleRate: 1000,
+      getChannelData: () => samples,
+    };
+    expect(offsetBuffer(src, 0, ctx)).toBe(src);
+  });
+
+  it('adds silence at the start for a positive delay shift', () => {
+    const samples = new Float32Array([1, 2, 3, 4]);
+    const src = {
+      numberOfChannels: 1,
+      length: 4,
+      sampleRate: 1000,
+      getChannelData: () => samples,
+    };
+    const out = offsetBuffer(src, 0.002, ctx);
+    expect(Array.from(out.getChannelData(0))).toEqual([0, 0, 1, 2]);
+  });
+
+  it('trims the start for a negative advance shift and pads the tail with silence', () => {
+    const samples = new Float32Array([1, 2, 3, 4]);
+    const src = {
+      numberOfChannels: 1,
+      length: 4,
+      sampleRate: 1000,
+      getChannelData: () => samples,
+    };
+    const out = offsetBuffer(src, -0.002, ctx);
+    expect(Array.from(out.getChannelData(0))).toEqual([3, 4, 0, 0]);
+  });
+});
+
 // ─── reverseBuffer ────────────────────────────────────────────────────────────
 
 describe('reverseBuffer', () => {
@@ -388,5 +763,197 @@ describe('reverseBuffer', () => {
     const once = reverseBuffer(src, ctx);
     const twice = reverseBuffer(once, ctx);
     expect(Array.from(twice.getChannelData(0))).toEqual(Array.from(samples));
+  });
+});
+
+// ─── resampleBuffer / timeStretchBuffer / transformBuffer ────────────────────
+
+describe('independent speed and pitch transforms', () => {
+  const ctx = makeMockAudioContext(8000);
+  const sampleRate = ctx.sampleRate;
+
+  function makeSineBuffer({ frequency = 220, durationSeconds = 1 } = {}) {
+    const length = Math.round(durationSeconds * sampleRate);
+    const out = ctx.createBuffer(1, length, sampleRate);
+    const data = out.getChannelData(0);
+    for (let i = 0; i < length; i++) {
+      data[i] = Math.sin((2 * Math.PI * frequency * i) / sampleRate);
+    }
+    return out;
+  }
+
+  function countZeroCrossings(buffer) {
+    const data = buffer.getChannelData(0);
+    let crossings = 0;
+    for (let i = 1; i < data.length; i++) {
+      if ((data[i - 1] <= 0 && data[i] > 0) || (data[i - 1] >= 0 && data[i] < 0)) {
+        crossings++;
+      }
+    }
+    return crossings;
+  }
+
+  function crossingDensity(buffer) {
+    return countZeroCrossings(buffer) / buffer.length;
+  }
+
+  it('resampleBuffer changes duration according to the pitch ratio', () => {
+    const src = makeSineBuffer();
+    const upOctave = resampleBuffer(src, 2, ctx);
+    const downOctave = resampleBuffer(src, 0.5, ctx);
+
+    expect(upOctave.length).toBe(Math.round(src.length / 2));
+    expect(downOctave.length).toBe(Math.round(src.length / 0.5));
+  });
+
+  it('timeStretchBuffer changes duration without returning silence', () => {
+    const src = makeSineBuffer();
+    const stretched = timeStretchBuffer(src, 1.5, ctx);
+    const compressed = timeStretchBuffer(src, 0.5, ctx);
+
+    expect(stretched.length).toBe(Math.round(src.length * 1.5));
+    expect(compressed.length).toBe(Math.round(src.length * 0.5));
+    expect(stretched.getChannelData(0).some((sample) => Math.abs(sample) > 0.01)).toBe(true);
+    expect(compressed.getChannelData(0).some((sample) => Math.abs(sample) > 0.01)).toBe(true);
+  });
+
+  it('transformBuffer can raise pitch while keeping the original duration', () => {
+    const src = makeSineBuffer();
+    const shifted = transformBuffer(src, {
+      speed: 1,
+      pitchSemitones: 12,
+      audioContext: ctx,
+    });
+
+    expect(shifted.length).toBeCloseTo(src.length, -2);
+    expect(countZeroCrossings(shifted)).toBeGreaterThan(countZeroCrossings(src) * 1.6);
+  });
+
+  it('transformBuffer can change speed while roughly preserving pitch', () => {
+    const src = makeSineBuffer();
+    const faster = transformBuffer(src, {
+      speed: 2,
+      pitchSemitones: 0,
+      audioContext: ctx,
+    });
+
+    expect(faster.length).toBeCloseTo(src.length / 2, -2);
+    expect(crossingDensity(faster)).toBeGreaterThan(crossingDensity(src) * 0.7);
+    expect(crossingDensity(faster)).toBeLessThan(crossingDensity(src) * 1.3);
+  });
+});
+
+// ─── createBuiltinSampleLoop ──────────────────────────────────────────────────
+
+describe('createBuiltinSampleLoop', () => {
+  it('creates a one-bar loop using the current BPM and beats per bar', () => {
+    const audioContext = makeMockAudioContext(48000);
+    const buffer = createBuiltinSampleLoop(audioContext, {
+      sample: 'kick',
+      bpm: 120,
+      beatsPerBar: 4,
+    });
+
+    expect(buffer.sampleRate).toBe(48000);
+    expect(buffer.length).toBe(96000);
+    expect(buffer.duration).toBe(2);
+  });
+
+  it('produces audible data for each built-in sample type', () => {
+    const audioContext = makeMockAudioContext(44100);
+
+    for (const sample of ['kick', 'snare', 'clap']) {
+      const buffer = createBuiltinSampleLoop(audioContext, {
+        sample,
+        bpm: 100,
+        beatsPerBar: 4,
+      });
+      const peak = buffer.getChannelData(0).reduce((max, value) => Math.max(max, Math.abs(value)), 0);
+      expect(peak).toBeGreaterThan(0.05);
+    }
+  });
+
+  it('throws for an unknown built-in sample', () => {
+    const audioContext = makeMockAudioContext();
+
+    expect(() => createBuiltinSampleLoop(audioContext, {
+      sample: 'cowbell',
+      bpm: 100,
+      beatsPerBar: 4,
+    })).toThrow('Unknown built-in sample: cowbell');
+  });
+});
+
+// ─── shared-session packing ───────────────────────────────────────────────────
+
+describe('packSharedSession / unpackSharedSession', () => {
+  it('round-trips mixer state and loop audio bytes', () => {
+    const session = {
+      bpm: 128,
+      beatsPerBar: 3,
+      masterVolume: 0.85,
+      loops: [
+        {
+          name: 'Bass',
+          volume: 0.75,
+          pan: -0.2,
+          playbackRate: 1.1,
+          muted: false,
+          soloed: true,
+          reversed: true,
+          mimeType: 'audio/webm',
+          audioBytes: new Uint8Array([1, 2, 3, 4]),
+        },
+        {
+          name: 'Lead',
+          volume: 1.2,
+          pan: 0.4,
+          playbackRate: 0.9,
+          muted: true,
+          soloed: false,
+          reversed: false,
+          mimeType: 'audio/ogg',
+          audioBytes: new Uint8Array([9, 8, 7]),
+        },
+      ],
+    };
+
+    const packed = packSharedSession(session);
+    const unpacked = unpackSharedSession(packed);
+
+    expect(unpacked.bpm).toBe(128);
+    expect(unpacked.beatsPerBar).toBe(3);
+    expect(unpacked.masterVolume).toBe(0.85);
+    expect(unpacked.loops).toHaveLength(2);
+    expect(unpacked.loops[0]).toMatchObject({
+      name: 'Bass',
+      volume: 0.75,
+      pan: -0.2,
+      playbackRate: 1.1,
+      muted: false,
+      soloed: true,
+      reversed: true,
+      mimeType: 'audio/webm',
+    });
+    expect(Array.from(unpacked.loops[0].audioBytes)).toEqual([1, 2, 3, 4]);
+    expect(Array.from(unpacked.loops[1].audioBytes)).toEqual([9, 8, 7]);
+  });
+
+  it('rejects truncated payloads', () => {
+    expect(() => unpackSharedSession('AQID')).toThrow(/truncated/i);
+  });
+
+  it('rejects unsupported versions', () => {
+    const manifest = new TextEncoder().encode(JSON.stringify({ v: 2, l: [] }));
+    const out = new Uint8Array(4 + manifest.length);
+    new DataView(out.buffer).setUint32(0, manifest.length, true);
+    out.set(manifest, 4);
+    const packed = Buffer.from(out)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/g, '');
+
+    expect(() => unpackSharedSession(packed)).toThrow(/not supported/i);
   });
 });
