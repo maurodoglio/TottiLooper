@@ -871,9 +871,14 @@ function playLoop(loop, arg = {}) {
   }
   gainNode.connect(masterGainNode);
 
-  const offset = options.startOffset != null
-    ? normalizeLoopOffset(loop, options.startOffset)
-    : normalizeLoopOffset(loop, getLoopStartOffset(loop, buffer, startAt));
+  let offset;
+  if (options.startOffset != null) {
+    offset = normalizeLoopOffset(loop, options.startOffset);
+  } else if (options.startAt != null) {
+    offset = normalizeLoopOffset(loop, getLoopStartOffset(loop, buffer, startAt));
+  } else {
+    offset = normalizeLoopOffset(loop, loop.playOffset);
+  }
   sourceNode.start(startAt, offset);
 
   loop.node = sourceNode;
