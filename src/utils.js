@@ -118,6 +118,56 @@ export function reverseBuffer(buffer, audioContext) {
   return rev;
 }
 
+// ─── Effects utilities ────────────────────────────────────────────────────────
+
+/**
+ * Build a WaveShaper distortion curve for the given drive amount.
+ *
+ * The algorithm is a standard soft-clipping sigmoid that maps the input
+ * range [-1, 1] to a shaped output using the formula:
+ *   y = (π + k) · x / (π + k · |x|)
+ * where k is the drive parameter. At k = 0 the curve is linear (identity).
+ *
+ * @param {number} amount - Drive amount (0 = identity, higher = more distortion).
+ *   Typical useful range is 0–400.
+ * @param {number} [samples=256] - Number of samples in the curve array.
+ * @returns {Float32Array}
+ */
+export function makeDistortionCurve(amount, samples = 256) {
+  const k = Math.max(0, amount);
+  const curve = new Float32Array(samples);
+  for (let i = 0; i < samples; i++) {
+    const x = (i * 2) / (samples - 1) - 1; // linear [-1, 1]
+    curve[i] = ((Math.PI + k) * x) / (Math.PI + k * Math.abs(x));
+  }
+  return curve;
+}
+
+/**
+ * Synthesise a stereo impulse response for a simple plate/room reverb.
+ *
+ * The IR is generated as exponentially-decaying white noise:
+ *   sample[i] = random(-1..1) × (1 - i/N)^decay
+ *
+ * @param {AudioContext|OfflineAudioContext} audioContext
+ * @param {object} [opts]
+ * @param {number} [opts.duration=1.5] - Length of the IR in seconds.
+ * @param {number} [opts.decay=2]      - Exponent controlling tail roll-off.
+ * @returns {AudioBuffer}
+ */
+export function makeReverbIR(audioContext, { duration = 1.5, decay = 2 } = {}) {
+  const sr = audioContext.sampleRate;
+  const length = Math.max(1, Math.floor(sr * duration));
+  const ir = audioContext.createBuffer(2, length, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = ir.getChannelData(ch);
+    for (let i = 0; i < length; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+    }
+  }
+  return ir;
+}
+
 // ─── WAV encoding ─────────────────────────────────────────────────────────────
 
 /**

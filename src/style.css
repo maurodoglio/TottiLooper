@@ -588,3 +588,100 @@ button:disabled {
 }
 
 .help-close:hover { background: #3a3a3a; }
+
+/* ── Per-loop FX section ── */
+.loop-fx {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.fx-toggle-btn {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.fx-toggle-btn:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.fx-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.fx-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.fx-enable {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 72px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text);
+  user-select: none;
+}
+
+.fx-enable input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.fx-select {
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.fx-slider {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 120px;
+}
+
+.fx-slider-label {
+  min-width: 32px;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.fx-slider input[type="range"] {
+  flex: 1;
+  accent-color: var(--blue);
+}
+
+.fx-slider-value {
+  min-width: 36px;
+  text-align: right;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.7rem;
+}
