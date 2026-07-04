@@ -43,6 +43,10 @@ describe('eventToShortcut', () => {
     expect(eventToShortcut({ key: '?', ctrlKey: false, metaKey: false, shiftKey: true, altKey: false })).toBe('?');
   });
 
+  it('normalizes the space character to Space', () => {
+    expect(eventToShortcut({ key: ' ', ctrlKey: false, metaKey: false, shiftKey: false, altKey: false })).toBe('Space');
+  });
+
   it('ignores modifier-only keys', () => {
     expect(eventToShortcut({ key: 'Shift', ctrlKey: false, metaKey: false, shiftKey: true, altKey: false })).toBe('');
   });

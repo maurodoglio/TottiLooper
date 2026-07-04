@@ -21,6 +21,7 @@ export const DEFAULT_SHORTCUTS = Object.freeze({
 
 const MODIFIER_ORDER = ['Mod', 'Shift', 'Alt'];
 const KEY_ALIASES = {
+  ' ': 'Space',
   esc: 'Escape',
   escape: 'Escape',
   enter: 'Enter',
@@ -43,6 +44,7 @@ const MODIFIER_ALIASES = {
 
 function normalizeKeyToken(token) {
   if (!token) return '';
+  if (token === ' ') return 'Space';
 
   const lowered = token.trim().toLowerCase();
   if (!lowered) return '';
