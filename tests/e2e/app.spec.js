@@ -234,6 +234,26 @@ test.describe('loop controls', () => {
     await expect(page.locator('.loop-duration')).toBeVisible();
   });
 
+  test('half-time and double-time toggles update the speed control', async ({ page }) => {
+    const speedSlider = page.locator('.speed-input');
+    const halfTimeButton = page.locator('.btn-half-time');
+    const doubleTimeButton = page.locator('.btn-double-time');
+
+    await halfTimeButton.click();
+    await expect(halfTimeButton).toHaveAttribute('aria-pressed', 'true');
+    await expect(doubleTimeButton).toHaveAttribute('aria-pressed', 'false');
+    await expect(speedSlider).toHaveValue('0.5');
+
+    await halfTimeButton.click();
+    await expect(halfTimeButton).toHaveAttribute('aria-pressed', 'false');
+    await expect(speedSlider).toHaveValue('1');
+
+    await doubleTimeButton.click();
+    await expect(doubleTimeButton).toHaveAttribute('aria-pressed', 'true');
+    await expect(halfTimeButton).toHaveAttribute('aria-pressed', 'false');
+    await expect(speedSlider).toHaveValue('2');
+  });
+
   test('undo button becomes enabled after a loop is deleted', async ({ page }) => {
     await page.locator('.btn-danger').click();
     await expect(page.locator('#btn-undo')).toBeEnabled();
