@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * TottiLooper – main application logic.
  *
@@ -28,8 +29,11 @@ const MAX_UNDO         = 20;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
+/** @type {AudioContext|null} */
 let audioContext   = null;
+/** @type {MediaStream|null} */
 let mediaStream    = null;
+/** @type {MediaRecorder|null} */
 let mediaRecorder  = null;
 let recordedChunks = [];
 let isRecording    = false;
@@ -37,9 +41,11 @@ let timerInterval  = null;
 let recordStartTime = 0;
 let loopCounter    = 0;
 
+/** @type {GainNode|null} */
 let masterGainNode = null;
 let masterVolume   = 1;
 
+/** @type {AnalyserNode|null} */
 let inputAnalyser  = null;
 
 // Tempo / metronome
@@ -143,6 +149,12 @@ function init() {
 
 // ─── Microphone access ────────────────────────────────────────────────────────
 
+/**
+ * Request microphone access, initialise the AudioContext, and wire up the
+ * master gain node and input level analyser.
+ *
+ * @returns {Promise<void>}
+ */
 async function requestMicrophoneAccess() {
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -180,6 +192,12 @@ async function requestMicrophoneAccess() {
 
 // ─── Input level meter ────────────────────────────────────────────────────────
 
+/**
+ * Begin the animation loop that reads from the input AnalyserNode and updates
+ * the level-meter fill bar.
+ *
+ * @returns {void}
+ */
 function startInputMeter() {
   const buf = new Uint8Array(inputAnalyser.fftSize);
   const tick = () => {
@@ -314,12 +332,27 @@ async function onRecordingStop() {
 
 // ─── Quantize (snap loop length to whole bars) ───────────────────────────────
 
+/**
+ * Snap a recorded AudioBuffer to the nearest whole bar length.
+ * Delegates to {@link module:utils.quantizeBuffer} with the current BPM and
+ * time-signature state.
+ *
+ * @param {AudioBuffer} buffer
+ * @returns {AudioBuffer}
+ */
 function quantizeBuffer(buffer) {
   return _quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext });
 }
 
 // ─── Loop management ──────────────────────────────────────────────────────────
 
+/**
+ * Create a Loop object from a decoded AudioBuffer and append it to the loop
+ * list.  The new loop is rendered into the UI but not started.
+ *
+ * @param {AudioBuffer} audioBuffer
+ * @returns {void}
+ */
 function addLoop(audioBuffer) {
   loopCounter++;
   /** @type {Loop} */
@@ -345,11 +378,22 @@ function addLoop(audioBuffer) {
   updateEmptyState();
 }
 
-/** Effective gain for a loop accounting for mute/solo/volume. */
+/** 
+ * Effective gain for a loop accounting for mute/solo/volume.
+ *
+ * @param {Loop} loop
+ * @returns {number}
+ */
 function effectiveGain(loop) {
   return computeEffectiveGain(loop, loops);
 }
 
+/**
+ * Re-apply the effective gain for every currently-playing loop by ramping the
+ * GainNode parameters.  Handles mute, solo, and per-loop volume in one pass.
+ *
+ * @returns {void}
+ */
 function refreshAllGains() {
   if (!audioContext) return;
   const t = audioContext.currentTime;
@@ -360,6 +404,13 @@ function refreshAllGains() {
   }
 }
 
+/**
+ * Return the AudioBuffer to use for playback, lazily building the reversed
+ * copy on first use when the loop is in reverse mode.
+ *
+ * @param {Loop} loop
+ * @returns {AudioBuffer}
+ */
 function getPlaybackBuffer(loop) {
   if (!loop.reversed) return loop.audioBuffer;
   if (!loop.reversedBuffer) {
@@ -368,10 +419,24 @@ function getPlaybackBuffer(loop) {
   return loop.reversedBuffer;
 }
 
+/**
+ * Build a reversed copy of an AudioBuffer using the current AudioContext.
+ *
+ * @param {AudioBuffer} buffer
+ * @returns {AudioBuffer}
+ */
 function reverseBuffer(buffer) {
   return _reverseBuffer(buffer, audioContext);
 }
 
+/**
+ * Start looping playback for a loop by creating and connecting an
+ * AudioBufferSourceNode → StereoPannerNode → GainNode → masterGainNode chain.
+ * The gain fades in over FADE_TIME to avoid clicks.
+ *
+ * @param {Loop} loop
+ * @returns {void}
+ */
 function playLoop(loop) {
   if (!audioContext || loop.playing) return;
   if (audioContext.state === 'suspended') audioContext.resume();
@@ -420,6 +485,13 @@ function playLoop(loop) {
   refreshAllGains();
 }
 
+/**
+ * Stop looping playback by fading the GainNode to zero and scheduling the
+ * AudioBufferSourceNode to stop after the fade completes.
+ *
+ * @param {Loop} loop
+ * @returns {void}
+ */
 function stopLoop(loop) {
   if (!loop.playing) return;
   const node = loop.node;
@@ -452,6 +524,13 @@ function stopLoop(loop) {
   }
 }
 
+/**
+ * Stop and permanently remove a loop from the loop list.  The removed loop is
+ * pushed onto the undo stack so it can be restored.
+ *
+ * @param {number} loopId
+ * @returns {void}
+ */
 function deleteLoop(loopId) {
   const idx = loops.findIndex(l => l.id === loopId);
   if (idx === -1) return;
@@ -490,6 +569,10 @@ function updateUndoButton() {
   btnUndo.disabled = deletedStack.length === 0;
 }
 
+/**
+ * @param {Loop} loop
+ * @returns {void}
+ */
 function toggleMute(loop) {
   loop.muted = !loop.muted;
   const card = document.getElementById(`loop-card-${loop.id}`);
@@ -507,6 +590,10 @@ function toggleMute(loop) {
   refreshAllGains();
 }
 
+/**
+ * @param {Loop} loop
+ * @returns {void}
+ */
 function toggleSolo(loop) {
   loop.soloed = !loop.soloed;
   const card = document.getElementById(`loop-card-${loop.id}`);
@@ -521,11 +608,24 @@ function toggleSolo(loop) {
   refreshAllGains();
 }
 
+/**
+ * @param {Loop} loop
+ * @param {number} value  gain value (0–1.5)
+ * @returns {void}
+ */
 function setLoopVolume(loop, value) {
   loop.volume = value;
   refreshAllGains();
 }
 
+/**
+ * Update pan on the live StereoPannerNode immediately (ramp) so there is no
+ * audible click when the slider moves.
+ *
+ * @param {Loop} loop
+ * @param {number} value  pan value (-1 = full left … 0 = centre … 1 = full right)
+ * @returns {void}
+ */
 function setLoopPan(loop, value) {
   loop.pan = value;
   if (loop.pannerNode) {
@@ -533,6 +633,13 @@ function setLoopPan(loop, value) {
   }
 }
 
+/**
+ * Update the playback rate on the live AudioBufferSourceNode immediately.
+ *
+ * @param {Loop} loop
+ * @param {number} value  playback rate multiplier (e.g. 0.5 = half speed, 2 = double)
+ * @returns {void}
+ */
 function setLoopPlaybackRate(loop, value) {
   loop.playbackRate = value;
   if (loop.node) {
@@ -540,6 +647,14 @@ function setLoopPlaybackRate(loop, value) {
   }
 }
 
+/**
+ * Toggle between forward and reversed playback.  If the loop is currently
+ * playing it is briefly stopped and restarted so the reversed buffer takes
+ * effect immediately.
+ *
+ * @param {Loop} loop
+ * @returns {void}
+ */
 function toggleReverse(loop) {
   loop.reversed = !loop.reversed;
   const wasPlaying = loop.playing;
@@ -557,6 +672,11 @@ function toggleReverse(loop) {
   }
 }
 
+/**
+ * @param {Loop} loop
+ * @param {string} newName
+ * @returns {void}
+ */
 function renameLoop(loop, newName) {
   const trimmed = (newName || '').trim();
   loop.name = trimmed || loop.name;
@@ -624,6 +744,14 @@ function stopMetronome() {
   }
 }
 
+/**
+ * Synthesise and play a single metronome click using an OscillatorNode routed
+ * directly to the AudioContext destination (bypassing the master gain so it is
+ * never included in a mixdown).
+ *
+ * @param {boolean} isDownbeat  true for the accented downbeat click
+ * @returns {void}
+ */
 function playClick(isDownbeat) {
   if (!audioContext) return;
   const t = audioContext.currentTime;
@@ -643,6 +771,12 @@ function playClick(isDownbeat) {
 
 // ─── Export (mixdown to WAV) ─────────────────────────────────────────────────
 
+/**
+ * Render all loops into a stereo WAV file using an OfflineAudioContext,
+ * replicating the live AudioNode graph (source → panner → gain → master).
+ *
+ * @returns {Promise<void>}
+ */
 async function exportMix() {
   if (loops.length === 0) {
     showInfo('Nothing to export – record a loop first.');
@@ -695,12 +829,25 @@ async function exportMix() {
   }
 }
 
+/**
+ * Export the playback buffer of a single loop as a WAV file download.
+ *
+ * @param {Loop} loop
+ * @returns {void}
+ */
 function exportLoop(loop) {
   const wavBlob = audioBufferToWav(getPlaybackBuffer(loop));
   const safeName = loop.name.replace(/[^a-z0-9_-]+/gi, '_') || `loop-${loop.id}`;
   downloadBlob(wavBlob, `${safeName}.wav`);
 }
 
+/**
+ * Trigger a browser file download for a Blob.
+ *
+ * @param {Blob} blob
+ * @param {string} filename
+ * @returns {void}
+ */
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -714,6 +861,12 @@ function downloadBlob(blob, filename) {
 
 // ─── Rendering ────────────────────────────────────────────────────────────────
 
+/**
+ * Build the DOM card for a loop and append it to the loops list.
+ *
+ * @param {Loop} loop
+ * @returns {void}
+ */
 function renderLoop(loop) {
   const card = document.createElement('div');
   card.className = 'loop-card';
@@ -812,6 +965,13 @@ function renderLoop(loop) {
   drawWaveform(canvas, loop.audioBuffer);
 }
 
+/**
+ * @param {string} cls
+ * @param {string} text
+ * @param {string} title
+ * @param {() => void} onClick
+ * @returns {HTMLButtonElement}
+ */
 function iconButton(cls, text, title, onClick) {
   const b = document.createElement('button');
   b.className = 'btn-icon ' + cls;
@@ -822,6 +982,16 @@ function iconButton(cls, text, title, onClick) {
   return b;
 }
 
+/**
+ * @param {string} label
+ * @param {number} min
+ * @param {number} max
+ * @param {number} step
+ * @param {number} value
+ * @param {(v: number) => string} formatValue
+ * @param {(v: number) => void} onInput
+ * @returns {HTMLLabelElement}
+ */
 function makeFader(label, min, max, step, value, formatValue, onInput) {
   const wrap = document.createElement('label');
   wrap.className = 'fader';
@@ -852,6 +1022,14 @@ function makeFader(label, min, max, step, value, formatValue, onInput) {
   return wrap;
 }
 
+/**
+ * Render a waveform visualisation onto a canvas element by reading channel 0
+ * of the AudioBuffer's sample data.
+ *
+ * @param {HTMLCanvasElement} canvas
+ * @param {AudioBuffer} audioBuffer
+ * @returns {void}
+ */
 function drawWaveform(canvas, audioBuffer) {
   const data = audioBuffer.getChannelData(0);
   const dpr  = window.devicePixelRatio || 1;

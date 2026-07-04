@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Pure utility functions for TottiLooper.
  *
