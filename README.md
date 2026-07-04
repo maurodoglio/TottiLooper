@@ -32,6 +32,13 @@ them on top of each other – your one-man band for busking starts here.
 - 🌊 **Fade-in / fade-out envelopes** to smooth loop seams without re-recording
 - ✨ Click-free start/stop with short automatic fades
 
+### Loop groups (sub-mixes)
+- 🗂️ **Create named groups** (e.g. "Drums", "Vocals") with the **+ Group** button
+- 🎚️ **Group volume** slider multiplies every member loop's level
+- 🔇 **Group mute** silences all loops in the group at once
+- **S** **Group solo** isolates the group, silencing all loops outside it
+- Assign any loop to a group via its **Group** selector; unassign to return it to the ungrouped list
+
 ### Save, share, recover
 - ⬇ **Export the full mix as WAV** (rendered via `OfflineAudioContext`)
 - ⬇ **Export any individual loop as WAV**

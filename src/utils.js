@@ -198,32 +198,52 @@ export function getSupportedMimeType() {
 
 /**
  * Compute the effective output gain for a loop, accounting for mute, solo,
- * per-loop volume, and optional lead-loop ducking (reducing non-lead loops
- * while the lead loop is currently playing).
+ * per-loop volume, the group the loop belongs to, and optional lead-loop
+ * ducking (reducing non-lead loops while the lead loop is currently playing).
  *
- * @param {{ id?: number, muted: boolean, soloed: boolean, volume: number }} loop
+ * Supports two calling conventions for backwards compatibility:
+ *   effectiveGain(loop, loops, groups, opts)
+ *   effectiveGain(loop, loops, opts)          // when the 3rd arg is not an array
+ *
+ * @param {{ id?: number, muted: boolean, soloed: boolean, volume: number, groupId?: number|null }} loop
  * @param {Array<{ id?: number, soloed: boolean, playing?: boolean }>} loops - the complete list of loops
+ * @param {Array<{ id: number, volume: number, muted: boolean, soloed: boolean }>} [groups]
  * @param {{ leadLoopId?: number|null, duckGain?: number }} [opts]
  * @returns {number}
  */
-export function effectiveGain(loop, loops, opts = {}) {
+export function effectiveGain(loop, loops, groups = [], opts = {}) {
+  // Legacy signature effectiveGain(loop, loops, opts): third arg is options.
+  if (!Array.isArray(groups)) {
+    opts = groups;
+    groups = [];
+  }
+
   const {
     leadLoopId = null,
     duckGain = 0.35,
   } = opts;
 
   if (loop.muted) return 0;
-  const anySolo = loops.some(l => l.soloed);
-  if (anySolo && !loop.soloed) return 0;
+
+  const group = loop.groupId != null
+    ? (groups.find(g => g.id === loop.groupId) ?? null)
+    : null;
+
+  if (group && group.muted) return 0;
+
+  const anySolo = loops.some(l => l.soloed) || groups.some(g => g.soloed);
+  if (anySolo && !loop.soloed && (!group || !group.soloed)) return 0;
+
+  let gain = loop.volume * (group ? group.volume : 1);
 
   if (leadLoopId != null && loop.id !== leadLoopId) {
     const leadLoop = loops.find(l => l.id === leadLoopId);
     if (leadLoop && leadLoop.playing) {
-      return loop.volume * duckGain;
+      gain *= duckGain;
     }
   }
 
-  return loop.volume;
+  return gain;
 }
 
 export function getLoopPlaybackRate(loop, bpm) {

@@ -199,6 +199,7 @@ const redoStack = [];
  * @property {number} fadeOut
  * @property {number} pitchSemitones
  * @property {boolean} reversed
+ * @property {number|null} groupId
  * @property {{ name: string, signature: number } | null} detectedKey
  * @property {number} playStartTime
  * @property {number} playOffset
@@ -211,6 +212,19 @@ const redoStack = [];
 
 /** @type {Array<Loop>} */
 const loops = [];
+
+/**
+ * @typedef {Object} Group
+ * @property {number} id
+ * @property {string} name
+ * @property {number} volume
+ * @property {boolean} muted
+ * @property {boolean} soloed
+ */
+
+let groupCounter = 0;
+/** @type {Array<Group>} */
+const groups = [];
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 
@@ -269,6 +283,8 @@ const midiStatus         = $('midi-status');
 const btnEnableMidi      = $('btn-enable-midi');
 const loopsSection       = $('loops-section');
 const loopsList          = $('loops-list');
+const ungroupedLoops     = $('ungrouped-loops');
+const btnAddGroup        = $('btn-add-group');
 const emptyState         = $('empty-state');
 const sampleButtons      = sampleLibrary
   ? Array.from(sampleLibrary.querySelectorAll('[data-builtin-sample]'))
@@ -387,6 +403,8 @@ function init() {
   midiControls.addEventListener('click', onMidiControlsClick);
   loopsList.addEventListener('click', onMidiControlsClick);
   btnResetShortcuts.addEventListener('click', resetShortcuts);
+
+  btnAddGroup.addEventListener('click', addGroup);
 
   shortcuts = loadShortcutMappings();
   renderShortcutSettings();
@@ -977,6 +995,7 @@ function addLoop(audioBuffer, options = {}) {
     fadeOut: options.fadeOut ?? 0,
     pitchSemitones: options.pitchSemitones ?? 0,
     reversed: !!options.reversed,
+    groupId: options.groupId ?? null,
     detectedKey: options.detectedKey ?? null,
     playStartTime: 0,
     playOffset: 0,
@@ -1007,9 +1026,9 @@ async function addBuiltinSample(sample) {
   }
 }
 
-/** Effective gain for a loop accounting for mute/solo/volume/ducking. */
+/** Effective gain for a loop accounting for mute/solo/volume, group state, and ducking. */
 function effectiveGain(loop) {
-  return computeEffectiveGain(loop, loops, {
+  return computeEffectiveGain(loop, loops, groups, {
     leadLoopId,
     duckGain: DUCK_GAIN,
   });
@@ -1686,6 +1705,210 @@ function renameLoop(loop, newName) {
   const trimmed = (newName || '').trim();
   loop.name = trimmed || loop.name;
   refreshPunchLoopOptions();
+}
+
+// ─── Group management ──────────────────────────────────────────────────────
+
+/** Return the DOM container where loops with the given groupId should live. */
+function getLoopContainer(groupId) {
+  if (groupId == null) return ungroupedLoops;
+  return document.getElementById(`group-loops-${groupId}`);
+}
+
+function addGroup() {
+  groupCounter++;
+  /** @type {Group} */
+  const group = {
+    id: groupCounter,
+    name: `Group ${groupCounter}`,
+    volume: 1,
+    muted: false,
+    soloed: false,
+  };
+  groups.push(group);
+  renderGroup(group);
+  updateAllGroupSelectors();
+}
+
+function deleteGroup(groupId) {
+  const idx = groups.findIndex(g => g.id === groupId);
+  if (idx === -1) return;
+  groups.splice(idx, 1);
+
+  // Move loops that were in this group to ungrouped
+  for (const l of loops) {
+    if (l.groupId === groupId) {
+      l.groupId = null;
+      const card = document.getElementById(`loop-card-${l.id}`);
+      if (card) ungroupedLoops.appendChild(card);
+    }
+  }
+
+  // Remove group DOM element
+  const block = document.getElementById(`group-block-${groupId}`);
+  if (block) block.remove();
+
+  updateAllGroupSelectors();
+  refreshAllGains();
+}
+
+function renameGroup(group, newName) {
+  const trimmed = (newName || '').trim();
+  group.name = trimmed || group.name;
+  updateAllGroupSelectors();
+}
+
+function toggleGroupMute(group) {
+  group.muted = !group.muted;
+  const block = document.getElementById(`group-block-${group.id}`);
+  if (block) {
+    block.classList.toggle('group-muted', group.muted);
+    const btn = block.querySelector('.btn-group-mute');
+    if (btn) {
+      btn.textContent = group.muted ? '🔇' : '🔊';
+      btn.title = group.muted ? 'Unmute group' : 'Mute group';
+      btn.setAttribute('aria-label', group.muted ? 'Unmute group' : 'Mute group');
+      btn.classList.toggle('active', group.muted);
+      btn.setAttribute('aria-pressed', group.muted ? 'true' : 'false');
+    }
+  }
+  refreshAllGains();
+}
+
+function toggleGroupSolo(group) {
+  group.soloed = !group.soloed;
+  const block = document.getElementById(`group-block-${group.id}`);
+  if (block) {
+    block.classList.toggle('group-soloed', group.soloed);
+    const btn = block.querySelector('.btn-group-solo');
+    if (btn) {
+      btn.classList.toggle('active', group.soloed);
+      btn.setAttribute('aria-pressed', group.soloed ? 'true' : 'false');
+    }
+  }
+  refreshAllGains();
+}
+
+function setGroupVolume(group, value) {
+  group.volume = value;
+  refreshAllGains();
+}
+
+function setLoopGroup(loop, newGroupId) {
+  loop.groupId = newGroupId;
+  const card = document.getElementById(`loop-card-${loop.id}`);
+  const container = getLoopContainer(newGroupId);
+  if (card && container) container.appendChild(card);
+  // Keep the selector value in sync with the new groupId
+  const sel = card && card.querySelector('.loop-group-select');
+  if (sel) sel.value = newGroupId != null ? String(newGroupId) : '';
+  refreshAllGains();
+}
+
+/** Rebuild the <option> list of every loop's group selector to reflect current groups. */
+function updateAllGroupSelectors() {
+  for (const l of loops) {
+    const card = document.getElementById(`loop-card-${l.id}`);
+    if (!card) continue;
+    const sel = card.querySelector('.loop-group-select');
+    if (!sel) continue;
+    const current = l.groupId;
+    sel.innerHTML = '';
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = '—';
+    sel.appendChild(noneOpt);
+    for (const g of groups) {
+      const opt = document.createElement('option');
+      opt.value = String(g.id);
+      opt.textContent = g.name;
+      sel.appendChild(opt);
+    }
+    sel.value = current != null ? String(current) : '';
+    // If the previously selected group no longer exists, reset to ungrouped
+    if (current != null && !groups.find(g => g.id === current)) {
+      l.groupId = null;
+      sel.value = '';
+      const card = document.getElementById(`loop-card-${l.id}`);
+      if (card) ungroupedLoops.appendChild(card);
+    }
+  }
+  // Refresh group-name labels on group-name inputs (in case a rename happened)
+  for (const g of groups) {
+    const block = document.getElementById(`group-block-${g.id}`);
+    if (!block) continue;
+    const nameInput = block.querySelector('.group-name');
+    if (nameInput && document.activeElement !== nameInput) {
+      nameInput.value = g.name;
+    }
+  }
+}
+
+/** Render a group header block and insert it into the loops list before ungrouped loops. */
+function renderGroup(group) {
+  const block = document.createElement('div');
+  block.className = 'group-block';
+  block.id = `group-block-${group.id}`;
+  if (group.muted)  block.classList.add('group-muted');
+  if (group.soloed) block.classList.add('group-soloed');
+
+  // Header row: name, volume fader, mute, solo, delete
+  const header = document.createElement('div');
+  header.className = 'group-header';
+
+  const nameInput = document.createElement('input');
+  nameInput.className = 'group-name';
+  nameInput.type = 'text';
+  nameInput.value = group.name;
+  nameInput.title = 'Rename group';
+  nameInput.setAttribute('aria-label', 'Group name');
+  nameInput.addEventListener('change', () => {
+    renameGroup(group, nameInput.value);
+    nameInput.value = group.name;
+  });
+  nameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') nameInput.blur();
+  });
+
+  const controls = document.createElement('div');
+  controls.className = 'group-controls';
+
+  const volFader = makeFader('Vol', 0, 1.5, 0.01, group.volume,
+    (v) => `${Math.round(v * 100)}%`,
+    (v) => setGroupVolume(group, v));
+  volFader.dataset.fader = 'group-volume';
+
+  const btnMute = iconButton('btn-group-mute',
+    group.muted ? '🔇' : '🔊',
+    group.muted ? 'Unmute group' : 'Mute group',
+    () => toggleGroupMute(group));
+  btnMute.setAttribute('aria-pressed', group.muted ? 'true' : 'false');
+  if (group.muted) btnMute.classList.add('active');
+
+  const btnSolo = iconButton('btn-group-solo', 'S', 'Solo group',
+    () => toggleGroupSolo(group));
+  btnSolo.setAttribute('aria-pressed', group.soloed ? 'true' : 'false');
+  if (group.soloed) btnSolo.classList.add('active');
+
+  const btnDelete = document.createElement('button');
+  btnDelete.className = 'btn-danger';
+  btnDelete.textContent = '✕';
+  btnDelete.title = 'Delete group';
+  btnDelete.setAttribute('aria-label', 'Delete group');
+  btnDelete.addEventListener('click', () => deleteGroup(group.id));
+
+  controls.append(volFader, btnMute, btnSolo, btnDelete);
+  header.append(nameInput, controls);
+
+  // Container for this group's loop cards
+  const loopsContainer = document.createElement('div');
+  loopsContainer.className = 'group-loops';
+  loopsContainer.id = `group-loops-${group.id}`;
+
+  block.append(header, loopsContainer);
+
+  // Insert before the ungrouped-loops container so groups appear above ungrouped loops
+  loopsList.insertBefore(block, ungroupedLoops);
 }
 
 function playAllLoops() {
@@ -2675,6 +2898,36 @@ function renderLoop(loop) {
     fadeOutFader,
   );
 
+  // Group selector
+  const groupField = document.createElement('label');
+  groupField.className = 'loop-group-field';
+
+  const groupLabel = document.createElement('span');
+  groupLabel.className = 'fader-label';
+  groupLabel.textContent = 'Group';
+
+  const groupSelect = document.createElement('select');
+  groupSelect.className = 'loop-group-select';
+  groupSelect.setAttribute('aria-label', 'Assign to group');
+  const noneOpt = document.createElement('option');
+  noneOpt.value = '';
+  noneOpt.textContent = '—';
+  groupSelect.appendChild(noneOpt);
+  for (const g of groups) {
+    const opt = document.createElement('option');
+    opt.value = String(g.id);
+    opt.textContent = g.name;
+    groupSelect.appendChild(opt);
+  }
+  groupSelect.value = loop.groupId != null ? String(loop.groupId) : '';
+  groupSelect.addEventListener('change', () => {
+    const v = groupSelect.value;
+    setLoopGroup(loop, v === '' ? null : parseInt(v, 10));
+  });
+
+  groupField.append(groupLabel, groupSelect);
+  faderRow.appendChild(groupField);
+
   const followTempoToggle = document.createElement('label');
   followTempoToggle.className = 'fader loop-follow-tempo follow-tempo-toggle';
 
@@ -2711,7 +2964,9 @@ function renderLoop(loop) {
   card.appendChild(midiRow);
 
   // Canvas sizing requires the element be in the DOM to measure offsetWidth.
-  loopsList.appendChild(card);
+  // Append to the right container (group or ungrouped).
+  const container = getLoopContainer(loop.groupId);
+  container.appendChild(card);
   updateLeadButton(card, loop);
 
   function updateDuration() {

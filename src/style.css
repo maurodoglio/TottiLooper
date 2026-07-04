@@ -543,6 +543,11 @@ button:disabled {
   background: var(--surface-hover);
 }
 
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 0.8rem;
+}
+
 .btn-danger {
   background-color: var(--danger-bg);
   color: #fff;
@@ -624,12 +629,19 @@ button:disabled {
 }
 
 /* ── Loops section ── */
+#loops-section .section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
 #loops-section h2 {
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 1.5px;
   color: var(--text-muted);
-  margin-bottom: 12px;
+  margin-bottom: 0;
 }
 
 #loops-list {
@@ -861,6 +873,105 @@ button:disabled {
 #empty-state .icon {
   font-size: 2.5rem;
   margin-bottom: 12px;
+}
+
+/* ── Group block ── */
+.group-block {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface-raised);
+  padding: 8px 12px;
+  flex-wrap: wrap;
+}
+
+.group-block.group-soloed > .group-header {
+  border-left: 3px solid var(--amber);
+}
+
+.group-block.group-muted > .group-header {
+  opacity: 0.6;
+}
+
+.group-name {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 3px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  width: 100px;
+}
+
+.group-name:hover,
+.group-name:focus {
+  border-color: var(--border);
+  background: var(--surface);
+  outline: none;
+}
+
+.group-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.group-controls .fader {
+  min-width: 140px;
+}
+
+.btn-icon.btn-group-mute.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-icon.btn-group-solo.active {
+  background: var(--amber);
+  color: #222;
+}
+
+.group-loops {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 8px;
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+}
+
+.group-loops .loop-card {
+  margin-left: 4px;
+  border-left: 2px solid var(--border);
+}
+
+/* Group selector in loop card */
+.loop-group-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.loop-group-select {
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
 }
 
 /* ── Error / info toast ── */

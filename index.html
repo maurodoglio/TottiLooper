@@ -242,12 +242,16 @@
 
     <!-- Loops list -->
     <section id="loops-section">
-      <h2>Loops</h2>
+      <div class="section-header">
+        <h2>Loops</h2>
+        <button id="btn-add-group" class="btn-secondary btn-sm">+ Group</button>
+      </div>
       <div id="loops-list">
         <div id="empty-state">
           <div class="icon">🎵</div>
           <p>No loops yet. Hit <strong>● REC</strong> or add a built-in sample to get started.</p>
         </div>
+        <div id="ungrouped-loops"></div>
       </div>
     </section>
 
@@ -293,9 +297,20 @@
         <li><strong>½× / 2×</strong> – toggle half-time or double-time playback for a loop.</li>
         <li><strong>Trim handles</strong> on the waveform – drag the left and right markers to tighten the loop without re-recording.</li>
         <li><strong>Vol / Pan / Low / Mid / High / Speed / Pitch / Fade In / Fade Out</strong> sliders – mix each loop, carve out frequency space with a 3-band EQ, time-stretch it, transpose it independently, and smooth loop boundaries.</li>
+        <li><strong>Group</strong> selector – assign the loop to a named group for sub-mix control.</li>
         <li><strong>Follow tempo</strong> – opt a loop into BPM-following so tempo changes stretch it automatically.</li>
         <li>Click or drag the <strong>waveform</strong> to scrub to a new playback position.</li>
         <li>Click the <strong>loop name</strong> field to rename it (e.g. "Bass", "Chords", "Beatbox").</li>
+      </ul>
+
+      <h3>Loop groups</h3>
+      <ul>
+        <li>Click <strong>+ Group</strong> to create a named sub-mix group (e.g. "Drums", "Vocals").</li>
+        <li>Use the <strong>Group</strong> selector on each loop card to assign loops to a group.</li>
+        <li>Each group has its own <strong>Vol</strong> slider, <strong>🔊 Mute</strong> and <strong>S Solo</strong> controls that apply to all loops in the group.</li>
+        <li>Group volume multiplies each member loop's individual volume.</li>
+        <li>Soloing a group silences all loops outside that group; soloing a loop overrides groups.</li>
+        <li>Delete a group with <strong>✕</strong> — its loops move back to the ungrouped list.</li>
       </ul>
 
       <h3>Master controls</h3>
