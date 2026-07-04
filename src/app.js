@@ -347,6 +347,7 @@ async function onRecordingStop() {
     const arrayBuffer = await blob.arrayBuffer();
     let audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
     if (monitorLatencyOffsetMs !== 0) {
+      // A positive user-facing compensation value should pull the recorded take earlier.
       audioBuffer = offsetBuffer(audioBuffer, -monitorLatencyOffsetMs / 1000, audioContext);
     }
     if (quantizeEnabled) {

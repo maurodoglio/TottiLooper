@@ -121,8 +121,9 @@ export function offsetBuffer(buffer, offsetSeconds, audioContext) {
     const dst = out.getChannelData(ch);
 
     if (sampleOffset > 0) {
+      if (sampleOffset >= dst.length) continue;
       const copyLen = Math.max(0, src.length - sampleOffset);
-      dst.set(src.subarray(0, copyLen), Math.min(sampleOffset, dst.length));
+      dst.set(src.subarray(0, copyLen), sampleOffset);
     } else {
       const start = Math.min(src.length, Math.abs(sampleOffset));
       dst.set(src.subarray(start), 0);
