@@ -8,6 +8,13 @@
 
 'use strict';
 
+const MIDI_TICKS_PER_BEAT = 480;
+const MIDI_CLICK_NOTE_LENGTH = 60;
+const MIDI_DOWNBEAT_NOTE = 76;
+const MIDI_OFFBEAT_NOTE = 77;
+const MIDI_DOWNBEAT_VELOCITY = 110;
+const MIDI_OFFBEAT_VELOCITY = 84;
+
 // ─── Formatting ───────────────────────────────────────────────────────────────
 
 /**
@@ -127,10 +134,9 @@ export function reverseBuffer(buffer, audioContext) {
  * @returns {Blob}
  */
 export function clickTrackToMidi({ bpm, beatsPerBar, durationSeconds }) {
-  const ticksPerBeat = 480;
-  const totalTicks = Math.max(1, Math.ceil((durationSeconds * bpm * ticksPerBeat) / 60));
-  const beatCount = Math.floor((totalTicks - 1) / ticksPerBeat) + 1;
-  const noteLength = Math.min(60, ticksPerBeat);
+  const totalTicks = Math.max(1, Math.ceil((durationSeconds * bpm * MIDI_TICKS_PER_BEAT) / 60));
+  const beatCount = Math.floor((totalTicks - 1) / MIDI_TICKS_PER_BEAT) + 1;
+  const noteLength = Math.min(MIDI_CLICK_NOTE_LENGTH, MIDI_TICKS_PER_BEAT);
   const tempoMicros = Math.round(60000000 / bpm);
   const track = [];
 
@@ -144,9 +150,9 @@ export function clickTrackToMidi({ bpm, beatsPerBar, durationSeconds }) {
 
   let lastTick = 0;
   for (let beat = 0; beat < beatCount; beat++) {
-    const startTick = beat * ticksPerBeat;
-    const note = beat % beatsPerBar === 0 ? 76 : 77;
-    const velocity = beat % beatsPerBar === 0 ? 110 : 84;
+    const startTick = beat * MIDI_TICKS_PER_BEAT;
+    const note = beat % beatsPerBar === 0 ? MIDI_DOWNBEAT_NOTE : MIDI_OFFBEAT_NOTE;
+    const velocity = beat % beatsPerBar === 0 ? MIDI_DOWNBEAT_VELOCITY : MIDI_OFFBEAT_VELOCITY;
     appendMidiEvent(track, startTick - lastTick, [0x99, note, velocity]);
     lastTick = startTick;
 
@@ -162,7 +168,7 @@ export function clickTrackToMidi({ bpm, beatsPerBar, durationSeconds }) {
     0x00, 0x00, 0x00, 0x06,
     0x00, 0x00,
     0x00, 0x01,
-    (ticksPerBeat >> 8) & 0xff, ticksPerBeat & 0xff,
+    (MIDI_TICKS_PER_BEAT >> 8) & 0xff, MIDI_TICKS_PER_BEAT & 0xff,
     ...textBytes('MTrk'),
     (track.length >>> 24) & 0xff,
     (track.length >>> 16) & 0xff,

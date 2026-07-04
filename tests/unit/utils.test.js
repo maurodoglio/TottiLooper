@@ -264,6 +264,7 @@ describe('clickTrackToMidi', () => {
     const bytes = await midiBytes({ bpm: 120, beatsPerBar: 4, durationSeconds: 4 });
     const data = Array.from(bytes);
     expect(data.filter((byte) => byte === 0x99)).toHaveLength(8);
+    // 76 = accented downbeat click, 77 = regular click.
     expect(data.filter((byte, idx) => byte === 76 && data[idx - 1] === 0x99)).toHaveLength(2);
     expect(data.filter((byte, idx) => byte === 77 && data[idx - 1] === 0x99)).toHaveLength(6);
   });
