@@ -33,6 +33,7 @@ them on top of each other – your one-man band for busking starts here.
 
 ### Accessibility & UX
 - ⌨️ **Keyboard shortcuts** for all common actions (see Help)
+- 🦶 **Gamepad / USB foot-switch support** via the Gamepad API for hands-free control
 - 🏷️ `aria-label` / `aria-pressed` on every icon-only control
 - ❓ **Built-in Help / tutorial modal** with step-by-step instructions
 
@@ -71,6 +72,18 @@ saved in `localStorage` for the next visit.
 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>⌘</kbd>+<kbd>Z</kbd> | Undo the last delete |
 | <kbd>?</kbd> | Open the Help modal |
 
+### Gamepad / foot-switch controls
+
+If your browser exposes a connected USB foot switch or gamepad through the
+Gamepad API, the first four buttons (indices 0–3) map to:
+
+| Button | Action |
+| --- | --- |
+| 1 | Start / stop recording |
+| 2 | Play all loops |
+| 3 | Stop all loops |
+| 4 | Toggle the next loop, cycling through the recorded loops |
+
 ### Tip: use headphones
 
 Without headphones your microphone will re-record whatever the speakers are
@@ -96,6 +109,7 @@ Requires a browser with support for:
 - [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API)
   (including `StereoPannerNode` and `OfflineAudioContext`)
 - [MediaRecorder API](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder)
+- [Gamepad API](https://developer.mozilla.org/en-US/docs/Web/API/Gamepad_API)
 - [getUserMedia](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)
 - [Web MIDI API](https://developer.mozilla.org/en-US/docs/Web/API/Web_MIDI_API) for controller mapping
 

@@ -42,6 +42,10 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
+const GAMEPAD_RECORD_BUTTON = 0;
+const GAMEPAD_PLAY_BUTTON   = 1;
+const GAMEPAD_STOP_BUTTON   = 2;
+const GAMEPAD_NEXT_BUTTON   = 3;
 const MAX_SHARE_FRAGMENT_LENGTH = 12000; // Keeps shared URLs comfortably below common browser limits.
 const MIN_MONITOR_OFFSET_MS = -250;
 const MAX_MONITOR_OFFSET_MS = 250;
@@ -56,6 +60,7 @@ let isRecording    = false;
 let timerInterval  = null;
 let recordStartTime = 0;
 let loopCounter    = 0;
+let nextLoopCursor = 0;
 let inputSource    = null;
 
 let masterGainNode = null;
@@ -85,6 +90,7 @@ const midiBindings = {
 
 // Undo stack for deleted loops
 const deletedStack = [];
+const gamepadButtonStates = new Map();
 
 /**
  * @typedef {Object} Loop
@@ -213,6 +219,7 @@ function init() {
   shortcuts = loadShortcutMappings();
   renderShortcutSettings();
   document.addEventListener('keydown', onGlobalKeydown);
+  startGamepadPolling();
 
   updateMidiStatus('Connect a controller, then click Learn to map pads, buttons, or faders.');
   updateAllMidiBindingLabels();
@@ -1391,6 +1398,84 @@ function resetTimer() {
   recordTimer.classList.remove('active');
 }
 
+// ─── Gamepad controls ─────────────────────────────────────────────────────────
+
+function startGamepadPolling() {
+  if (typeof navigator.getGamepads !== 'function') return;
+
+  const tick = () => {
+    pollGamepads();
+    window.requestAnimationFrame(tick);
+  };
+
+  tick();
+}
+
+function pollGamepads() {
+  const pads = navigator.getGamepads() || [];
+  const nextStates = new Map();
+  const actionButtons = [
+    GAMEPAD_RECORD_BUTTON,
+    GAMEPAD_PLAY_BUTTON,
+    GAMEPAD_STOP_BUTTON,
+    GAMEPAD_NEXT_BUTTON,
+  ];
+
+  for (const pad of pads) {
+    if (!pad) continue;
+
+    for (const buttonIndex of actionButtons) {
+      const key = `${pad.index}:${buttonIndex}`;
+      const pressed = isGamepadButtonPressed(pad.buttons[buttonIndex]);
+      nextStates.set(key, pressed);
+
+      if (pressed && !gamepadButtonStates.get(key)) {
+        handleGamepadAction(buttonIndex);
+      }
+    }
+  }
+
+  gamepadButtonStates.clear();
+  nextStates.forEach((pressed, key) => gamepadButtonStates.set(key, pressed));
+}
+
+function isGamepadButtonPressed(button) {
+  return !!(button && (button.pressed || button.value > 0.5));
+}
+
+function handleGamepadAction(buttonIndex) {
+  if (!audioContext) return;
+
+  switch (buttonIndex) {
+    case GAMEPAD_RECORD_BUTTON:
+      handleRecordButton();
+      break;
+    case GAMEPAD_PLAY_BUTTON:
+      playAllLoops();
+      break;
+    case GAMEPAD_STOP_BUTTON:
+      stopAllLoops();
+      break;
+    case GAMEPAD_NEXT_BUTTON:
+      toggleNextLoop();
+      break;
+  }
+}
+
+function toggleLoopByIndex(idx) {
+  const loop = loops[idx];
+  if (!loop) return;
+  loop.playing ? stopLoop(loop) : playLoop(loop);
+}
+
+function toggleNextLoop() {
+  if (loops.length === 0) return;
+
+  const idx = nextLoopCursor % loops.length;
+  toggleLoopByIndex(idx);
+  nextLoopCursor = (idx + 1) % loops.length;
+}
+
 // ─── Keyboard shortcuts ──────────────────────────────────────────────────────
 
 function onGlobalKeydown(e) {
@@ -1433,8 +1518,7 @@ function onGlobalKeydown(e) {
       if (action && action.startsWith('toggleLoop')) {
         e.preventDefault();
         const idx = parseInt(action.slice(-1), 10) - 1;
-        const loop = loops[idx];
-        if (loop) { loop.playing ? stopLoop(loop) : playLoop(loop); }
+        toggleLoopByIndex(idx);
       }
   }
 }
