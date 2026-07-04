@@ -51,6 +51,7 @@ import {
   UndoStack,
   getSwingDelaySeconds,
   MAX_SWING,
+  clampTourStep,
 } from '../../src/utils.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1730,5 +1731,51 @@ describe('getSwingDelaySeconds', () => {
 
   it('treats a non-finite swing amount as 0', () => {
     expect(getSwingDelaySeconds(1, NaN, interval)).toBe(0);
+  });
+});
+
+describe('clampTourStep', () => {
+  it('returns the step unchanged when within range', () => {
+    expect(clampTourStep(0, 4)).toBe(0);
+    expect(clampTourStep(2, 4)).toBe(2);
+    expect(clampTourStep(4, 4)).toBe(4);
+  });
+
+  it('clamps a step below 0 up to 0', () => {
+    expect(clampTourStep(-1, 4)).toBe(0);
+    expect(clampTourStep(-99, 4)).toBe(0);
+  });
+
+  it('clamps a step above lastStep down to lastStep', () => {
+    expect(clampTourStep(5, 4)).toBe(4);
+    expect(clampTourStep(100, 4)).toBe(4);
+  });
+
+  it('supports Next/Back navigation staying inside [0, lastStep]', () => {
+    const last = 3;
+    let step = 0;
+    step = clampTourStep(step - 1, last); // Back at the start
+    expect(step).toBe(0);
+    step = clampTourStep(step + 1, last);
+    expect(step).toBe(1);
+    step = clampTourStep(step + 1, last);
+    step = clampTourStep(step + 1, last);
+    step = clampTourStep(step + 1, last); // Next past the end
+    expect(step).toBe(3);
+  });
+
+  it('treats a negative lastStep as 0', () => {
+    expect(clampTourStep(2, -1)).toBe(0);
+    expect(clampTourStep(0, -5)).toBe(0);
+  });
+
+  it('floors a fractional lastStep', () => {
+    expect(clampTourStep(9, 4.9)).toBe(4);
+  });
+
+  it('treats non-finite input as 0', () => {
+    expect(clampTourStep(NaN, 4)).toBe(0);
+    expect(clampTourStep(Infinity, 4)).toBe(0);
+    expect(clampTourStep(2, NaN)).toBe(0);
   });
 });

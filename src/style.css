@@ -1428,3 +1428,100 @@ button:disabled {
     grid-column: 1 / -1;
   }
 }
+
+/* ─── Onboarding tour ──────────────────────────────────────────────────────── */
+
+.btn-tour {
+  position: absolute;
+  top: 32px;
+  right: 52px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 1.1rem;
+  line-height: 1;
+  border: 1px solid var(--border);
+  padding: 0;
+  cursor: pointer;
+}
+
+.btn-tour:hover {
+  border-color: var(--accent);
+}
+
+.onboarding-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  pointer-events: none;
+}
+
+.onboarding-overlay.onboarding-no-spotlight {
+  background: var(--modal-overlay);
+}
+
+.onboarding-spotlight {
+  position: fixed;
+  border-radius: var(--radius);
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  transition: all 0.15s ease;
+}
+
+.onboarding-tooltip {
+  position: fixed;
+  max-width: 340px;
+  width: calc(100vw - 32px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px 20px 16px;
+  pointer-events: auto;
+  line-height: 1.5;
+}
+
+.onboarding-counter {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin: 0 0 6px;
+}
+
+.onboarding-title {
+  color: var(--accent);
+  font-size: 1.15rem;
+  margin: 0 0 8px;
+}
+
+.onboarding-body {
+  color: var(--text);
+  font-size: 0.92rem;
+  margin: 0 0 16px;
+}
+
+.onboarding-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.onboarding-nav {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.onboarding-actions .btn-sm {
+  padding: 6px 14px;
+  font-size: 0.85rem;
+}
+
+.onboarding-back:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

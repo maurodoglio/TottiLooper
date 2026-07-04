@@ -1587,3 +1587,33 @@ export function getSwingDelaySeconds(subdivisionIndex, swingAmount, subdivisionI
     : 0;
   return amount * subdivisionInterval;
 }
+
+// ─── Onboarding tour ──────────────────────────────────────────────────────────
+
+/**
+ * localStorage flag that records whether the first-run onboarding tour has been
+ * completed or skipped. Once set, the tour never auto-shows again (though the
+ * user can always replay it from the Tour button).
+ */
+export const ONBOARDING_STORAGE_KEY = 'tottiLooper.onboardingDone';
+
+/**
+ * Clamp a tour step index into the valid inclusive range [0, lastStep].
+ *
+ * Pure helper for the onboarding tour navigation: advancing or going back is
+ * expressed as `clampTourStep(step ± 1, lastStep)`, so the step never escapes
+ * the bounds regardless of how many times Next/Back are pressed. Non-finite or
+ * negative inputs collapse to 0.
+ *
+ * @param {number} step      Desired step index (may be out of range).
+ * @param {number} lastStep  Index of the final step (steps.length - 1).
+ * @returns {number} Integer step clamped to [0, max(0, lastStep)].
+ */
+export function clampTourStep(step, lastStep) {
+  const max = Number.isFinite(lastStep) ? Math.max(0, Math.floor(lastStep)) : 0;
+  if (!Number.isFinite(step)) return 0;
+  const s = Math.floor(step);
+  if (s < 0) return 0;
+  if (s > max) return max;
+  return s;
+}

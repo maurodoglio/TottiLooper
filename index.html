@@ -51,6 +51,7 @@
     })();
   </script>
   <button id="btn-help" class="btn-help" title="Help (press ?)" aria-label="Open help">?</button>
+  <button id="btn-tour" class="btn-tour" type="button" title="Take a guided tour" aria-label="Take a guided tour">🧭</button>
   <h1>🎸 TottiLooper</h1>
   <p>Record riffs, layer them live – your one-man band starts here.</p>
 </header>
@@ -420,6 +421,23 @@
         <li>Use <strong>Pitch</strong> to transpose loops up or down without changing tempo.</li>
         <li>Use <strong>Pan</strong> to spread rhythm and lead parts across the stereo field — it instantly sounds bigger.</li>
       </ul>
+    </div>
+  </div>
+
+  <!-- Onboarding tour -->
+  <div id="onboarding-overlay" class="onboarding-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+    <div id="onboarding-spotlight" class="onboarding-spotlight" aria-hidden="true"></div>
+    <div id="onboarding-tooltip" class="onboarding-tooltip" role="document">
+      <p id="onboarding-counter" class="onboarding-counter"></p>
+      <h2 id="onboarding-title" class="onboarding-title"></h2>
+      <p id="onboarding-body" class="onboarding-body"></p>
+      <div class="onboarding-actions">
+        <button id="onboarding-skip" type="button" class="btn-secondary btn-sm">Skip</button>
+        <span class="onboarding-nav">
+          <button id="onboarding-back" type="button" class="btn-secondary btn-sm">Back</button>
+          <button id="onboarding-next" type="button" class="btn-primary btn-sm">Next</button>
+        </span>
+      </div>
     </div>
   </div>
 

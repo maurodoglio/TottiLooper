@@ -204,6 +204,16 @@ async function pressGamepadButton(page, buttonIndex) {
 
 // ─── Initial page state ───────────────────────────────────────────────────────
 
+// The onboarding tour auto-shows on first load (empty localStorage) and its
+// overlay would intercept clicks in every existing test, which all run in a
+// fresh context. Seed the "done" flag before each test so the tour stays hidden.
+// The dedicated onboarding suite below re-clears it with a later init script.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    try { localStorage.setItem('tottiLooper.onboardingDone', 'true'); } catch { /* ignore */ }
+  });
+});
+
 test.describe('initial state', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
@@ -1532,5 +1542,79 @@ test.describe('share via URL', () => {
     await page.reload();
     await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
     await expect(page.locator('#master-controls')).toBeVisible();
+  });
+});
+
+// ─── Onboarding tour ────────────────────────────────────────────────────────
+
+test.describe('onboarding tour', () => {
+  // Undo the file-level seed so the tour auto-shows for these tests only. The
+  // sessionStorage guard makes the clear happen once (on the first load) so a
+  // later page.reload() reflects the real persisted flag instead of re-clearing.
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      try {
+        if (!sessionStorage.getItem('__tourInitCleared')) {
+          localStorage.removeItem('tottiLooper.onboardingDone');
+          sessionStorage.setItem('__tourInitCleared', '1');
+        }
+      } catch { /* ignore */ }
+    });
+    await page.goto('/');
+  });
+
+  test('auto-shows the tour overlay on first load', async ({ page }) => {
+    await expect(page.locator('#onboarding-overlay')).toBeVisible();
+    await expect(page.locator('#onboarding-title')).not.toBeEmpty();
+    await expect(page.locator('#onboarding-counter')).toContainText('Step 1 of');
+    await expect(page.locator('#onboarding-skip')).toBeVisible();
+    await expect(page.locator('#onboarding-next')).toBeVisible();
+  });
+
+  test('Back is disabled on the first step and Next advances the counter', async ({ page }) => {
+    await expect(page.locator('#onboarding-overlay')).toBeVisible();
+    await expect(page.locator('#onboarding-back')).toBeDisabled();
+    await expect(page.locator('#onboarding-counter')).toContainText('Step 1 of');
+    await page.click('#onboarding-next');
+    await expect(page.locator('#onboarding-counter')).toContainText('Step 2 of');
+    await expect(page.locator('#onboarding-back')).toBeEnabled();
+    await page.click('#onboarding-back');
+    await expect(page.locator('#onboarding-counter')).toContainText('Step 1 of');
+  });
+
+  test('Skip hides the tour, sets the flag, and it does not reappear after reload', async ({ page }) => {
+    await expect(page.locator('#onboarding-overlay')).toBeVisible();
+    await page.click('#onboarding-skip');
+    await expect(page.locator('#onboarding-overlay')).toBeHidden();
+
+    const flag = await page.evaluate(() => localStorage.getItem('tottiLooper.onboardingDone'));
+    expect(flag).toBe('true');
+
+    await page.reload();
+    await expect(page.locator('#onboarding-overlay')).toBeHidden();
+  });
+
+  test('stepping through to Done hides the tour and sets the flag', async ({ page }) => {
+    await expect(page.locator('#onboarding-overlay')).toBeVisible();
+
+    for (let i = 0; i < 12; i++) {
+      const nextLabel = (await page.locator('#onboarding-next').textContent())?.trim();
+      await page.click('#onboarding-next');
+      if (nextLabel === 'Done') break;
+    }
+
+    await expect(page.locator('#onboarding-overlay')).toBeHidden();
+    const flag = await page.evaluate(() => localStorage.getItem('tottiLooper.onboardingDone'));
+    expect(flag).toBe('true');
+  });
+
+  test('the Tour button relaunches the tour after it was dismissed', async ({ page }) => {
+    await expect(page.locator('#onboarding-overlay')).toBeVisible();
+    await page.click('#onboarding-skip');
+    await expect(page.locator('#onboarding-overlay')).toBeHidden();
+
+    await page.click('#btn-tour');
+    await expect(page.locator('#onboarding-overlay')).toBeVisible();
+    await expect(page.locator('#onboarding-counter')).toContainText('Step 1 of');
   });
 });

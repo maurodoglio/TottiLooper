@@ -44,6 +44,8 @@ import {
   applyPunchIn as _applyPunchIn,
   transformBuffer as _transformBuffer,
   unpackSharedSession,
+  ONBOARDING_STORAGE_KEY,
+  clampTourStep,
 } from './utils.js';
 import {
   DRUM_SAMPLE_FILES,
@@ -356,6 +358,16 @@ const themeToggleLabel   = btnThemeToggle.querySelector('.theme-toggle-label');
 const btnHelp            = $('btn-help');
 const helpModal          = $('help-modal');
 const helpCloseButton    = $('help-close');
+const btnTour            = $('btn-tour');
+const onboardingOverlay  = $('onboarding-overlay');
+const onboardingSpotlight = $('onboarding-spotlight');
+const onboardingTooltip  = $('onboarding-tooltip');
+const onboardingCounter  = $('onboarding-counter');
+const onboardingTitle    = $('onboarding-title');
+const onboardingBody     = $('onboarding-body');
+const onboardingSkip     = $('onboarding-skip');
+const onboardingBack     = $('onboarding-back');
+const onboardingNext     = $('onboarding-next');
 const shortcutList       = $('shortcut-list');
 const shortcutEditor     = $('shortcut-editor');
 const btnResetShortcuts  = $('btn-reset-shortcuts');
@@ -469,6 +481,11 @@ function init() {
   btnHelp.addEventListener('click', openHelp);
   helpCloseButton.addEventListener('click', closeHelp);
   helpModal.addEventListener('click', (e) => { if (e.target === helpModal) closeHelp(); });
+  btnTour.addEventListener('click', () => startTour());
+  onboardingNext.addEventListener('click', tourNext);
+  onboardingBack.addEventListener('click', tourBack);
+  onboardingSkip.addEventListener('click', () => endTour());
+  window.addEventListener('resize', () => { if (tourActive) positionTourStep(); });
   midiControls.addEventListener('click', onMidiControlsClick);
   loopsList.addEventListener('click', onMidiControlsClick);
   btnResetShortcuts.addEventListener('click', resetShortcuts);
@@ -490,6 +507,8 @@ function init() {
   renderSceneSlots();
   refreshSceneButtons();
   void restoreSharedSessionFromUrl();
+
+  maybeAutoStartTour();
 }
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -4338,6 +4357,14 @@ function toggleNextLoop() {
 // ─── Keyboard shortcuts ──────────────────────────────────────────────────────
 
 function onGlobalKeydown(e) {
+  // The onboarding tour captures navigation keys while it is open.
+  if (tourActive) {
+    if (e.key === 'Escape') { e.preventDefault(); endTour(); }
+    else if (e.key === 'ArrowRight' || e.key === 'Enter') { e.preventDefault(); tourNext(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); tourBack(); }
+    return;
+  }
+
   // Don't intercept keystrokes inside form fields.
   const tag = e.target && e.target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
@@ -4396,6 +4423,179 @@ function onGlobalKeydown(e) {
 
 function openHelp()  { helpModal.classList.remove('hidden'); }
 function closeHelp() { helpModal.classList.add('hidden'); }
+
+// ─── Onboarding tour ────────────────────────────────────────────────────────
+
+// Ordered candidate steps. At launch time the tour keeps only the steps whose
+// target is actually visible, so it adapts to the current app state (e.g. before
+// the mic is granted, most panels are hidden and only a few steps show).
+const ONBOARDING_STEPS = [
+  {
+    target: null,
+    title: 'Welcome to TottiLooper',
+    body: 'Your one-man band in the browser. Here is a quick tour of the main controls — you can replay it any time from the 🧭 Tour button.',
+  },
+  {
+    target: '#btn-request-mic',
+    title: 'Record your loops',
+    body: 'Allow microphone access, then hit ● REC to lay down your first riff. Layer more takes to build a full arrangement.',
+  },
+  {
+    target: '#sample-library',
+    title: 'No microphone? Start with samples',
+    body: 'Add built-in kick, snare and clap one-shots to sketch a beat without recording anything.',
+  },
+  {
+    target: '#tempo-controls',
+    title: 'Tempo & metronome',
+    body: 'Set the BPM, time signature, subdivision and swing, then switch on the metronome, count-in and quantize to keep every layer locked to the grid.',
+  },
+  {
+    target: '#drum-controls',
+    title: 'Generate a backing beat',
+    body: 'Pick a drum style and generate a one-bar loop that follows your current tempo.',
+  },
+  {
+    target: '#master-controls',
+    title: 'Master bus & export',
+    body: 'Play or stop everything at once, ride the master volume, add reverb and compression, then export your mix as a WAV.',
+  },
+  {
+    target: '#scenes-section',
+    title: 'Scenes & setlist',
+    body: 'Snapshot which loops are active plus every mixer setting, then trigger them live with the number keys 1–9.',
+  },
+  {
+    target: '#loops-section',
+    title: 'Your loops live here',
+    body: 'Every recorded or generated loop lands in this list with its own volume, EQ, pan and playback controls.',
+  },
+  {
+    target: '#btn-help',
+    title: 'Help is always here',
+    body: 'Open the full Help reference from the ? button, or replay this tour from the 🧭 button next to it. Enjoy!',
+  },
+];
+
+let tourSteps = [];
+let tourStep = 0;
+let tourActive = false;
+
+function isOnboardingDone() {
+  try {
+    return localStorage.getItem(ONBOARDING_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function markOnboardingDone() {
+  try {
+    localStorage.setItem(ONBOARDING_STORAGE_KEY, 'true');
+  } catch {
+    // Ignore storage failures (e.g. private mode); the tour just re-shows.
+  }
+}
+
+function maybeAutoStartTour() {
+  if (isOnboardingDone()) return;
+  startTour();
+}
+
+function isTourTargetVisible(selector) {
+  if (!selector) return true;
+  const el = document.querySelector(selector);
+  if (!el || el.classList.contains('hidden')) return false;
+  return el.getClientRects().length > 0;
+}
+
+function startTour() {
+  // Rebuild the visible step list each launch so it matches the current UI.
+  tourSteps = ONBOARDING_STEPS.filter((step) => isTourTargetVisible(step.target));
+  if (tourSteps.length === 0) return;
+  tourStep = 0;
+  tourActive = true;
+  onboardingOverlay.classList.remove('hidden');
+  document.body.classList.add('onboarding-active');
+  renderTourStep();
+}
+
+function endTour() {
+  tourActive = false;
+  onboardingOverlay.classList.add('hidden');
+  document.body.classList.remove('onboarding-active');
+  markOnboardingDone();
+}
+
+function tourNext() {
+  if (!tourActive) return;
+  if (tourStep >= tourSteps.length - 1) { endTour(); return; }
+  tourStep = clampTourStep(tourStep + 1, tourSteps.length - 1);
+  renderTourStep();
+}
+
+function tourBack() {
+  if (!tourActive) return;
+  tourStep = clampTourStep(tourStep - 1, tourSteps.length - 1);
+  renderTourStep();
+}
+
+function renderTourStep() {
+  const step = tourSteps[tourStep];
+  if (!step) return;
+  const lastIndex = tourSteps.length - 1;
+  onboardingCounter.textContent = `Step ${tourStep + 1} of ${tourSteps.length}`;
+  onboardingTitle.textContent = step.title;
+  onboardingBody.textContent = step.body;
+  onboardingBack.disabled = tourStep === 0;
+  onboardingNext.textContent = tourStep === lastIndex ? 'Done' : 'Next';
+  positionTourStep();
+}
+
+function positionTourStep() {
+  const step = tourSteps[tourStep];
+  if (!step) return;
+  const target = step.target && isTourTargetVisible(step.target)
+    ? document.querySelector(step.target)
+    : null;
+
+  if (!target) {
+    // No anchor (welcome step or hidden target): dim the whole screen and
+    // centre the tooltip.
+    onboardingSpotlight.classList.add('hidden');
+    onboardingOverlay.classList.add('onboarding-no-spotlight');
+    onboardingTooltip.style.left = '50%';
+    onboardingTooltip.style.top = '50%';
+    onboardingTooltip.style.transform = 'translate(-50%, -50%)';
+    return;
+  }
+
+  target.scrollIntoView({ block: 'center', inline: 'nearest' });
+  const rect = target.getBoundingClientRect();
+  const pad = 8;
+  onboardingSpotlight.classList.remove('hidden');
+  onboardingOverlay.classList.remove('onboarding-no-spotlight');
+  onboardingSpotlight.style.left = `${rect.left - pad}px`;
+  onboardingSpotlight.style.top = `${rect.top - pad}px`;
+  onboardingSpotlight.style.width = `${rect.width + pad * 2}px`;
+  onboardingSpotlight.style.height = `${rect.height + pad * 2}px`;
+
+  // Prefer placing the tooltip below the target; flip above if there isn't room.
+  const tooltipRect = onboardingTooltip.getBoundingClientRect();
+  const margin = 14;
+  const viewportH = window.innerHeight;
+  const viewportW = window.innerWidth;
+  let top = rect.bottom + margin;
+  if (top + tooltipRect.height > viewportH - 8) {
+    top = rect.top - margin - tooltipRect.height;
+  }
+  if (top < 8) top = 8;
+  let left = rect.left + rect.width / 2 - tooltipRect.width / 2;
+  left = Math.max(8, Math.min(left, viewportW - tooltipRect.width - 8));
+  onboardingTooltip.style.transform = 'none';
+  onboardingTooltip.style.left = `${left}px`;
+  onboardingTooltip.style.top = `${top}px`;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
