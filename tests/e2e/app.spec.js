@@ -639,6 +639,26 @@ test.describe('loop controls', () => {
     await expect(page.locator('.loop-duration')).toBeVisible();
   });
 
+  test('loop trim handles can shorten the waveform selection', async ({ page }) => {
+    const duration = page.locator('.loop-duration');
+    const before = await duration.getAttribute('title');
+    const handle = page.getByRole('slider', { name: 'Trim end' });
+    await handle.focus();
+    for (let i = 0; i < 40; i++) {
+      await page.keyboard.press('ArrowLeft');
+    }
+
+    await expect(duration).not.toHaveAttribute('title', before);
+  });
+
+  test('fade sliders can be adjusted after recording', async ({ page }) => {
+    await page.getByLabel('Fade In').evaluate((el) => {
+      el.value = '0.12';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await expect(page.locator('.fader').filter({ hasText: 'Fade In' })).toContainText('120ms');
+  });
+
   test('half-time and double-time toggles update the speed control', async ({ page }) => {
     const speedSlider = page.locator('input[aria-label="Loop speed"]');
     const halfTimeButton = page.locator('.btn-half-time');
@@ -698,7 +718,7 @@ test.describe('loop controls', () => {
     const speedSlider = page.locator('input[aria-label="Loop speed"]');
 
     await expect(nameInput).toHaveAttribute('aria-label', 'Loop name for Loop 1');
-    await expect(page.locator('.loop-waveform')).toHaveAttribute('aria-hidden', 'true');
+    await expect(page.locator('.loop-waveform canvas')).toHaveAttribute('aria-hidden', 'true');
 
     await expect(volumeSlider).toHaveAttribute('aria-label', 'Loop volume');
     await expect(volumeSlider).toHaveAttribute('aria-valuetext', '100 percent');

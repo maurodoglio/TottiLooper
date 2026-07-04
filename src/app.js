@@ -18,6 +18,7 @@ import {
   scaleMidiValue,
   formatMidiBinding,
   audioBufferToWav,
+  applyLoopEdits as buildLoopBuffer,
   createBuiltinSampleLoop,
   detectKey as detectLoopKey,
   shouldWarnAboutKeyClash,
@@ -53,6 +54,8 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
+const LOOP_EDIT_RESOLUTION = 1000;
+const LOOP_RESTART_DELAY_MULTIPLIER = 6; // wait a few fade time-constants before restarting a loop
 const NORMAL_PLAYBACK_RATE = 1;
 const HALF_TIME_PLAYBACK_RATE = 0.5;
 const DOUBLE_TIME_PLAYBACK_RATE = 2;
@@ -138,6 +141,7 @@ const redoStack = [];
  * @property {number} id
  * @property {string} name
  * @property {AudioBuffer} audioBuffer
+ * @property {AudioBuffer} playbackBuffer
  * @property {AudioBuffer|null} reversedBuffer
  * @property {AudioBuffer|null} transformedBuffer
  * @property {AudioBuffer|null} transformedReversedBuffer
@@ -155,6 +159,10 @@ const redoStack = [];
  * @property {number} midEq
  * @property {number} highEq
  * @property {number} playbackRate
+ * @property {number} trimStart
+ * @property {number} trimEnd
+ * @property {number} fadeIn
+ * @property {number} fadeOut
  * @property {number} pitchSemitones
  * @property {boolean} reversed
  * @property {{ name: string, signature: number } | null} detectedKey
@@ -820,6 +828,7 @@ function addLoop(audioBuffer, options = {}) {
     id: loopCounter,
     name,
     audioBuffer,
+    playbackBuffer: audioBuffer,
     reversedBuffer: null,
     transformedBuffer: null,
     transformedReversedBuffer: null,
@@ -837,6 +846,10 @@ function addLoop(audioBuffer, options = {}) {
     midEq: options.midEq ?? 0,
     highEq: options.highEq ?? 0,
     playbackRate: options.playbackRate ?? 1,
+    trimStart: options.trimStart ?? 0,
+    trimEnd: options.trimEnd ?? audioBuffer.duration,
+    fadeIn: options.fadeIn ?? 0,
+    fadeOut: options.fadeOut ?? 0,
     pitchSemitones: options.pitchSemitones ?? 0,
     reversed: !!options.reversed,
     detectedKey: options.detectedKey ?? null,
@@ -921,6 +934,54 @@ function refreshAllGains() {
   }
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function clampLoopEdits(loop) {
+  const minDuration = 1 / loop.audioBuffer.sampleRate;
+  const totalDuration = loop.audioBuffer.duration;
+  loop.trimStart = clamp(loop.trimStart, 0, Math.max(0, totalDuration - minDuration));
+  loop.trimEnd = clamp(loop.trimEnd, loop.trimStart + minDuration, totalDuration);
+  loop.duration = Math.max(minDuration, loop.trimEnd - loop.trimStart);
+  loop.fadeIn = clamp(loop.fadeIn, 0, loop.duration);
+  loop.fadeOut = clamp(loop.fadeOut, 0, loop.duration);
+}
+
+function rebuildLoopBuffer(loop) {
+  clampLoopEdits(loop);
+  if (
+    loop.trimStart === 0
+    && loop.trimEnd === loop.audioBuffer.duration
+    && loop.fadeIn === 0
+    && loop.fadeOut === 0
+  ) {
+    loop.playbackBuffer = loop.audioBuffer;
+  } else {
+    loop.playbackBuffer = buildLoopBuffer(loop.audioBuffer, {
+      trimStart: loop.trimStart,
+      trimEnd: loop.trimEnd,
+      fadeIn: loop.fadeIn,
+      fadeOut: loop.fadeOut,
+      audioContext,
+    });
+  }
+  loop.reversedBuffer = null;
+  invalidateLoopProcessing(loop);
+}
+
+function refreshLoopBuffer(loop) {
+  const wasPlaying = loop.playing;
+  if (wasPlaying) stopLoop(loop);
+  rebuildLoopBuffer(loop);
+  if (wasPlaying) {
+    setTimeout(
+      () => playLoop(loop),
+      Math.ceil(FADE_TIME * 1000 * LOOP_RESTART_DELAY_MULTIPLIER),
+    );
+  }
+}
+
 function getPlaybackBuffer(loop) {
   const baseBuffer = getTransformedBuffer(loop);
   if (!loop.reversed) return baseBuffer;
@@ -983,9 +1044,9 @@ function invalidateLoopProcessing(loop) {
 function getTransformedBuffer(loop) {
   if (!loop.transformedBuffer) {
     if (Math.abs(loop.playbackRate - 1) < 1e-6 && Math.abs(loop.pitchSemitones) < 1e-6) {
-      loop.transformedBuffer = loop.audioBuffer;
+      loop.transformedBuffer = loop.playbackBuffer;
     } else {
-      loop.transformedBuffer = transformBuffer(loop.audioBuffer, loop.playbackRate, loop.pitchSemitones);
+      loop.transformedBuffer = transformBuffer(loop.playbackBuffer, loop.playbackRate, loop.pitchSemitones);
     }
   }
   return loop.transformedBuffer;
@@ -2003,13 +2064,31 @@ function renderLoop(loop) {
 
   const waveformEl = document.createElement('div');
   waveformEl.className = 'loop-waveform';
-  waveformEl.setAttribute('aria-hidden', 'true');
   const canvas = document.createElement('canvas');
+  canvas.setAttribute('aria-hidden', 'true');
+  const startHandle = document.createElement('button');
+  startHandle.type = 'button';
+  startHandle.className = 'trim-handle trim-start-handle';
+  startHandle.title = 'Trim loop start';
+  startHandle.setAttribute('aria-label', 'Trim start');
+  startHandle.setAttribute('role', 'slider');
+  startHandle.setAttribute('aria-valuemin', '0');
+  startHandle.setAttribute('aria-valuemax', String(LOOP_EDIT_RESOLUTION));
+
+  const endHandle = document.createElement('button');
+  endHandle.type = 'button';
+  endHandle.className = 'trim-handle trim-end-handle';
+  endHandle.title = 'Trim loop end';
+  endHandle.setAttribute('aria-label', 'Trim end');
+  endHandle.setAttribute('role', 'slider');
+  endHandle.setAttribute('aria-valuemin', '0');
+  endHandle.setAttribute('aria-valuemax', String(LOOP_EDIT_RESOLUTION));
+
   const playhead = document.createElement('div');
   playhead.className = 'loop-playhead';
   playhead.setAttribute('aria-hidden', 'true');
   waveformEl.title = 'Click or drag to scrub';
-  waveformEl.append(canvas, playhead);
+  waveformEl.append(canvas, startHandle, endHandle, playhead);
   loop.waveformPlayhead = playhead;
 
   const scrubLoopFromPointer = (event) => {
@@ -2043,6 +2122,7 @@ function renderLoop(loop) {
   };
   waveformEl.addEventListener('pointerdown', (event) => {
     if (event.button !== 0) return;
+    if (event.target === startHandle || event.target === endHandle) return;
     isScrubbing = true;
     window.addEventListener('pointermove', onScrubMove);
     window.addEventListener('pointerup', endScrub);
@@ -2053,7 +2133,6 @@ function renderLoop(loop) {
 
   const durationEl = document.createElement('span');
   durationEl.className = 'loop-duration';
-  durationEl.textContent = formatDuration(loop.duration);
 
   const keyEl = document.createElement('span');
   keyEl.className = 'loop-key';
@@ -2147,6 +2226,23 @@ function renderLoop(loop) {
     (v) => setLoopVolume(loop, v));
   volumeFader.dataset.fader = 'volume';
 
+  const fadeInFader = makeFader('Fade In', 'Fade In', 0, loop.audioBuffer.duration, 0.01, loop.fadeIn,
+    formatFadeTime,
+    formatFadeValueText,
+    (v) => {
+      loop.fadeIn = v;
+      refreshLoopBuffer(loop);
+      updateLoopEditor();
+    });
+  const fadeOutFader = makeFader('Fade Out', 'Fade Out', 0, loop.audioBuffer.duration, 0.01, loop.fadeOut,
+    formatFadeTime,
+    formatFadeValueText,
+    (v) => {
+      loop.fadeOut = v;
+      refreshLoopBuffer(loop);
+      updateLoopEditor();
+    });
+
   faderRow.append(
     volumeFader,
     makeFader('Pan', 'Loop pan', -1,    1,   0.01, loop.pan,
@@ -2173,6 +2269,8 @@ function renderLoop(loop) {
       (v) => `${v > 0 ? '+' : ''}${Math.round(v)} st`,
       formatPitchValueText,
       (v) => setLoopPitch(loop, v)),
+    fadeInFader,
+    fadeOutFader,
   );
 
   const midiRow = document.createElement('div');
@@ -2193,10 +2291,112 @@ function renderLoop(loop) {
 
   // Canvas sizing requires the element be in the DOM to measure offsetWidth.
   loopsList.appendChild(card);
+
+  function updateDuration() {
+    durationEl.textContent = formatDuration(loop.duration);
+    durationEl.title = `${loop.duration.toFixed(2)} s`;
+  }
+
+  function updateTrimHandle(handle, seconds, ratio) {
+    handle.style.left = `${ratio * 100}%`;
+    handle.setAttribute('aria-valuenow', String(Math.round(ratio * LOOP_EDIT_RESOLUTION)));
+    handle.setAttribute('aria-valuetext', `${seconds.toFixed(2)} seconds`);
+  }
+
+  function setFaderDisplay(faderEl, value, formatValue, formatValueText) {
+    const input = faderEl.querySelector('input[type="range"]');
+    if (input) {
+      input.value = String(value);
+      setRangeValueText(input, formatValueText(value));
+    }
+    const valueEl = faderEl.querySelector('.fader-value');
+    if (valueEl) valueEl.textContent = formatValue(value);
+  }
+
+  function updateLoopEditor() {
+    clampLoopEdits(loop);
+    updateDuration();
+    const totalDuration = loop.audioBuffer.duration || 1;
+    const startRatio = loop.trimStart / totalDuration;
+    const endRatio = loop.trimEnd / totalDuration;
+    updateTrimHandle(startHandle, loop.trimStart, startRatio);
+    updateTrimHandle(endHandle, loop.trimEnd, endRatio);
+    setFaderDisplay(fadeInFader, loop.fadeIn, formatFadeTime, formatFadeValueText);
+    setFaderDisplay(fadeOutFader, loop.fadeOut, formatFadeTime, formatFadeValueText);
+    drawWaveform(canvas, loop.audioBuffer, loop);
+  }
+
+  function updateTrimFromRatio(edge, ratio, commit) {
+    const minRatio = 1 / LOOP_EDIT_RESOLUTION;
+    if (edge === 'start') {
+      const maxRatio = (loop.trimEnd / loop.audioBuffer.duration) - minRatio;
+      loop.trimStart = clamp(ratio, 0, Math.max(0, maxRatio)) * loop.audioBuffer.duration;
+    } else {
+      const minEndRatio = (loop.trimStart / loop.audioBuffer.duration) + minRatio;
+      loop.trimEnd = clamp(ratio, Math.min(1, minEndRatio), 1) * loop.audioBuffer.duration;
+    }
+    clampLoopEdits(loop);
+    updateLoopEditor();
+    if (commit) refreshLoopBuffer(loop);
+  }
+
+  function bindTrimHandle(handle, edge) {
+    function stepTrim(direction) {
+      const ratio = edge === 'start'
+        ? (loop.trimStart / loop.audioBuffer.duration)
+        : (loop.trimEnd / loop.audioBuffer.duration);
+      updateTrimFromRatio(edge, clamp(ratio + direction / LOOP_EDIT_RESOLUTION, 0, 1), true);
+    }
+
+    handle.addEventListener('keydown', (e) => {
+      switch (e.key) {
+        case 'ArrowLeft':
+          e.preventDefault();
+          stepTrim(-1);
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          stepTrim(1);
+          break;
+        case 'Home':
+          e.preventDefault();
+          updateTrimFromRatio(edge, edge === 'start' ? 0 : (loop.trimStart / loop.audioBuffer.duration), true);
+          break;
+        case 'End':
+          e.preventDefault();
+          updateTrimFromRatio(edge, edge === 'end' ? 1 : (loop.trimEnd / loop.audioBuffer.duration), true);
+          break;
+      }
+    });
+
+    handle.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      handle.focus();
+
+      const onMove = (moveEvent) => {
+        const rect = waveformEl.getBoundingClientRect();
+        const ratio = clamp((moveEvent.clientX - rect.left) / rect.width, 0, 1);
+        updateTrimFromRatio(edge, ratio, false);
+      };
+      const onUp = (upEvent) => {
+        const rect = waveformEl.getBoundingClientRect();
+        const ratio = clamp((upEvent.clientX - rect.left) / rect.width, 0, 1);
+        updateTrimFromRatio(edge, ratio, true);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
+  }
+
+  bindTrimHandle(startHandle, 'start');
+  bindTrimHandle(endHandle, 'end');
   syncLoopPlaybackRateControls(loop);
-  drawWaveform(canvas, loop.audioBuffer);
   updateLoopPlayhead(loop, loop.playOffset);
   updateAllMidiBindingLabels();
+  updateLoopEditor();
 }
 
 function iconButton(cls, text, title, onClick) {
@@ -2258,6 +2458,16 @@ function makeFader(label, ariaLabel, min, max, step, value, formatValue, formatV
   return wrap;
 }
 
+function formatFadeTime(seconds) {
+  if (seconds < 1) return `${Math.round(seconds * 1000)}ms`;
+  return `${seconds.toFixed(2)}s`;
+}
+
+function formatFadeValueText(seconds) {
+  if (seconds < 1) return `${Math.round(seconds * 1000)} milliseconds`;
+  return `${seconds.toFixed(2)} seconds`;
+}
+
 function updateLoopVolumeUI(loop) {
   const card = document.getElementById(`loop-card-${loop.id}`);
   if (!card) return;
@@ -2269,7 +2479,7 @@ function updateLoopVolumeUI(loop) {
   if (valueEl) valueEl.textContent = `${Math.round(loop.volume * 100)}%`;
 }
 
-function drawWaveform(canvas, audioBuffer) {
+function drawWaveform(canvas, audioBuffer, loop = null) {
   const data = audioBuffer.getChannelData(0);
   const dpr  = window.devicePixelRatio || 1;
   const w    = canvas.offsetWidth  || 200;
@@ -2303,6 +2513,38 @@ function drawWaveform(canvas, audioBuffer) {
     ctx.lineTo(x, mid + max * mid);
   }
   ctx.stroke();
+
+  if (!loop) return;
+
+  const startX = (loop.trimStart / audioBuffer.duration) * w;
+  const endX = (loop.trimEnd / audioBuffer.duration) * w;
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+  ctx.fillRect(0, 0, startX, h);
+  ctx.fillRect(endX, 0, Math.max(0, w - endX), h);
+
+  ctx.strokeStyle = '#f0f0f0';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(startX, 0);
+  ctx.lineTo(startX, h);
+  ctx.moveTo(endX, 0);
+  ctx.lineTo(endX, h);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#4a90e2';
+  ctx.beginPath();
+  ctx.moveTo(startX, h - 2);
+  ctx.lineTo(
+    Math.min(endX, startX + (loop.fadeIn / audioBuffer.duration) * w),
+    2,
+  );
+  ctx.moveTo(
+    Math.max(startX, endX - (loop.fadeOut / audioBuffer.duration) * w),
+    2,
+  );
+  ctx.lineTo(endX, h - 2);
+  ctx.stroke();
 }
 
 function refreshWaveforms() {
@@ -2310,7 +2552,7 @@ function refreshWaveforms() {
     const card = document.getElementById(`loop-card-${loop.id}`);
     const canvas = card && card.querySelector('canvas');
     if (canvas) {
-      drawWaveform(canvas, loop.audioBuffer);
+      drawWaveform(canvas, loop.audioBuffer, loop);
     }
   }
 }

@@ -665,6 +665,7 @@ button:disabled {
   border-radius: 4px;
   overflow: hidden;
   background: var(--surface-raised);
+  position: relative;
   cursor: pointer;
   touch-action: none;
 }
@@ -673,6 +674,30 @@ button:disabled {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.trim-handle {
+  position: absolute;
+  top: 0;
+  margin-left: -6px;
+  width: 12px;
+  height: 100%;
+  padding: 0;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  background: rgba(74, 144, 226, 0.85);
+  cursor: ew-resize;
+  z-index: 1;
+}
+
+.trim-end-handle {
+  background: rgba(255, 179, 0, 0.85);
+}
+
+.trim-handle:hover,
+.trim-handle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3);
 }
 
 .loop-playhead {

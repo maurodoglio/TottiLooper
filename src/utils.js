@@ -903,6 +903,64 @@ export function clickTrackToMidi({ bpm, beatsPerBar, durationSeconds }) {
   return new Blob([new Uint8Array(bytes)], { type: 'audio/midi' });
 }
 
+/**
+ * Create a non-destructively edited copy of an AudioBuffer with optional trim
+ * points and fade-in / fade-out envelopes applied.
+ *
+ * @param {AudioBuffer} buffer
+ * @param {{
+ *   trimStart?: number,
+ *   trimEnd?: number,
+ *   fadeIn?: number,
+ *   fadeOut?: number,
+ *   audioContext: AudioContext,
+ * }} opts
+ * @returns {AudioBuffer}
+ */
+export function applyLoopEdits(buffer, {
+  trimStart = 0,
+  trimEnd = buffer.duration,
+  fadeIn = 0,
+  fadeOut = 0,
+  audioContext,
+}) {
+  const sampleRate = buffer.sampleRate;
+  const minFrames = 1;
+  const startFrame = Math.max(0, Math.min(buffer.length - minFrames, Math.floor(trimStart * sampleRate)));
+  const endFrame = Math.max(
+    startFrame + minFrames,
+    Math.min(buffer.length, Math.ceil(trimEnd * sampleRate)),
+  );
+  const outLength = Math.max(minFrames, endFrame - startFrame);
+  const fadeInFrames = Math.max(0, Math.min(outLength, Math.round(fadeIn * sampleRate)));
+  const fadeOutFrames = Math.max(0, Math.min(outLength, Math.round(fadeOut * sampleRate)));
+
+  const out = audioContext.createBuffer(
+    buffer.numberOfChannels,
+    outLength,
+    sampleRate,
+  );
+
+  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+    const src = buffer.getChannelData(ch);
+    const dst = out.getChannelData(ch);
+    dst.set(src.subarray(startFrame, endFrame));
+
+    for (let i = 0; i < outLength; i++) {
+      let gain = 1;
+      if (fadeInFrames > 0 && i < fadeInFrames) {
+        gain = Math.min(gain, i / fadeInFrames);
+      }
+      if (fadeOutFrames > 0 && i >= outLength - fadeOutFrames) {
+        gain = Math.min(gain, (outLength - 1 - i) / fadeOutFrames);
+      }
+      if (gain < 1) dst[i] *= Math.max(0, gain);
+    }
+  }
+
+  return out;
+}
+
 // ─── WAV encoding ─────────────────────────────────────────────────────────────
 
 /**

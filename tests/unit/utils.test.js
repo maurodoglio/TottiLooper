@@ -22,6 +22,7 @@ import {
   clickTrackToMidi,
   getSupportedMimeType,
   effectiveGain,
+  applyLoopEdits,
   detectKey,
   areKeysLikelyCompatible,
   shouldWarnAboutKeyClash,
@@ -763,6 +764,76 @@ describe('reverseBuffer', () => {
     const once = reverseBuffer(src, ctx);
     const twice = reverseBuffer(once, ctx);
     expect(Array.from(twice.getChannelData(0))).toEqual(Array.from(samples));
+  });
+});
+
+// ─── applyLoopEdits ───────────────────────────────────────────────────────────
+
+describe('applyLoopEdits', () => {
+  const ctx = makeMockAudioContext(10);
+
+  function makeBuffer(samples, secondChannel) {
+    const channels = [new Float32Array(samples)];
+    if (secondChannel) channels.push(new Float32Array(secondChannel));
+    return {
+      numberOfChannels: channels.length,
+      length: channels[0].length,
+      sampleRate: 10,
+      duration: channels[0].length / 10,
+      getChannelData: (ch) => channels[ch],
+    };
+  }
+
+  it('returns a trimmed copy of the selected region', () => {
+    const src = makeBuffer([0, 1, 2, 3, 4, 5]);
+    const out = applyLoopEdits(src, {
+      trimStart: 0.1,
+      trimEnd: 0.4,
+      audioContext: ctx,
+    });
+    expect(Array.from(out.getChannelData(0))).toEqual([1, 2, 3]);
+  });
+
+  it('applies a fade-in envelope at the new loop start', () => {
+    const src = makeBuffer([1, 1, 1, 1, 1]);
+    const out = applyLoopEdits(src, {
+      fadeIn: 0.2,
+      audioContext: ctx,
+    });
+    expect(Array.from(out.getChannelData(0))).toEqual([0, 0.5, 1, 1, 1]);
+  });
+
+  it('applies a fade-out envelope at the new loop end', () => {
+    const src = makeBuffer([1, 1, 1, 1, 1]);
+    const out = applyLoopEdits(src, {
+      fadeOut: 0.2,
+      audioContext: ctx,
+    });
+    expect(Array.from(out.getChannelData(0))).toEqual([1, 1, 1, 0.5, 0]);
+  });
+
+  it('applies trims and fades independently on every channel', () => {
+    const src = makeBuffer([0, 1, 2, 3], [10, 11, 12, 13]);
+    const out = applyLoopEdits(src, {
+      trimStart: 0.1,
+      trimEnd: 0.4,
+      fadeIn: 0.1,
+      fadeOut: 0.1,
+      audioContext: ctx,
+    });
+    expect(Array.from(out.getChannelData(0))).toEqual([0, 2, 0]);
+    expect(Array.from(out.getChannelData(1))).toEqual([0, 12, 0]);
+  });
+
+  it('keeps at least one frame when trims collapse to the same time', () => {
+    const src = makeBuffer([7, 8, 9]);
+    const out = applyLoopEdits(src, {
+      trimStart: 0.2,
+      trimEnd: 0.2,
+      audioContext: ctx,
+    });
+    expect(out.length).toBe(1);
+    expect(Array.from(out.getChannelData(0))).toEqual([9]);
   });
 });
 
