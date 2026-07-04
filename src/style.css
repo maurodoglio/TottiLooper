@@ -412,6 +412,19 @@ main {
   width: 100%;
 }
 
+/* ── Scene crossfade ── */
+.scene-panel {
+  justify-content: space-between;
+}
+
+.scene-crossfade-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
 /* ── MIDI controls ── */
 #midi-controls {
   display: flex;
@@ -439,6 +452,19 @@ main {
 .midi-header p {
   color: var(--text-muted);
   font-size: 0.85rem;
+}
+
+.scene-crossfade-field select {
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.scene-hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
 }
 
 .midi-bindings {

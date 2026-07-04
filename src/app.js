@@ -29,12 +29,14 @@ import {
   estimateTempo,
   packSharedSession,
   effectiveGain as computeEffectiveGain,
+  clampSceneCrossfadeBars,
   normalizeSongTimeline,
   getLoopPlaybackRate as computeLoopPlaybackRate,
   fitBufferToBars as _fitBufferToBars,
   quantizeBuffer as _quantizeBuffer,
   offsetBuffer as _offsetBuffer,
   reverseBuffer as _reverseBuffer,
+  sceneCrossfadeDuration,
   applyPunchIn as _applyPunchIn,
   transformBuffer as _transformBuffer,
   unpackSharedSession,
@@ -74,6 +76,7 @@ const MAX_LOOP_LENGTH_BARS = 32;
 const TAP_TEMPO_TIMEOUT_MS = 2000;
 const TAP_TEMPO_MAX_TAPS = 8;
 const MAX_UNDO         = 20;
+const DEFAULT_SCENE_CROSSFADE_BARS = 1;
 const MAX_SCENES       = 9;
 const DUCK_GAIN        = 0.35; // Non-lead loops play at 35% volume when the lead is playing.
 // Wait a few fade time-constants before restarting playback so the old source
@@ -157,6 +160,8 @@ let songEndTimeout    = null;
 let metronomeSubdivision = 1;
 let metronomeInterval = null;
 let metronomeBeatIdx  = 0;
+let sceneCrossfadeBars = DEFAULT_SCENE_CROSSFADE_BARS;
+let sceneTransitionToken = 0;
 let tapTempoTimes     = [];
 let leadLoopId        = null;
 let firstLoopTempoHandled = false;
@@ -295,6 +300,7 @@ const btnRedo            = $('btn-redo');
 const btnClearAll        = $('btn-clear-all');
 const masterVolumeInput  = $('master-volume');
 const scenesSection      = $('scenes-section');
+const sceneCrossfadeBarsInput = $('scene-crossfade-bars');
 const scenesList         = $('scenes-list');
 const playbackPosition   = $('playback-position');
 const midiControls       = $('midi-controls');
@@ -401,6 +407,7 @@ function init() {
   btnEnableMidi.addEventListener('click', enableMidi);
 
   masterVolumeInput.addEventListener('input', onMasterVolumeChange);
+  sceneCrossfadeBarsInput.addEventListener('change', onSceneCrossfadeBarsChange);
   setRangeValueText(masterVolumeInput, formatPercentValueText(masterVolume));
 
   bpmInput.addEventListener('change', onBpmChange);
@@ -1237,6 +1244,14 @@ function reverseBuffer(buffer) {
   return _reverseBuffer(buffer, audioContext);
 }
 
+function rampLoopGain(loop, targetGain, durationSeconds) {
+  if (!loop.gainNode || !audioContext) return;
+  const now = audioContext.currentTime;
+  loop.gainNode.gain.cancelScheduledValues(now);
+  loop.gainNode.gain.setValueAtTime(loop.gainNode.gain.value, now);
+  loop.gainNode.gain.linearRampToValueAtTime(targetGain, now + durationSeconds);
+}
+
 function hasActiveOrScheduledPlayback(loop) {
   return loop.playing || !!loop.node;
 }
@@ -1341,10 +1356,22 @@ function playLoop(loop, arg = {}) {
     transportStartTime = startAt;
   }
 
+  const {
+    fadeDuration = FADE_TIME,
+    initialGain = 0,
+    targetGain = effectiveGain(loop),
+    useLinearFade = false,
+    skipRefresh = false,
+  } = options;
+
   const gainNode = audioContext.createGain();
-  const targetGain = effectiveGain(loop);
-  gainNode.gain.value = 0;
-  gainNode.gain.setTargetAtTime(targetGain, startAt, FADE_TIME);
+  gainNode.gain.value = initialGain;
+  if (useLinearFade) {
+    gainNode.gain.setValueAtTime(initialGain, startAt);
+    gainNode.gain.linearRampToValueAtTime(targetGain, startAt + fadeDuration);
+  } else {
+    gainNode.gain.setTargetAtTime(targetGain, startAt, fadeDuration);
+  }
 
   const pannerNode = audioContext.createStereoPanner
     ? audioContext.createStereoPanner()
@@ -1419,7 +1446,7 @@ function playLoop(loop, arg = {}) {
     setLoopPlayingState(loop, true);
     updateLoopPlayhead(loop, offset);
     startLoopPlayheadAnimation(loop);
-    refreshAllGains();
+    if (!skipRefresh) refreshAllGains();
     startPlaybackPositionTimer();
     updatePlaybackPosition();
   };
@@ -1433,7 +1460,13 @@ function playLoop(loop, arg = {}) {
 }
 
 function stopLoop(loop, options = {}) {
-  const { immediate = false, preserveOffset = false, preserveRestart = false } = options;
+  const {
+    immediate = false,
+    preserveOffset = false,
+    preserveRestart = false,
+    fadeDuration = FADE_TIME,
+    useLinearFade = false,
+  } = options;
   if (!preserveRestart) loop.restartToken = (loop.restartToken || 0) + 1;
   if (!hasActiveOrScheduledPlayback(loop)) {
     loop.playOffset = preserveOffset ? loop.playOffset : 0;
@@ -1452,9 +1485,19 @@ function stopLoop(loop, options = {}) {
   if (gain && !immediate) {
     const t = audioContext.currentTime;
     gain.gain.cancelScheduledValues(t);
-    gain.gain.setTargetAtTime(0, t, FADE_TIME);
+    if (useLinearFade) {
+      gain.gain.setValueAtTime(gain.gain.value, t);
+      gain.gain.linearRampToValueAtTime(0, t + fadeDuration);
+    } else {
+      gain.gain.setTargetAtTime(0, t, fadeDuration);
+    }
   }
-  const stopAt = immediate ? audioContext.currentTime : audioContext.currentTime + FADE_TIME * 5;
+  // Give the fade a few time-constants to decay before killing the source.
+  const stopAt = immediate
+    ? audioContext.currentTime
+    : useLinearFade
+      ? audioContext.currentTime + fadeDuration + FADE_TIME
+      : audioContext.currentTime + fadeDuration * 5;
   try { node && node.stop(stopAt); } catch { /* already stopped */ }
 
   loop.node = null;
@@ -2032,6 +2075,11 @@ function renderGroup(group) {
   loopsList.insertBefore(block, ungroupedLoops);
 }
 
+function onSceneCrossfadeBarsChange() {
+  sceneCrossfadeBars = clampSceneCrossfadeBars(parseInt(sceneCrossfadeBarsInput.value, 10));
+  sceneCrossfadeBarsInput.value = String(sceneCrossfadeBars);
+}
+
 function playAllLoops() {
   if (songModeEnabled) {
     playSongArrangement();
@@ -2086,13 +2134,13 @@ function renderSceneSlots() {
     });
 
     const saveButton = document.createElement('button');
-    saveButton.className = 'btn-secondary scene-save';
+    saveButton.className = 'btn-secondary scene-save btn-scene-save';
     saveButton.textContent = 'Save';
     saveButton.type = 'button';
     saveButton.addEventListener('click', () => saveScene(index));
 
     const triggerButton = document.createElement('button');
-    triggerButton.className = 'btn-primary scene-trigger';
+    triggerButton.className = 'btn-primary scene-trigger btn-scene-trigger';
     triggerButton.textContent = 'Go';
     triggerButton.type = 'button';
     triggerButton.addEventListener('click', () => triggerScene(index));
@@ -2154,11 +2202,16 @@ function triggerScene(index) {
   if (!scene || !scene.snapshot) return false;
 
   const snapshotByLoopId = new Map(scene.snapshot.loops.map(loop => [loop.id, loop]));
+  const fadeSeconds = sceneCrossfadeDuration(bpm, beatsPerBar, sceneCrossfadeBars);
+  const useCrossfade = fadeSeconds > 0.001;
+  const stopOptions = useCrossfade ? { fadeDuration: fadeSeconds, useLinearFade: true } : {};
 
+  // Fade out (or stop) loops that should not keep playing, or that need a
+  // restart because their reverse state differs from the snapshot.
   for (const loop of loops) {
     const snapshot = snapshotByLoopId.get(loop.id);
     if (!snapshot || !snapshot.playing || snapshot.reversed !== loop.reversed) {
-      stopLoop(loop);
+      stopLoop(loop, stopOptions);
     }
   }
 
@@ -2168,6 +2221,8 @@ function triggerScene(index) {
     masterGainNode.gain.setTargetAtTime(masterVolume, audioContext.currentTime, 0.01);
   }
 
+  // Restore mixer state for every loop before adjusting playback so gain
+  // calculations use the snapshot's mute/solo/volume/pan values.
   for (const loop of loops) {
     const snapshot = snapshotByLoopId.get(loop.id);
     if (!snapshot) {
@@ -2184,13 +2239,36 @@ function triggerScene(index) {
     syncLoopCardState(loop);
   }
 
-  refreshAllGains();
-
+  // Start (crossfade in) loops that should play; loops that are already
+  // playing ramp to their new gain instead of snapping when a fade is set.
+  const transitionToken = ++sceneTransitionToken;
   for (const loop of loops) {
     const snapshot = snapshotByLoopId.get(loop.id);
-    if (snapshot && snapshot.playing) {
-      playLoop(loop);
+    if (!snapshot || !snapshot.playing) continue;
+    if (loop.playing) {
+      if (useCrossfade) rampLoopGain(loop, effectiveGain(loop), fadeSeconds);
+    } else {
+      playLoop(loop, useCrossfade
+        ? {
+          initialGain: 0,
+          targetGain: effectiveGain(loop),
+          fadeDuration: fadeSeconds,
+          useLinearFade: true,
+          skipRefresh: true,
+        }
+        : {});
     }
+  }
+
+  // Normalise every loop's gain once the transition settles. When crossfading,
+  // defer this so the ramps are not clobbered; a newer transition cancels it.
+  if (useCrossfade) {
+    setTimeout(() => {
+      if (sceneTransitionToken !== transitionToken) return;
+      refreshAllGains();
+    }, Math.ceil((fadeSeconds + FADE_TIME) * 1000));
+  } else {
+    refreshAllGains();
   }
 
   activeSceneIndex = index;
@@ -3099,6 +3177,7 @@ function renderLoop(loop) {
     () => toggleMute(loop),
   );
   btnMute.setAttribute('aria-pressed', loop.muted ? 'true' : 'false');
+  btnMute.setAttribute('aria-label', loop.muted ? 'Unmute loop' : 'Mute loop');
   if (loop.muted) btnMute.classList.add('active');
 
   const btnSolo = iconButton('btn-solo', 'S', 'Solo', () => toggleSolo(loop));

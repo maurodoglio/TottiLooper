@@ -26,6 +26,7 @@ them on top of each other – your one-man band for busking starts here.
 - 🎛️ **Web MIDI learn** for record/play controls, loop toggles, and per-loop volume faders
 - 🔇 **Mute**, **S** Solo, and **⇄ Reverse** toggles on every loop
 - ▶ **Play / Stop** each loop independently or **Play All / Stop All** together
+- 🎬 **Scenes** to save and recall live loop combinations with a **1–4 bar crossfade**
 - 🖊️ **Rename loops** (e.g. "Bass", "Chords", "Beatbox")
 - 📊 **Waveform preview** for each recorded loop
 - ✂️ **Trim loop start/end** directly on the waveform with non-destructive handles
@@ -73,9 +74,10 @@ them on top of each other – your one-man band for busking starts here.
 9. Click **▶** on a loop card to start it playing (it will loop continuously).
 10. Drag **Vol / Pan / Low / Mid / High / Speed** sliders to mix, shape tone, **S** to solo, **⇄** to reverse.
 11. Record more riffs and stack them up to build your sound.
-12. Use **▶ Play All / ■ Stop All** to control everything at once.
-13. Click **Enable MIDI** and use **Learn** if you want to map controller pads, buttons, or faders.
-14. Click **🔗 Share** to copy a URL for a small session, or **⬇ Export** to save the current mix as a WAV file.
+12. Save favorite mixes into **Scenes** and trigger them with keys <kbd>1</kbd>…<kbd>9</kbd> (with a crossfade you can set from 1–4 bars).
+13. Use **▶ Play All / ■ Stop All** to control everything at once.
+14. Click **Enable MIDI** and use **Learn** if you want to map controller pads, buttons, or faders.
+15. Click **🔗 Share** to copy a URL for a small session, or **⬇ Export** to save the current mix as a WAV file.
 
 Click the **?** button in the top-right corner (or press <kbd>?</kbd>) at any
 time to open the in-app tutorial.

@@ -221,6 +221,18 @@
     <section id="scenes-section">
       <h2>Scenes / setlist</h2>
       <p class="section-hint">Save named snapshots of active loops + mixer state, then trigger them instantly with keys <kbd>1</kbd>…<kbd>9</kbd>.</p>
+      <div class="panel scene-panel">
+        <label class="field scene-crossfade-field">
+          <span>Crossfade</span>
+          <select id="scene-crossfade-bars" aria-label="Scene crossfade duration">
+            <option value="1">1 bar</option>
+            <option value="2">2 bars</option>
+            <option value="3">3 bars</option>
+            <option value="4">4 bars</option>
+          </select>
+        </label>
+        <span class="scene-hint">Save a mix snapshot, then trigger it live with keys 1–9.</span>
+      </div>
       <div id="scenes-list"></div>
     </section>
 
@@ -347,6 +359,12 @@
         <li>Click <strong>Enable MIDI</strong> after plugging in your controller.</li>
         <li>Use <strong>Learn</strong> on Record / Play All / Stop All, then press a pad or button.</li>
         <li>Each loop card also has <strong>Learn toggle</strong> and <strong>Learn volume</strong> so you can map pads and faders per loop.</li>
+      </ul>
+
+      <h3>Scenes</h3>
+      <ul>
+        <li><strong>Save</strong> stores the current set of playing loops plus mute / solo / volume / pan settings.</li>
+        <li><strong>Trigger</strong> recalls that scene and crossfades to it over the selected 1–4 bar duration.</li>
       </ul>
 
       <h3>Keyboard shortcuts</h3>
