@@ -1428,3 +1428,100 @@ button:disabled {
     grid-column: 1 / -1;
   }
 }
+
+
+/* ─── Onboarding tour ──────────────────────────────────────────────────────── */
+
+.btn-tour {
+  right: 52px;
+  width: auto;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 22px;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+#tour-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: transparent;
+}
+
+/* When the current step has no visible target we dim the whole screen and
+   centre the tooltip instead of cutting a spotlight hole. */
+#tour-overlay.tour-centered {
+  background: var(--modal-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+#tour-overlay.tour-centered #tour-spotlight {
+  display: none;
+}
+
+#tour-spotlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 0 0 9999px var(--modal-overlay);
+  pointer-events: none;
+  transition: top 0.2s ease, left 0.2s ease, width 0.2s ease, height 0.2s ease;
+}
+
+#tour-tooltip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(340px, calc(100vw - 32px));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px 20px 16px;
+  line-height: 1.5;
+  pointer-events: auto;
+}
+
+#tour-overlay.tour-centered #tour-tooltip {
+  position: static;
+}
+
+.tour-step-indicator {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+
+#tour-tooltip h2 {
+  color: var(--accent);
+  font-size: 1.1rem;
+  margin: 0 0 8px;
+}
+
+#tour-tooltip p#tour-body {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: 0 0 16px;
+}
+
+.tour-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tour-actions-spacer {
+  flex: 1 1 auto;
+}

@@ -202,6 +202,19 @@ async function pressGamepadButton(page, buttonIndex) {
   await page.waitForTimeout(100);
 }
 
+// Seed the onboarding "done" flag for the default context so the first-run
+// guided tour never auto-opens over the rest of the suite. The dedicated
+// onboarding-tour tests below use their own fresh context to exercise first-run.
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => {
+    try {
+      localStorage.setItem('tottiLooper.onboardingDone', '1');
+    } catch {
+      /* ignore */
+    }
+  });
+});
+
 // ─── Initial page state ───────────────────────────────────────────────────────
 
 test.describe('initial state', () => {
@@ -1532,5 +1545,101 @@ test.describe('share via URL', () => {
     await page.reload();
     await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
     await expect(page.locator('#master-controls')).toBeVisible();
+  });
+});
+
+
+// ─── Onboarding tour ────────────────────────────────────────────────────────────
+
+test.describe('onboarding tour', () => {
+  // These tests need a genuine first-run (no onboarding flag), so they use their
+  // own fresh context instead of the default fixture seeded above.
+  async function freshPage(browser) {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto('/');
+    return { context, page };
+  }
+
+  test('auto-opens on first load', async ({ browser }) => {
+    const { context, page } = await freshPage(browser);
+    await expect(page.locator('#tour-overlay')).toBeVisible();
+    await expect(page.locator('#tour-title')).not.toBeEmpty();
+    await expect(page.locator('#tour-step-indicator')).toContainText('Step 1 of');
+    await expect(page.locator('#tour-back')).toBeDisabled();
+    await context.close();
+  });
+
+  test('Skip hides the tour, sets the flag, and it does not reappear on reload', async ({ browser }) => {
+    const { context, page } = await freshPage(browser);
+    await expect(page.locator('#tour-overlay')).toBeVisible();
+
+    await page.click('#tour-skip');
+    await expect(page.locator('#tour-overlay')).toBeHidden();
+
+    const flag = await page.evaluate(() => localStorage.getItem('tottiLooper.onboardingDone'));
+    expect(flag).toBe('1');
+
+    await page.reload();
+    await expect(page.locator('#tour-overlay')).toBeHidden();
+    await context.close();
+  });
+
+  test('stepping to the end shows Done, closes the tour, and sets the flag', async ({ browser }) => {
+    const { context, page } = await freshPage(browser);
+    await expect(page.locator('#tour-overlay')).toBeVisible();
+
+    // Advance until the primary button reads "Done", then finish.
+    for (let i = 0; i < 20; i += 1) {
+      const label = await page.locator('#tour-next').textContent();
+      if (label && label.trim() === 'Done') break;
+      await page.click('#tour-next');
+    }
+    await expect(page.locator('#tour-next')).toHaveText('Done');
+
+    await page.click('#tour-next');
+    await expect(page.locator('#tour-overlay')).toBeHidden();
+
+    const flag = await page.evaluate(() => localStorage.getItem('tottiLooper.onboardingDone'));
+    expect(flag).toBe('1');
+    await context.close();
+  });
+
+  test('Back returns to the previous step', async ({ browser }) => {
+    const { context, page } = await freshPage(browser);
+    await expect(page.locator('#tour-step-indicator')).toContainText('Step 1 of');
+
+    await page.click('#tour-next');
+    await expect(page.locator('#tour-step-indicator')).toContainText('Step 2 of');
+
+    await page.click('#tour-back');
+    await expect(page.locator('#tour-step-indicator')).toContainText('Step 1 of');
+    await expect(page.locator('#tour-back')).toBeDisabled();
+    await context.close();
+  });
+
+  test('Help / Tour button re-opens the tour after it has been completed', async ({ browser }) => {
+    const { context, page } = await freshPage(browser);
+    await expect(page.locator('#tour-overlay')).toBeVisible();
+
+    await page.click('#tour-skip');
+    await expect(page.locator('#tour-overlay')).toBeHidden();
+
+    await page.click('#btn-tour');
+    await expect(page.locator('#tour-overlay')).toBeVisible();
+    await expect(page.locator('#tour-step-indicator')).toContainText('Step 1 of');
+    await context.close();
+  });
+
+  test('Escape skips the tour', async ({ browser }) => {
+    const { context, page } = await freshPage(browser);
+    await expect(page.locator('#tour-overlay')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#tour-overlay')).toBeHidden();
+
+    const flag = await page.evaluate(() => localStorage.getItem('tottiLooper.onboardingDone'));
+    expect(flag).toBe('1');
+    await context.close();
   });
 });

@@ -51,6 +51,7 @@
     })();
   </script>
   <button id="btn-help" class="btn-help" title="Help (press ?)" aria-label="Open help">?</button>
+  <button id="btn-tour" class="btn-help btn-tour" title="Take the guided tour" aria-label="Take the guided tour">🧭 Tour</button>
   <h1>🎸 TottiLooper</h1>
   <p>Record riffs, layer them live – your one-man band starts here.</p>
 </header>
@@ -420,6 +421,22 @@
         <li>Use <strong>Pitch</strong> to transpose loops up or down without changing tempo.</li>
         <li>Use <strong>Pan</strong> to spread rhythm and lead parts across the stereo field — it instantly sounds bigger.</li>
       </ul>
+    </div>
+  </div>
+
+  <!-- First-run guided tour -->
+  <div id="tour-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="tour-title">
+    <div id="tour-spotlight" aria-hidden="true"></div>
+    <div id="tour-tooltip" role="document">
+      <p id="tour-step-indicator" class="tour-step-indicator"></p>
+      <h2 id="tour-title"></h2>
+      <p id="tour-body"></p>
+      <div class="tour-actions">
+        <button id="tour-skip" type="button" class="btn-secondary btn-sm">Skip</button>
+        <span class="tour-actions-spacer"></span>
+        <button id="tour-back" type="button" class="btn-secondary btn-sm">Back</button>
+        <button id="tour-next" type="button" class="btn-primary btn-sm">Next</button>
+      </div>
     </div>
   </div>
 
