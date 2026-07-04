@@ -30,6 +30,7 @@ them on top of each other – your one-man band for busking starts here.
 - ⬇ **Export any individual loop as WAV**
 - 🔗 **Share small sessions via URL** – encodes loop audio + mixer state into the link fragment
 - ↶ **Undo delete** – last 20 deleted loops can be restored (also `Ctrl`+`Z`)
+- 📲 **Install to your home screen** with offline-ready cached assets
 
 ### Accessibility & UX
 - ⌨️ **Keyboard shortcuts** for all common actions (see Help)

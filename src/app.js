@@ -1912,4 +1912,12 @@ function showToast(msg, isInfo) {
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js').catch((error) => {
+      console.warn('Service worker registration failed.', error);
+    });
+  });
+}
+
 document.addEventListener('DOMContentLoaded', init);
