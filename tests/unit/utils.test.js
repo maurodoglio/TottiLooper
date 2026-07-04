@@ -45,6 +45,10 @@ import {
   unpackSharedSession,
   clampSceneCrossfadeBars,
   sceneCrossfadeDuration,
+  getBarSeconds,
+  applyFadeIn,
+  applyFadeOut,
+  UndoStack,
 } from '../../src/utils.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1450,5 +1454,233 @@ describe('packSharedSession / unpackSharedSession', () => {
       .replace(/=+$/g, '');
 
     expect(() => unpackSharedSession(packed)).toThrow(/not supported/i);
+  });
+});
+
+// ─── getBarSeconds ────────────────────────────────────────────────────────────
+
+describe('getBarSeconds', () => {
+  it('returns 2 s per bar at 120 BPM with 4 beats per bar', () => {
+    expect(getBarSeconds(120, 4)).toBeCloseTo(2);
+  });
+
+  it('returns 1 s per bar at 120 BPM with 2 beats per bar', () => {
+    expect(getBarSeconds(120, 2)).toBeCloseTo(1);
+  });
+
+  it('returns 3 s per bar at 60 BPM with 3 beats per bar (3/4 time)', () => {
+    expect(getBarSeconds(60, 3)).toBeCloseTo(3);
+  });
+
+  it('scales linearly with beatsPerBar', () => {
+    const bpm = 100;
+    const beat = getBeatSeconds(bpm);
+    expect(getBarSeconds(bpm, 6)).toBeCloseTo(beat * 6);
+    expect(getBarSeconds(bpm, 7)).toBeCloseTo(beat * 7);
+  });
+});
+
+// ─── applyFadeIn ──────────────────────────────────────────────────────────────
+
+describe('applyFadeIn', () => {
+  const ctx = makeMockAudioContext();
+
+  function makeBuffer(samples) {
+    const data = new Float32Array(samples.length);
+    data.set(samples);
+    return {
+      numberOfChannels: 1,
+      length: samples.length,
+      sampleRate: 44100,
+      getChannelData: (ch) => (ch === 0 ? data : new Float32Array(samples.length)),
+    };
+  }
+
+  it('returns the original buffer when fadeSamples is 0', () => {
+    const src = makeBuffer(new Float32Array([1, 1, 1, 1]));
+    expect(applyFadeIn(src, 0, ctx)).toBe(src);
+  });
+
+  it('ramps the first N samples from 0 to 1', () => {
+    // 4 samples at constant amplitude 1; fade the first 4
+    const src = makeBuffer(new Float32Array([1, 1, 1, 1]));
+    const out = applyFadeIn(src, 4, ctx);
+    const d = out.getChannelData(0);
+    // sample i gets factor i/4
+    expect(d[0]).toBeCloseTo(0);        // 1 * 0/4
+    expect(d[1]).toBeCloseTo(0.25);     // 1 * 1/4
+    expect(d[2]).toBeCloseTo(0.5);      // 1 * 2/4
+    expect(d[3]).toBeCloseTo(0.75);     // 1 * 3/4
+  });
+
+  it('leaves samples after the fade region unchanged', () => {
+    const src = makeBuffer(new Float32Array([1, 1, 1, 1, 1, 1]));
+    const out = applyFadeIn(src, 3, ctx);
+    const d = out.getChannelData(0);
+    expect(d[3]).toBeCloseTo(1);
+    expect(d[4]).toBeCloseTo(1);
+    expect(d[5]).toBeCloseTo(1);
+  });
+
+  it('clamps fadeSamples to the buffer length when it exceeds buffer size', () => {
+    const src = makeBuffer(new Float32Array([1, 1, 1]));
+    // 100 > 3, so the ramp spans all 3 samples
+    const out = applyFadeIn(src, 100, ctx);
+    const d = out.getChannelData(0);
+    expect(d[0]).toBeCloseTo(0);       // 1 * 0/3
+    expect(d[1]).toBeCloseTo(1 / 3);   // 1 * 1/3
+    expect(d[2]).toBeCloseTo(2 / 3);   // 1 * 2/3
+  });
+
+  it('produces a buffer of the same length as the source', () => {
+    const src = makeBuffer(new Float32Array(100));
+    const out = applyFadeIn(src, 50, ctx);
+    expect(out.length).toBe(100);
+  });
+});
+
+// ─── applyFadeOut ─────────────────────────────────────────────────────────────
+
+describe('applyFadeOut', () => {
+  const ctx = makeMockAudioContext();
+
+  function makeBuffer(samples) {
+    const data = new Float32Array(samples.length);
+    data.set(samples);
+    return {
+      numberOfChannels: 1,
+      length: samples.length,
+      sampleRate: 44100,
+      getChannelData: (ch) => (ch === 0 ? data : new Float32Array(samples.length)),
+    };
+  }
+
+  it('returns the original buffer when fadeSamples is 0', () => {
+    const src = makeBuffer(new Float32Array([1, 1, 1, 1]));
+    expect(applyFadeOut(src, 0, ctx)).toBe(src);
+  });
+
+  it('ramps the last N samples from 1 to 0', () => {
+    const src = makeBuffer(new Float32Array([1, 1, 1, 1]));
+    const out = applyFadeOut(src, 4, ctx);
+    const d = out.getChannelData(0);
+    // sample at index i within fade region gets factor (1 - i/4)
+    expect(d[0]).toBeCloseTo(1);        // 1 * (1 - 0/4)
+    expect(d[1]).toBeCloseTo(0.75);     // 1 * (1 - 1/4)
+    expect(d[2]).toBeCloseTo(0.5);      // 1 * (1 - 2/4)
+    expect(d[3]).toBeCloseTo(0.25);     // 1 * (1 - 3/4)
+  });
+
+  it('leaves samples before the fade region unchanged', () => {
+    const src = makeBuffer(new Float32Array([1, 1, 1, 1, 1, 1]));
+    const out = applyFadeOut(src, 3, ctx);
+    const d = out.getChannelData(0);
+    expect(d[0]).toBeCloseTo(1);
+    expect(d[1]).toBeCloseTo(1);
+    expect(d[2]).toBeCloseTo(1);
+  });
+
+  it('clamps fadeSamples to the buffer length when it exceeds buffer size', () => {
+    const src = makeBuffer(new Float32Array([1, 1, 1]));
+    const out = applyFadeOut(src, 100, ctx);
+    const d = out.getChannelData(0);
+    expect(d[0]).toBeCloseTo(1);        // 1 * (1 - 0/3)
+    expect(d[1]).toBeCloseTo(2 / 3);    // 1 * (1 - 1/3)
+    expect(d[2]).toBeCloseTo(1 / 3);    // 1 * (1 - 2/3)
+  });
+
+  it('produces a buffer of the same length as the source', () => {
+    const src = makeBuffer(new Float32Array(100));
+    const out = applyFadeOut(src, 50, ctx);
+    expect(out.length).toBe(100);
+  });
+
+  it('applying fade-in then fade-out to a constant signal produces a bell-shaped envelope', () => {
+    // 4-sample buffer; fade-in and fade-out each span all 4 samples so they
+    // overlap and produce a symmetric (bell-shaped) amplitude curve.
+    const data = new Float32Array(4).fill(1);
+    const src = makeBuffer(data);
+    const faded = applyFadeOut(applyFadeIn(src, 4, ctx), 4, ctx);
+    const d = faded.getChannelData(0);
+    // The combined gain at index i is (i/4) * (1 - i/4), peaking at i=2
+    expect(d[0]).toBeCloseTo(0);        // 0 * 1   = 0
+    expect(d[1]).toBeCloseTo(3 / 16);   // 0.25 * 0.75
+    expect(d[2]).toBeCloseTo(1 / 4);    // 0.5  * 0.5  (peak)
+    expect(d[3]).toBeCloseTo(3 / 16);   // 0.75 * 0.25
+  });
+});
+
+// ─── UndoStack ────────────────────────────────────────────────────────────────
+
+describe('UndoStack', () => {
+  it('starts empty with size 0 and canUndo false', () => {
+    const stack = new UndoStack(10);
+    expect(stack.size).toBe(0);
+    expect(stack.canUndo).toBe(false);
+  });
+
+  it('increases size on push', () => {
+    const stack = new UndoStack(10);
+    stack.push('a');
+    expect(stack.size).toBe(1);
+    expect(stack.canUndo).toBe(true);
+  });
+
+  it('returns the last pushed item on pop (LIFO order)', () => {
+    const stack = new UndoStack(10);
+    stack.push('first');
+    stack.push('second');
+    expect(stack.pop()).toBe('second');
+    expect(stack.pop()).toBe('first');
+  });
+
+  it('returns null when popping an empty stack', () => {
+    const stack = new UndoStack(10);
+    expect(stack.pop()).toBeNull();
+  });
+
+  it('enforces the maxSize cap by dropping the oldest item', () => {
+    const stack = new UndoStack(3);
+    stack.push('a');
+    stack.push('b');
+    stack.push('c');
+    stack.push('d'); // 'a' should be dropped
+    expect(stack.size).toBe(3);
+    // The remaining items should be b, c, d in order
+    expect(stack.pop()).toBe('d');
+    expect(stack.pop()).toBe('c');
+    expect(stack.pop()).toBe('b');
+  });
+
+  it('never exceeds maxSize regardless of how many items are pushed', () => {
+    const stack = new UndoStack(5);
+    for (let i = 0; i < 20; i++) stack.push(i);
+    expect(stack.size).toBe(5);
+  });
+
+  it('clamps maxSize to at least 1 when constructed with 0', () => {
+    const stack = new UndoStack(0);
+    stack.push('x');
+    expect(stack.size).toBe(1);
+    // The effective maxSize is 1, so a second push should evict the first
+    stack.push('y');
+    expect(stack.size).toBe(1);
+    expect(stack.pop()).toBe('y');
+  });
+
+  it('clear empties the stack', () => {
+    const stack = new UndoStack(10);
+    stack.push(1);
+    stack.push(2);
+    stack.clear();
+    expect(stack.size).toBe(0);
+    expect(stack.canUndo).toBe(false);
+  });
+
+  it('can store and retrieve arbitrary objects', () => {
+    const stack = new UndoStack(5);
+    const obj = { id: 1, name: 'loop', playing: false };
+    stack.push(obj);
+    expect(stack.pop()).toBe(obj);
   });
 });

@@ -1420,3 +1420,133 @@ function encodeVarLen(value) {
 function textBytes(text) {
   return Array.from(text, (ch) => ch.charCodeAt(0));
 }
+
+// ─── BPM / timing math ────────────────────────────────────────────────────────
+
+/**
+ * Return the duration of one bar in seconds.
+ *
+ * @param {number} bpm
+ * @param {number} beatsPerBar
+ * @returns {number}
+ */
+export function getBarSeconds(bpm, beatsPerBar) {
+  return getBeatSeconds(bpm) * beatsPerBar;
+}
+
+// ─── Fade helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Return a new AudioBuffer with a linear fade-in applied to the first
+ * `fadeSamples` samples of every channel.  Samples beyond `fadeSamples` are
+ * copied unchanged.  When `fadeSamples` is 0 or exceeds the buffer length the
+ * buffer is returned unmodified.
+ *
+ * @param {AudioBuffer} buffer
+ * @param {number} fadeSamples  Number of samples over which to ramp from 0→1.
+ * @param {AudioContext} audioContext
+ * @returns {AudioBuffer}
+ */
+export function applyFadeIn(buffer, fadeSamples, audioContext) {
+  const len = buffer.length;
+  const ramp = Math.min(fadeSamples, len);
+  if (ramp <= 0) return buffer;
+
+  const out = audioContext.createBuffer(
+    buffer.numberOfChannels,
+    len,
+    buffer.sampleRate,
+  );
+  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+    const src = buffer.getChannelData(ch);
+    const dst = out.getChannelData(ch);
+    for (let i = 0; i < ramp; i++) {
+      dst[i] = src[i] * (i / ramp);
+    }
+    dst.set(src.subarray(ramp), ramp);
+  }
+  return out;
+}
+
+/**
+ * Return a new AudioBuffer with a linear fade-out applied to the last
+ * `fadeSamples` samples of every channel.  Samples before the fade region are
+ * copied unchanged.  When `fadeSamples` is 0 or exceeds the buffer length the
+ * buffer is returned unmodified.
+ *
+ * @param {AudioBuffer} buffer
+ * @param {number} fadeSamples  Number of samples over which to ramp from 1→0.
+ * @param {AudioContext} audioContext
+ * @returns {AudioBuffer}
+ */
+export function applyFadeOut(buffer, fadeSamples, audioContext) {
+  const len = buffer.length;
+  const ramp = Math.min(fadeSamples, len);
+  if (ramp <= 0) return buffer;
+
+  const fadeStart = len - ramp;
+  const out = audioContext.createBuffer(
+    buffer.numberOfChannels,
+    len,
+    buffer.sampleRate,
+  );
+  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+    const src = buffer.getChannelData(ch);
+    const dst = out.getChannelData(ch);
+    dst.set(src.subarray(0, fadeStart), 0);
+    for (let i = 0; i < ramp; i++) {
+      dst[fadeStart + i] = src[fadeStart + i] * (1 - i / ramp);
+    }
+  }
+  return out;
+}
+
+// ─── Undo stack ───────────────────────────────────────────────────────────────
+
+/**
+ * A bounded LIFO undo stack.  When `maxSize` is exceeded the oldest item is
+ * automatically discarded from the bottom of the stack.
+ *
+ * This is a pure-JS data structure with no dependency on the DOM or the Web
+ * Audio API, making it straightforward to unit-test in Node.
+ */
+export class UndoStack {
+  /**
+   * @param {number} maxSize  Maximum number of items to keep (must be ≥ 1).
+   */
+  constructor(maxSize) {
+    this._maxSize = Math.max(1, maxSize);
+    this._items = [];
+  }
+
+  /** Number of items currently in the stack. */
+  get size() { return this._items.length; }
+
+  /** True when there is at least one item available to pop. */
+  get canUndo() { return this._items.length > 0; }
+
+  /**
+   * Push an item onto the stack.  If the stack is already at capacity the
+   * oldest item is removed before the new one is added.
+   * @param {*} item
+   */
+  push(item) {
+    this._items.push(item);
+    if (this._items.length > this._maxSize) {
+      this._items.shift();
+    }
+  }
+
+  /**
+   * Remove and return the most recently pushed item, or `null` if empty.
+   * @returns {*}
+   */
+  pop() {
+    return this._items.pop() ?? null;
+  }
+
+  /** Remove all items from the stack. */
+  clear() {
+    this._items = [];
+  }
+}
