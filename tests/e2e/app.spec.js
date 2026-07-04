@@ -208,6 +208,13 @@ test.describe('initial state', () => {
     await expect(page.locator('#record-controls')).not.toBeVisible();
   });
 
+  test('shows the built-in sample library', async ({ page }) => {
+    await expect(page.locator('#sample-library')).toBeVisible();
+    await expect(page.locator('[data-builtin-sample="kick"]')).toBeVisible();
+    await expect(page.locator('[data-builtin-sample="snare"]')).toBeVisible();
+    await expect(page.locator('[data-builtin-sample="clap"]')).toBeVisible();
+  });
+
   test('hides tempo controls before mic is granted', async ({ page }) => {
     await expect(page.locator('#tempo-controls')).not.toBeVisible();
   });
@@ -450,6 +457,36 @@ test.describe('after microphone access', () => {
     await page.locator('#monitoring-toggle').check();
     await page.locator('#monitor-latency-offset').fill('-25');
     await expect(page.locator('#monitor-latency-offset')).toHaveValue('-25');
+  });
+});
+
+// ─── Built-in sample library ──────────────────────────────────────────────────
+
+test.describe('built-in sample library', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+  });
+
+  test('adds a kick loop without microphone access', async ({ page }) => {
+    await page.click('[data-builtin-sample="kick"]');
+
+    await expect(page.locator('#tempo-controls')).toBeVisible();
+    await expect(page.locator('#master-controls')).toBeVisible();
+    await expect(page.locator('#loops-section')).toBeVisible();
+    await expect(page.locator('#record-controls')).not.toBeVisible();
+    await expect(page.locator('.loop-card')).toBeVisible();
+    await expect(page.locator('.loop-name')).toHaveValue('Kick');
+  });
+
+  test('can layer multiple built-in samples into a basic drum pattern', async ({ page }) => {
+    await page.click('[data-builtin-sample="kick"]');
+    await page.click('[data-builtin-sample="snare"]');
+    await page.click('[data-builtin-sample="clap"]');
+
+    await expect(page.locator('.loop-card')).toHaveCount(3);
+    await expect(page.locator('.loop-name').nth(0)).toHaveValue('Kick');
+    await expect(page.locator('.loop-name').nth(1)).toHaveValue('Snare');
+    await expect(page.locator('.loop-name').nth(2)).toHaveValue('Clap');
   });
 });
 

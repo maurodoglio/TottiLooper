@@ -18,6 +18,7 @@ import {
   scaleMidiValue,
   formatMidiBinding,
   audioBufferToWav,
+  createBuiltinSampleLoop,
   detectKey as detectLoopKey,
   shouldWarnAboutKeyClash,
   clickTrackToMidi,
@@ -153,6 +154,7 @@ const $ = (id) => document.getElementById(id);
 
 const permissionBanner   = $('permission-banner');
 const btnRequestMic      = $('btn-request-mic');
+const sampleLibrary      = $('sample-library');
 const inputControls      = $('input-controls');
 const inputDeviceSelect  = $('input-device-select');
 const inputChannelSelect = $('input-channel-select');
@@ -195,6 +197,9 @@ const btnEnableMidi      = $('btn-enable-midi');
 const loopsSection       = $('loops-section');
 const loopsList          = $('loops-list');
 const emptyState         = $('empty-state');
+const sampleButtons      = sampleLibrary
+  ? Array.from(sampleLibrary.querySelectorAll('[data-builtin-sample]'))
+  : [];
 const btnThemeToggle     = $('btn-theme-toggle');
 const themeToggleIcon    = btnThemeToggle.querySelector('.theme-toggle-icon');
 const themeToggleLabel   = btnThemeToggle.querySelector('.theme-toggle-label');
@@ -258,6 +263,9 @@ function init() {
 
   btnThemeToggle.addEventListener('click', toggleTheme);
   btnRequestMic.addEventListener('click', requestMicrophoneAccess);
+  for (const button of sampleButtons) {
+    button.addEventListener('click', () => addBuiltinSample(button.dataset.builtinSample));
+  }
   inputDeviceSelect.addEventListener('change', onInputDeviceChange);
   inputChannelSelect.addEventListener('change', onInputChannelChange);
   btnRecord.addEventListener('click', handleRecordButton);
@@ -808,6 +816,20 @@ function addLoop(audioBuffer, options = {}) {
   renderLoop(loop);
   updateEmptyState();
   updateHistoryButtons();
+}
+
+async function addBuiltinSample(sample) {
+  try {
+    await ensureAudioEngine();
+    const label = sampleLabel(sample);
+    const loop = createBuiltinSampleLoop(audioContext, { sample, bpm, beatsPerBar });
+    addLoop(loop, { name: label });
+    showLoopWorkspace(false);
+    showInfo(`Added ${label} loop from the sample library.`);
+  } catch (err) {
+    showError('Could not add sample: ' + err.message);
+    console.error('sample library error:', err);
+  }
 }
 
 /** Effective gain for a loop accounting for mute/solo/volume. */
@@ -2245,6 +2267,26 @@ function openHelp()  { helpModal.classList.remove('hidden'); }
 function closeHelp() { helpModal.classList.add('hidden'); }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function showLoopWorkspace(withRecordingControls) {
+  tempoControls.classList.remove('hidden');
+  masterControls.classList.remove('hidden');
+  loopsSection.classList.remove('hidden');
+  if (withRecordingControls) recordControls.classList.remove('hidden');
+}
+
+function sampleLabel(sample) {
+  switch (sample) {
+    case 'kick':
+      return 'Kick';
+    case 'snare':
+      return 'Snare';
+    case 'clap':
+      return 'Clap';
+    default:
+      return 'Sample';
+  }
+}
 
 function findShortcutAction(event) {
   const shortcut = eventToShortcut(event);

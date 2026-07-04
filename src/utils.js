@@ -463,6 +463,127 @@ export function reverseBuffer(buffer, audioContext) {
 }
 
 /**
+ * Create a one-bar loop from a built-in drum one-shot sample.
+ *
+ * @param {AudioContext} audioContext
+ * @param {{ sample: 'kick' | 'snare' | 'clap', bpm: number, beatsPerBar: number }} opts
+ * @returns {AudioBuffer}
+ */
+export function createBuiltinSampleLoop(audioContext, { sample, bpm, beatsPerBar }) {
+  const sampleRate = audioContext.sampleRate;
+  const beatSeconds = 60 / bpm;
+  const duration = beatSeconds * beatsPerBar;
+  const length = Math.max(1, Math.round(duration * sampleRate));
+  const buffer = audioContext.createBuffer(1, length, sampleRate);
+  const data = buffer.getChannelData(0);
+
+  for (const beat of builtinSamplePattern(sample, beatsPerBar)) {
+    const offset = Math.round(beat * beatSeconds * sampleRate);
+    renderBuiltinSample(data, offset, sampleRate, sample);
+  }
+
+  return buffer;
+}
+
+function builtinSamplePattern(sample, beatsPerBar) {
+  switch (sample) {
+    case 'kick': {
+      const hits = [0];
+      const midBeat = Math.floor(beatsPerBar / 2);
+      if (midBeat > 0) hits.push(midBeat);
+      return [...new Set(hits)].filter((beat) => beat < beatsPerBar);
+    }
+    case 'snare':
+      return [1, 3].filter((beat) => beat < beatsPerBar);
+    case 'clap': {
+      const hits = [];
+      for (let beat = 0.5; beat < beatsPerBar; beat += 1) hits.push(beat);
+      return hits;
+    }
+    default:
+      throw new Error(`Unknown built-in sample: ${sample}`);
+  }
+}
+
+function renderBuiltinSample(data, offset, sampleRate, sample) {
+  switch (sample) {
+    case 'kick':
+      renderKick(data, offset, sampleRate);
+      return;
+    case 'snare':
+      renderSnare(data, offset, sampleRate);
+      return;
+    case 'clap':
+      renderClap(data, offset, sampleRate);
+      return;
+    default:
+      throw new Error(`Unknown built-in sample: ${sample}`);
+  }
+}
+
+function renderKick(data, offset, sampleRate) {
+  const duration = 0.35;
+  const total = Math.min(data.length - offset, Math.round(duration * sampleRate));
+  let phase = 0;
+
+  for (let i = 0; i < total; i++) {
+    const t = i / sampleRate;
+    const sweep = 1 - (i / total);
+    const freq = 45 + (120 * sweep * sweep);
+    phase += (2 * Math.PI * freq) / sampleRate;
+
+    const body = Math.sin(phase) * Math.exp(-t * 10) * 0.95;
+    const click = Math.exp(-t * 120) * 0.2;
+    mixSample(data, offset + i, body + click);
+  }
+}
+
+function renderSnare(data, offset, sampleRate) {
+  const duration = 0.22;
+  const total = Math.min(data.length - offset, Math.round(duration * sampleRate));
+  let phase = 0;
+
+  for (let i = 0; i < total; i++) {
+    const t = i / sampleRate;
+    phase += (2 * Math.PI * 180) / sampleRate;
+    const noise = pseudoNoise(offset + i);
+    const body = Math.sin(phase) * Math.exp(-t * 16) * 0.18;
+    const snap = noise * Math.exp(-t * 24) * 0.7;
+    mixSample(data, offset + i, body + snap);
+  }
+}
+
+function renderClap(data, offset, sampleRate) {
+  const duration = 0.18;
+  const total = Math.min(data.length - offset, Math.round(duration * sampleRate));
+  const bursts = [0, 0.02, 0.045];
+
+  for (let i = 0; i < total; i++) {
+    const t = i / sampleRate;
+    let envelope = 0;
+
+    for (const burst of bursts) {
+      const dt = t - burst;
+      if (dt >= 0) envelope += Math.exp(-dt * 70);
+    }
+
+    const tail = Math.exp(-t * 18) * 0.35;
+    const noise = pseudoNoise(offset + i);
+    mixSample(data, offset + i, noise * ((envelope * 0.22) + tail));
+  }
+}
+
+function mixSample(data, index, value) {
+  if (index < 0 || index >= data.length) return;
+  data[index] = Math.max(-1, Math.min(1, data[index] + value));
+}
+
+function pseudoNoise(seed) {
+  const x = Math.sin((seed + 1) * 12.9898) * 43758.5453;
+  return ((x - Math.floor(x)) * 2) - 1;
+}
+
+/**
  * Estimate tempo (BPM) from an AudioBuffer using a simple onset envelope and
  * autocorrelation over plausible beat intervals.
  *

@@ -18,6 +18,7 @@ import {
   formatMidiBinding,
   writeString,
   audioBufferToWav,
+  createBuiltinSampleLoop,
   clickTrackToMidi,
   getSupportedMimeType,
   effectiveGain,
@@ -759,6 +760,47 @@ describe('reverseBuffer', () => {
     const once = reverseBuffer(src, ctx);
     const twice = reverseBuffer(once, ctx);
     expect(Array.from(twice.getChannelData(0))).toEqual(Array.from(samples));
+  });
+});
+
+// ─── createBuiltinSampleLoop ──────────────────────────────────────────────────
+
+describe('createBuiltinSampleLoop', () => {
+  it('creates a one-bar loop using the current BPM and beats per bar', () => {
+    const audioContext = makeMockAudioContext(48000);
+    const buffer = createBuiltinSampleLoop(audioContext, {
+      sample: 'kick',
+      bpm: 120,
+      beatsPerBar: 4,
+    });
+
+    expect(buffer.sampleRate).toBe(48000);
+    expect(buffer.length).toBe(96000);
+    expect(buffer.duration).toBe(2);
+  });
+
+  it('produces audible data for each built-in sample type', () => {
+    const audioContext = makeMockAudioContext(44100);
+
+    for (const sample of ['kick', 'snare', 'clap']) {
+      const buffer = createBuiltinSampleLoop(audioContext, {
+        sample,
+        bpm: 100,
+        beatsPerBar: 4,
+      });
+      const peak = buffer.getChannelData(0).reduce((max, value) => Math.max(max, Math.abs(value)), 0);
+      expect(peak).toBeGreaterThan(0.05);
+    }
+  });
+
+  it('throws for an unknown built-in sample', () => {
+    const audioContext = makeMockAudioContext();
+
+    expect(() => createBuiltinSampleLoop(audioContext, {
+      sample: 'cowbell',
+      bpm: 100,
+      beatsPerBar: 4,
+    })).toThrow('Unknown built-in sample: cowbell');
   });
 });
 

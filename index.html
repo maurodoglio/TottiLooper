@@ -59,8 +59,20 @@
 
     <!-- Microphone permission -->
     <div id="permission-banner">
-      <p>TottiLooper needs access to your microphone to record loops.</p>
+      <p>TottiLooper needs access to your microphone to record your own loops.</p>
       <button id="btn-request-mic" class="btn-primary">🎤 Allow Microphone</button>
+    </div>
+
+    <div id="sample-library" class="panel">
+      <div class="sample-library-copy">
+        <strong>No mic?</strong>
+        <span>Try the built-in one-shot sample library to build a quick drum pattern.</span>
+      </div>
+      <div class="sample-library-actions">
+        <button type="button" class="btn-secondary" data-builtin-sample="kick">🥁 Add Kick</button>
+        <button type="button" class="btn-secondary" data-builtin-sample="snare">🥁 Add Snare</button>
+        <button type="button" class="btn-secondary" data-builtin-sample="clap">👏 Add Clap</button>
+      </div>
     </div>
 
     <!-- Input selection -->
@@ -196,7 +208,7 @@
       <div id="loops-list">
         <div id="empty-state">
           <div class="icon">🎵</div>
-          <p>No loops yet. Hit <strong>● REC</strong> to record your first loop!</p>
+          <p>No loops yet. Hit <strong>● REC</strong> or add a built-in sample to get started.</p>
         </div>
       </div>
     </section>
@@ -212,6 +224,7 @@
       <h3>Getting started</h3>
       <ol>
         <li>Click <strong>🎤 Allow Microphone</strong> and grant permission when prompted.</li>
+        <li>No microphone? Use the <strong>sample library</strong> to add built-in kick, snare and clap loops.</li>
         <li>If you have multiple audio inputs or are using an audio interface, choose the right <strong>Input</strong> and <strong>Channel</strong>.</li>
         <li>Plug in headphones — without them your mic will re-record whatever is already playing back.</li>
         <li>(Optional) Turn on <strong>Monitor input</strong> if you want to hear yourself live, then nudge <strong>Latency offset</strong> if your overdubs land a little early or late.</li>
