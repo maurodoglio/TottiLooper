@@ -891,7 +891,7 @@ function iconButton(cls, text, title, onClick) {
 }
 
 function formatEqGain(value) {
-  const n = Number(value);
+  const n = Number(value) || 0;
   const text = Number.isInteger(n) ? n.toFixed(0) : n.toFixed(1);
   return `${n > 0 ? '+' : ''}${text}dB`;
 }
