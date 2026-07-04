@@ -247,7 +247,7 @@ button:disabled {
 
 .btn-record {
   background: var(--accent);
-  color: #fff;
+  color: #111;
 }
 
 .btn-record:hover:not(:disabled) {
@@ -255,9 +255,9 @@ button:disabled {
 }
 
 .btn-record.recording {
-  background: #333;
-  color: var(--accent);
-  border: 2px solid var(--accent);
+  background: #7b1f1f;
+  color: #fff;
+  border: 2px solid #a72828;
 }
 
 .btn-stop {
@@ -271,7 +271,7 @@ button:disabled {
 
 .btn-primary {
   background: var(--green);
-  color: #fff;
+  color: #111;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -289,15 +289,15 @@ button:disabled {
 }
 
 .btn-danger {
-  background: transparent;
-  color: var(--accent);
-  border: 1px solid var(--accent);
+  background: #7b1f1f;
+  color: #fff;
+  border: 1px solid #a72828;
   padding: 6px 12px;
   font-size: 0.8rem;
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: rgba(232,64,64,0.15);
+  background: #962626;
 }
 
 .btn-icon {
@@ -319,7 +319,7 @@ button:disabled {
 
 .btn-icon.active {
   background: var(--green);
-  color: #fff;
+  color: #111;
 }
 
 .btn-icon.btn-solo.active {
@@ -329,12 +329,12 @@ button:disabled {
 
 .btn-icon.btn-reverse.active {
   background: var(--purple);
-  color: #fff;
+  color: #111;
 }
 
 .btn-icon.btn-mute.active {
   background: var(--accent);
-  color: #fff;
+  color: #111;
 }
 
 /* ── Loops section ── */

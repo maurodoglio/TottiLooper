@@ -9,6 +9,34 @@
 
 import { test, expect } from '@playwright/test';
 
+async function setRangeValue(locator, value) {
+  await locator.evaluate((el, nextValue) => {
+    el.value = String(nextValue);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, value);
+}
+
+async function expectContrastRatioAtLeast(locator, minimumRatio) {
+  const ratio = await locator.evaluate((el) => {
+    const toRgb = (value) => (value.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
+    const toLinear = (channel) => {
+      const c = channel / 255;
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    const luminance = ([r, g, b]) =>
+      0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+    const contrast = (a, b) => {
+      const [lighter, darker] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+      return (lighter + 0.05) / (darker + 0.05);
+    };
+
+    const styles = getComputedStyle(el);
+    return contrast(toRgb(styles.color), toRgb(styles.backgroundColor));
+  });
+
+  expect(ratio).toBeGreaterThanOrEqual(minimumRatio);
+}
+
 // ─── Initial page state ───────────────────────────────────────────────────────
 
 test.describe('initial state', () => {
@@ -136,8 +164,26 @@ test.describe('after microphone access', () => {
     await expect(page.locator('#master-volume')).toHaveValue('1');
   });
 
+  test('master volume slider exposes value text with units', async ({ page }) => {
+    const slider = page.locator('#master-volume');
+
+    await expect(slider).toHaveAttribute('aria-valuetext', '100 percent');
+
+    await setRangeValue(slider, '1.25');
+
+    await expect(slider).toHaveAttribute('aria-valuetext', '125 percent');
+  });
+
   test('status text shows ready message', async ({ page }) => {
     await expect(page.locator('#status-text')).toContainText('Ready');
+  });
+
+  test('primary controls meet text contrast requirements', async ({ page }) => {
+    await expectContrastRatioAtLeast(page.locator('#btn-record'), 4.5);
+    await expectContrastRatioAtLeast(page.locator('#btn-play-all'), 4.5);
+
+    await page.click('#btn-record');
+    await expectContrastRatioAtLeast(page.locator('#btn-record'), 4.5);
   });
 });
 
@@ -232,6 +278,46 @@ test.describe('loop controls', () => {
 
   test('loop card shows the duration', async ({ page }) => {
     await expect(page.locator('.loop-duration')).toBeVisible();
+  });
+
+  test('loop controls expose descriptive slider labels and value text', async ({ page }) => {
+    const nameInput = page.locator('.loop-name');
+    const volumeSlider = page.locator('.loop-faders input[type="range"]').nth(0);
+    const panSlider = page.locator('.loop-faders input[type="range"]').nth(1);
+    const speedSlider = page.locator('.loop-faders input[type="range"]').nth(2);
+
+    await expect(nameInput).toHaveAttribute('aria-label', 'Loop name for Loop 1');
+    await expect(page.locator('.loop-waveform')).toHaveAttribute('aria-hidden', 'true');
+
+    await expect(volumeSlider).toHaveAttribute('aria-label', 'Loop volume');
+    await expect(volumeSlider).toHaveAttribute('aria-valuetext', '100 percent');
+
+    await expect(panSlider).toHaveAttribute('aria-label', 'Loop pan');
+    await expect(panSlider).toHaveAttribute('aria-valuetext', 'Center');
+
+    await expect(speedSlider).toHaveAttribute('aria-label', 'Loop speed');
+    await expect(speedSlider).toHaveAttribute('aria-valuetext', 'Normal speed');
+
+    await setRangeValue(volumeSlider, '1.25');
+    await setRangeValue(panSlider, '-0.5');
+    await setRangeValue(speedSlider, '1.5');
+
+    await expect(volumeSlider).toHaveAttribute('aria-valuetext', '125 percent');
+    await expect(panSlider).toHaveAttribute('aria-valuetext', '50 percent left');
+    await expect(speedSlider).toHaveAttribute('aria-valuetext', '1.5 times speed');
+
+    await nameInput.fill('Bass');
+    await nameInput.press('Enter');
+    await expect(nameInput).toHaveAttribute('aria-label', 'Loop name for Bass');
+  });
+
+  test('active loop controls and delete button meet text contrast requirements', async ({ page }) => {
+    await page.locator('.btn-mute').click();
+    await page.locator('.btn-reverse').click();
+
+    await expectContrastRatioAtLeast(page.locator('.btn-danger'), 4.5);
+    await expectContrastRatioAtLeast(page.locator('.btn-mute'), 4.5);
+    await expectContrastRatioAtLeast(page.locator('.btn-reverse'), 4.5);
   });
 
   test('undo button becomes enabled after a loop is deleted', async ({ page }) => {
