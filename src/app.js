@@ -673,7 +673,7 @@ function setLoopGroup(loop, newGroupId) {
   const card = document.getElementById(`loop-card-${loop.id}`);
   const container = getLoopContainer(newGroupId);
   if (card && container) container.appendChild(card);
-  // Sync the selector value (it may have been set already, but keep it consistent)
+  // Keep the selector value in sync with the new groupId
   const sel = card && card.querySelector('.loop-group-select');
   if (sel) sel.value = newGroupId != null ? String(newGroupId) : '';
   refreshAllGains();
@@ -703,6 +703,8 @@ function updateAllGroupSelectors() {
     if (current != null && !groups.find(g => g.id === current)) {
       l.groupId = null;
       sel.value = '';
+      const card = document.getElementById(`loop-card-${l.id}`);
+      if (card) ungroupedLoops.appendChild(card);
     }
   }
   // Refresh group-name labels on group-name inputs (in case a rename happened)
