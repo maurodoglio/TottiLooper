@@ -15,6 +15,7 @@ import {
   effectiveGain as computeEffectiveGain,
   quantizeBuffer as _quantizeBuffer,
   reverseBuffer as _reverseBuffer,
+  applyPunchIn as _applyPunchIn,
 } from './utils.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -36,6 +37,8 @@ let isRecording    = false;
 let timerInterval  = null;
 let recordStartTime = 0;
 let loopCounter    = 0;
+let currentPunchIn = null;
+let punchStopTimeout = null;
 
 let masterGainNode = null;
 let masterVolume   = 1;
@@ -91,6 +94,11 @@ const quantizeToggle     = $('quantize-toggle');
 const recordControls     = $('record-controls');
 const btnRecord          = $('btn-record');
 const btnStopRecord      = $('btn-stop-record');
+const punchToggle        = $('punch-toggle');
+const punchLoopSelect    = $('punch-loop-select');
+const punchStartBarInput = $('punch-start-bar');
+const punchEndBarInput   = $('punch-end-bar');
+const punchBarsTotal     = $('punch-bars-total');
 const recordTimer        = $('record-timer');
 const statusDot          = $('status-dot');
 const statusText         = $('status-text');
@@ -119,6 +127,10 @@ function init() {
   btnRequestMic.addEventListener('click', requestMicrophoneAccess);
   btnRecord.addEventListener('click', handleRecordButton);
   btnStopRecord.addEventListener('click', discardRecording);
+  punchToggle.addEventListener('change', updatePunchControls);
+  punchLoopSelect.addEventListener('change', syncPunchBarInputs);
+  punchStartBarInput.addEventListener('change', syncPunchBarInputs);
+  punchEndBarInput.addEventListener('change', syncPunchBarInputs);
   btnPlayAll.addEventListener('click', playAllLoops);
   btnStopAll.addEventListener('click', stopAllLoops);
   btnExportMix.addEventListener('click', exportMix);
@@ -139,6 +151,7 @@ function init() {
   document.addEventListener('keydown', onGlobalKeydown);
 
   updateUndoButton();
+  updatePunchControls();
 }
 
 // ─── Microphone access ────────────────────────────────────────────────────────
@@ -208,10 +221,11 @@ function handleRecordButton() {
 
 async function beginRecording() {
   if (!mediaStream) return;
+  const punchIn = getSelectedPunchIn();
   if (countInEnabled) {
     await doCountIn();
   }
-  startRecording();
+  startRecording(punchIn);
 }
 
 function doCountIn() {
@@ -233,7 +247,7 @@ function doCountIn() {
   });
 }
 
-function startRecording() {
+function startRecording(punchIn = null) {
   if (!mediaStream) return;
 
   recordedChunks = [];
@@ -252,13 +266,22 @@ function startRecording() {
   mediaRecorder.start(100);
 
   isRecording = true;
+  currentPunchIn = punchIn;
   recordStartTime = Date.now();
 
   btnRecord.textContent = '■ STOP';
   btnRecord.classList.add('recording');
   btnStopRecord.disabled = false;
   statusDot.classList.add('recording');
-  setStatus('Recording…');
+  clearPunchStopTimer();
+  if (punchIn) {
+    setStatus(`Punching into "${punchIn.loop.name}" (bars ${punchIn.startBar}-${punchIn.endBar})…`);
+    punchStopTimeout = setTimeout(() => {
+      if (isRecording) stopRecording();
+    }, punchIn.durationSeconds * 1000);
+  } else {
+    setStatus('Recording…');
+  }
   startTimer();
 }
 
@@ -266,6 +289,7 @@ function stopRecording() {
   if (!isRecording || !mediaRecorder) return;
   mediaRecorder.stop();
   isRecording = false;
+  clearPunchStopTimer();
   clearInterval(timerInterval);
 
   btnRecord.textContent = '● REC';
@@ -281,6 +305,8 @@ function discardRecording() {
   try { mediaRecorder.stop(); } catch { /* ignore */ }
   recordedChunks = [];
   isRecording = false;
+  currentPunchIn = null;
+  clearPunchStopTimer();
   clearInterval(timerInterval);
 
   btnRecord.textContent = '● REC';
@@ -295,15 +321,22 @@ async function onRecordingStop() {
   const mimeType = (mediaRecorder && mediaRecorder.mimeType) || 'audio/webm';
   const blob = new Blob(recordedChunks, { type: mimeType });
   recordedChunks = [];
+  const punchIn = currentPunchIn;
+  currentPunchIn = null;
 
   try {
     const arrayBuffer = await blob.arrayBuffer();
     let audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    if (quantizeEnabled) {
+    if (quantizeEnabled && !punchIn) {
       audioBuffer = quantizeBuffer(audioBuffer);
     }
-    addLoop(audioBuffer);
-    setStatus('Loop added! Press ● REC to record another.');
+    if (punchIn) {
+      applyPunchInToLoop(punchIn.loop, audioBuffer, punchIn);
+      setStatus(`Punch-in applied to "${punchIn.loop.name}" (bars ${punchIn.startBar}-${punchIn.endBar}).`);
+    } else {
+      addLoop(audioBuffer);
+      setStatus('Loop added! Press ● REC to record another.');
+    }
   } catch (err) {
     showError('Could not decode audio: ' + err.message);
     console.error('decodeAudioData error:', err);
@@ -316,6 +349,21 @@ async function onRecordingStop() {
 
 function quantizeBuffer(buffer) {
   return _quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext });
+}
+
+function applyPunchInToLoop(loop, takeBuffer, punchIn) {
+  loop.audioBuffer = _applyPunchIn(loop.audioBuffer, takeBuffer, {
+    startBar: punchIn.startBar,
+    endBar: punchIn.endBar,
+    bpm,
+    beatsPerBar,
+    audioContext,
+  });
+  loop.reversedBuffer = null;
+  loop.duration = loop.audioBuffer.duration;
+  updateLoopCard(loop);
+  refreshLoopPlayback(loop);
+  syncPunchBarInputs();
 }
 
 // ─── Loop management ──────────────────────────────────────────────────────────
@@ -343,6 +391,7 @@ function addLoop(audioBuffer) {
   loops.push(loop);
   renderLoop(loop);
   updateEmptyState();
+  refreshPunchLoopOptions();
 }
 
 /** Effective gain for a loop accounting for mute/solo/volume. */
@@ -452,6 +501,12 @@ function stopLoop(loop) {
   }
 }
 
+function refreshLoopPlayback(loop) {
+  if (!loop.playing) return;
+  stopLoop(loop);
+  setTimeout(() => playLoop(loop), Math.ceil(FADE_TIME * 1000 * 6));
+}
+
 function deleteLoop(loopId) {
   const idx = loops.findIndex(l => l.id === loopId);
   if (idx === -1) return;
@@ -468,6 +523,7 @@ function deleteLoop(loopId) {
   updateEmptyState();
   updateUndoButton();
   refreshAllGains();
+  refreshPunchLoopOptions();
   showInfo(`Deleted "${loop.name}" – press ↶ Undo (or Ctrl+Z) to restore.`);
 }
 
@@ -483,6 +539,7 @@ function undoDelete() {
   updateEmptyState();
   updateUndoButton();
   refreshAllGains();
+  refreshPunchLoopOptions();
   setStatus(`Restored "${loop.name}".`);
 }
 
@@ -560,6 +617,7 @@ function toggleReverse(loop) {
 function renameLoop(loop, newName) {
   const trimmed = (newName || '').trim();
   loop.name = trimmed || loop.name;
+  refreshPunchLoopOptions();
 }
 
 function playAllLoops() {
@@ -585,6 +643,7 @@ function onBpmChange() {
   v = Math.max(MIN_BPM, Math.min(MAX_BPM, v));
   bpm = v;
   bpmInput.value = String(v);
+  syncPunchBarInputs();
   if (metronomeEnabled) {
     stopMetronome();
     startMetronome();
@@ -597,6 +656,7 @@ function onBeatsPerBarChange() {
   if (v > 12) v = 12;
   beatsPerBar = v;
   beatsPerBarInput.value = String(v);
+  syncPunchBarInputs();
 }
 
 function onMetronomeToggle(e) {
@@ -699,6 +759,96 @@ function exportLoop(loop) {
   const wavBlob = audioBufferToWav(getPlaybackBuffer(loop));
   const safeName = loop.name.replace(/[^a-z0-9_-]+/gi, '_') || `loop-${loop.id}`;
   downloadBlob(wavBlob, `${safeName}.wav`);
+}
+
+function getBarDurationSeconds() {
+  return (60 / bpm) * beatsPerBar;
+}
+
+function getLoopBarCount(loop) {
+  return Math.max(1, Math.round(loop.duration / getBarDurationSeconds()));
+}
+
+function clampBar(value, min, max) {
+  if (isNaN(value)) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
+function refreshPunchLoopOptions() {
+  const selectedValue = punchLoopSelect.value;
+  punchLoopSelect.innerHTML = '';
+
+  for (const loop of loops) {
+    const option = document.createElement('option');
+    option.value = String(loop.id);
+    option.textContent = loop.name;
+    punchLoopSelect.appendChild(option);
+  }
+
+  if (loops.length > 0) {
+    const nextValue = loops.some(loop => String(loop.id) === selectedValue)
+      ? selectedValue
+      : String(loops[0].id);
+    punchLoopSelect.value = nextValue;
+  } else {
+    punchToggle.checked = false;
+  }
+
+  updatePunchControls();
+}
+
+function updatePunchControls() {
+  const hasLoops = loops.length > 0;
+  const enabled = hasLoops && punchToggle.checked;
+  punchToggle.disabled = !hasLoops;
+  punchLoopSelect.disabled = !enabled;
+  punchStartBarInput.disabled = !enabled;
+  punchEndBarInput.disabled = !enabled;
+  syncPunchBarInputs();
+}
+
+function syncPunchBarInputs() {
+  const loop = loops.find(item => String(item.id) === punchLoopSelect.value) || loops[0];
+  if (!loop) {
+    punchBarsTotal.textContent = '/ 1 bar';
+    punchStartBarInput.value = '1';
+    punchEndBarInput.value = '1';
+    return;
+  }
+
+  const totalBars = getLoopBarCount(loop);
+  const startBar = clampBar(parseInt(punchStartBarInput.value, 10), 1, totalBars);
+  const endBar = clampBar(parseInt(punchEndBarInput.value, 10), startBar, totalBars);
+  punchStartBarInput.max = String(totalBars);
+  punchEndBarInput.max = String(totalBars);
+  punchStartBarInput.value = String(startBar);
+  punchEndBarInput.value = String(endBar);
+  punchBarsTotal.textContent = `/ ${totalBars} ${totalBars === 1 ? 'bar' : 'bars'}`;
+}
+
+function getSelectedPunchIn() {
+  if (!punchToggle.checked || loops.length === 0) return null;
+  const loop = loops.find(item => String(item.id) === punchLoopSelect.value) || loops[0];
+  if (!loop) return null;
+
+  const totalBars = getLoopBarCount(loop);
+  const startBar = clampBar(parseInt(punchStartBarInput.value, 10), 1, totalBars);
+  const endBar = clampBar(parseInt(punchEndBarInput.value, 10), startBar, totalBars);
+  punchStartBarInput.value = String(startBar);
+  punchEndBarInput.value = String(endBar);
+
+  return {
+    loop,
+    startBar,
+    endBar,
+    durationSeconds: (endBar - startBar + 1) * getBarDurationSeconds(),
+  };
+}
+
+function clearPunchStopTimer() {
+  if (!punchStopTimeout) return;
+  clearTimeout(punchStopTimeout);
+  punchStopTimeout = null;
 }
 
 function downloadBlob(blob, filename) {
@@ -810,6 +960,15 @@ function renderLoop(loop) {
   // Canvas sizing requires the element be in the DOM to measure offsetWidth.
   loopsList.appendChild(card);
   drawWaveform(canvas, loop.audioBuffer);
+}
+
+function updateLoopCard(loop) {
+  const card = document.getElementById(`loop-card-${loop.id}`);
+  if (!card) return;
+  const durationEl = card.querySelector('.loop-duration');
+  if (durationEl) durationEl.textContent = formatDuration(loop.duration);
+  const canvas = card.querySelector('canvas');
+  if (canvas) drawWaveform(canvas, loop.audioBuffer);
 }
 
 function iconButton(cls, text, title, onClick) {

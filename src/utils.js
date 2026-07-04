@@ -118,6 +118,54 @@ export function reverseBuffer(buffer, audioContext) {
   return rev;
 }
 
+/**
+ * Overdub a recorded take onto a specific bar range of an existing loop.
+ *
+ * @param {AudioBuffer} loopBuffer
+ * @param {AudioBuffer} takeBuffer
+ * @param {{ startBar: number, endBar: number, bpm: number, beatsPerBar: number, audioContext: AudioContext }} opts
+ * @returns {AudioBuffer}
+ */
+export function applyPunchIn(loopBuffer, takeBuffer, {
+  startBar,
+  endBar,
+  bpm,
+  beatsPerBar,
+  audioContext,
+}) {
+  const beatSeconds = 60 / bpm;
+  const barSeconds = beatSeconds * beatsPerBar;
+  const startSample = Math.round((startBar - 1) * barSeconds * loopBuffer.sampleRate);
+  const punchLength = Math.round((endBar - startBar + 1) * barSeconds * loopBuffer.sampleRate);
+
+  const out = audioContext.createBuffer(
+    loopBuffer.numberOfChannels,
+    loopBuffer.length,
+    loopBuffer.sampleRate,
+  );
+
+  for (let ch = 0; ch < loopBuffer.numberOfChannels; ch++) {
+    const src = loopBuffer.getChannelData(ch);
+    const dst = out.getChannelData(ch);
+    dst.set(src);
+
+    const takeCh = Math.min(ch, takeBuffer.numberOfChannels - 1);
+    const take = takeBuffer.getChannelData(takeCh);
+    const overlayLength = Math.max(0, Math.min(
+      punchLength,
+      take.length,
+      loopBuffer.length - startSample,
+    ));
+
+    for (let i = 0; i < overlayLength; i++) {
+      const mixed = dst[startSample + i] + take[i];
+      dst[startSample + i] = Math.max(-1, Math.min(1, mixed));
+    }
+  }
+
+  return out;
+}
+
 // ─── WAV encoding ─────────────────────────────────────────────────────────────
 
 /**

@@ -42,11 +42,14 @@ them on top of each other – your one-man band for busking starts here.
 4. Click **● REC** (or press <kbd>Space</kbd>) to start recording a riff.
 5. Click **■ STOP** (or press <kbd>Space</kbd> again) when you're done – the
    loop is saved automatically and appears in the list.
-6. Click **▶** on a loop card to start it playing (it will loop continuously).
-7. Drag **Vol / Pan / Speed** sliders to mix, **S** to solo, **⇄** to reverse.
-8. Record more riffs and stack them up to build your sound.
-9. Use **▶ Play All / ■ Stop All** to control everything at once.
-10. Click **⬇ Export** to save the current mix as a WAV file.
+6. To overdub part of an existing loop, enable **Punch-in**, choose the target
+   loop and bar range, then record — the take is merged into that section
+   instead of creating a new loop.
+7. Click **▶** on a loop card to start it playing (it will loop continuously).
+8. Drag **Vol / Pan / Speed** sliders to mix, **S** to solo, **⇄** to reverse.
+9. Record more riffs and stack them up to build your sound.
+10. Use **▶ Play All / ■ Stop All** to control everything at once.
+11. Click **⬇ Export** to save the current mix as a WAV file.
 
 Click the **?** button in the top-right corner (or press <kbd>?</kbd>) at any
 time to open the in-app tutorial.

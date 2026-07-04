@@ -113,7 +113,9 @@ main {
 
 /* ── Tempo controls ── */
 #tempo-controls .field,
-#tempo-controls .toggle {
+#tempo-controls .toggle,
+#record-controls .field,
+#record-controls .toggle {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -130,6 +132,29 @@ main {
   padding: 4px 8px;
   font-size: 0.9rem;
   font-variant-numeric: tabular-nums;
+}
+
+#record-controls input[type="number"],
+#record-controls select {
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.9rem;
+}
+
+#record-controls input[type="number"] {
+  width: 56px;
+  font-variant-numeric: tabular-nums;
+}
+
+#record-controls select {
+  min-width: 96px;
+}
+
+#record-controls .field-bars {
+  gap: 4px;
 }
 
 .toggle input[type="checkbox"] {
