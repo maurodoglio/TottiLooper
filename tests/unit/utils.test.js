@@ -49,6 +49,8 @@ import {
   applyFadeIn,
   applyFadeOut,
   UndoStack,
+  getSwingDelaySeconds,
+  MAX_SWING,
 } from '../../src/utils.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1682,5 +1684,51 @@ describe('UndoStack', () => {
     const obj = { id: 1, name: 'loop', playing: false };
     stack.push(obj);
     expect(stack.pop()).toBe(obj);
+  });
+});
+
+
+describe('getSwingDelaySeconds', () => {
+  const interval = 0.25; // one subdivision = 250 ms
+
+  it('returns 0 for on-beat (even index) subdivisions', () => {
+    expect(getSwingDelaySeconds(0, 0.5, interval)).toBe(0);
+    expect(getSwingDelaySeconds(2, 0.5, interval)).toBe(0);
+    expect(getSwingDelaySeconds(4, 0.75, interval)).toBe(0);
+  });
+
+  it('delays off-beat (odd index) subdivisions by amount * interval', () => {
+    expect(getSwingDelaySeconds(1, 0.5, interval)).toBeCloseTo(0.125, 10);
+    expect(getSwingDelaySeconds(3, 0.5, interval)).toBeCloseTo(0.125, 10);
+    expect(getSwingDelaySeconds(1, 0.2, interval)).toBeCloseTo(0.05, 10);
+  });
+
+  it('produces no delay when swing is 0 (straight timing)', () => {
+    for (let i = 0; i < 8; i++) {
+      expect(getSwingDelaySeconds(i, 0, interval)).toBe(0);
+    }
+  });
+
+  it('gives a triplet-ish feel around 0.66 swing', () => {
+    expect(getSwingDelaySeconds(1, 0.66, interval)).toBeCloseTo(0.165, 10);
+  });
+
+  it('clamps swing above MAX_SWING to MAX_SWING', () => {
+    expect(getSwingDelaySeconds(1, 1.5, interval)).toBeCloseTo(MAX_SWING * interval, 10);
+    expect(MAX_SWING).toBe(0.75);
+  });
+
+  it('clamps negative swing to 0', () => {
+    expect(getSwingDelaySeconds(1, -0.5, interval)).toBe(0);
+  });
+
+  it('returns 0 for non-finite index or interval', () => {
+    expect(getSwingDelaySeconds(NaN, 0.5, interval)).toBe(0);
+    expect(getSwingDelaySeconds(Infinity, 0.5, interval)).toBe(0);
+    expect(getSwingDelaySeconds(1, 0.5, NaN)).toBe(0);
+  });
+
+  it('treats a non-finite swing amount as 0', () => {
+    expect(getSwingDelaySeconds(1, NaN, interval)).toBe(0);
   });
 });

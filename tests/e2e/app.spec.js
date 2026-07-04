@@ -259,6 +259,29 @@ test.describe('initial state', () => {
   test('metronome subdivision defaults to quarter notes', async ({ page }) => {
     await expect(page.locator('#metronome-subdivision-input')).toHaveValue('1');
   });
+
+  test('swing slider defaults to 0 (straight timing)', async ({ page }) => {
+    const swing = page.locator('#swing-input');
+    await expect(swing).toHaveValue('0');
+    await expect(swing).toHaveAttribute('aria-valuetext', '0 percent');
+  });
+
+  test('swing slider updates state and exposes value text', async ({ page }) => {
+    const swing = page.locator('#swing-input');
+    await setRange(swing, 50);
+    await expect(swing).toHaveValue('50');
+    await expect(swing).toHaveAttribute('aria-valuetext', '50 percent');
+
+    // Handler recomputes on each change and the value/text stay in sync.
+    await setRange(swing, 25);
+    await expect(swing).toHaveValue('25');
+    await expect(swing).toHaveAttribute('aria-valuetext', '25 percent');
+
+    // Returning to 0 restores straight timing.
+    await setRange(swing, 0);
+    await expect(swing).toHaveValue('0');
+    await expect(swing).toHaveAttribute('aria-valuetext', '0 percent');
+  });
 });
 
 // ─── Theme toggle ──────────────────────────────────────────────────────────────

@@ -1550,3 +1550,40 @@ export class UndoStack {
     this._items = [];
   }
 }
+
+
+// ─── Swing / shuffle groove ──────────────────────────────────────────────────
+
+/**
+ * Maximum swing amount (as a fraction of a subdivision interval). 0.75 pushes
+ * the off-beat three-quarters of the way to the next hit; ~0.66 is a triplet
+ * shuffle feel and 0 is perfectly straight timing.
+ */
+export const MAX_SWING = 0.75;
+
+/**
+ * Return how many seconds a metronome subdivision should be nudged later to
+ * produce a swing/shuffle groove.
+ *
+ * Swing delays every other ("off-beat") subdivision while leaving the on-beat
+ * subdivisions untouched, so the scheduler itself never has to change — each
+ * click is simply offset within its own slot.
+ *
+ * @param {number} subdivisionIndex  Zero-based index of the subdivision in the
+ *   metronome grid. Even indices are on the beat (never delayed); odd indices
+ *   are the off-beats that get swung.
+ * @param {number} swingAmount  Swing depth as a fraction 0..MAX_SWING. Values
+ *   outside that range are clamped; 0 means straight timing.
+ * @param {number} subdivisionInterval  Length of one subdivision (any unit –
+ *   the returned delay is in the same unit).
+ * @returns {number} Delay to add to the click, 0 for on-beat subdivisions.
+ */
+export function getSwingDelaySeconds(subdivisionIndex, swingAmount, subdivisionInterval) {
+  if (!Number.isFinite(subdivisionIndex) || !Number.isFinite(subdivisionInterval)) return 0;
+  // On-beat subdivisions (even index) always play straight.
+  if (subdivisionIndex % 2 === 0) return 0;
+  const amount = Number.isFinite(swingAmount)
+    ? Math.max(0, Math.min(MAX_SWING, swingAmount))
+    : 0;
+  return amount * subdivisionInterval;
+}
