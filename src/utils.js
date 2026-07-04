@@ -90,9 +90,13 @@ export function quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext }) {
  * @returns {AudioBuffer}
  */
 export function fitBufferToBars(buffer, { bars, bpm, beatsPerBar, audioContext }) {
+  if (!Number.isFinite(bars) || bars < 1) {
+    throw new Error('bars must be at least 1');
+  }
+
   const beatSeconds = 60 / bpm;
   const barSeconds  = beatSeconds * beatsPerBar;
-  const targetDur   = Math.max(1, bars) * barSeconds;
+  const targetDur   = Math.round(bars) * barSeconds;
   const targetLen   = Math.round(targetDur * buffer.sampleRate);
 
   return resizeBuffer(buffer, targetLen, audioContext);

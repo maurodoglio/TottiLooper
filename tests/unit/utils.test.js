@@ -360,6 +360,17 @@ describe('fitBufferToBars', () => {
     expect(out.length).toBe(barSamples * 2);
     expect(out.getChannelData(0)[out.length - 1]).toBeCloseTo(0.25);
   });
+
+  it('rejects invalid bar counts', () => {
+    const src = makeBuffer(barSamples);
+
+    expect(() => fitBufferToBars(src, {
+      bars: 0,
+      bpm,
+      beatsPerBar,
+      audioContext: ctx,
+    })).toThrow('bars must be at least 1');
+  });
 });
 
 // ─── reverseBuffer ────────────────────────────────────────────────────────────
