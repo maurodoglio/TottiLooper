@@ -149,6 +149,21 @@
       <span id="status-text">Press ● REC to start recording.</span>
       <button id="btn-record" class="btn-record">● REC</button>
       <button id="btn-stop-record" class="btn-stop" disabled>■ DISCARD</button>
+      <label class="toggle">
+        <input id="punch-toggle" type="checkbox" disabled />
+        <span>Punch-in</span>
+      </label>
+      <label class="field">
+        <span>Loop</span>
+        <select id="punch-loop-select" disabled aria-label="Punch-in loop"></select>
+      </label>
+      <label class="field field-bars">
+        <span>Bars</span>
+        <input id="punch-start-bar" type="number" min="1" value="1" disabled aria-label="Punch-in start bar" />
+        <span>–</span>
+        <input id="punch-end-bar" type="number" min="1" value="1" disabled aria-label="Punch-in end bar" />
+        <span id="punch-bars-total">/ 1 bar</span>
+      </label>
     </div>
 
     <!-- Master playback -->
@@ -239,6 +254,7 @@
         <li>Press <strong>■ STOP</strong> (or the same shortcut again) when finished — the loop appears in the list and is ready to play.</li>
         <li>After your first loop, TottiLooper can suggest a matching BPM for the session — confirm it if the detection looks right.</li>
         <li>Press <strong>■ DISCARD</strong> to abandon the current take without saving it.</li>
+        <li>To punch in on an existing loop, enable <strong>Punch-in</strong>, choose the target loop and bar range, then record — the take is overdubbed onto that section instead of creating a new loop.</li>
       </ol>
 
       <h3>Per-loop controls</h3>

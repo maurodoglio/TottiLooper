@@ -18,6 +18,7 @@ import {
   formatMidiBinding,
   writeString,
   audioBufferToWav,
+  applyPunchIn,
   createBuiltinSampleLoop,
   clickTrackToMidi,
   getSupportedMimeType,
@@ -764,6 +765,107 @@ describe('reverseBuffer', () => {
     const once = reverseBuffer(src, ctx);
     const twice = reverseBuffer(once, ctx);
     expect(Array.from(twice.getChannelData(0))).toEqual(Array.from(samples));
+  });
+});
+
+// ─── applyPunchIn ──────────────────────────────────────────────────────────────
+
+describe('applyPunchIn', () => {
+  const ctx = makeMockAudioContext(8);
+  const bpm = 240;
+  const beatsPerBar = 4;
+
+  function makeMonoBuffer(samples) {
+    const data = Float32Array.from(samples);
+    return {
+      numberOfChannels: 1,
+      length: data.length,
+      sampleRate: 8,
+      duration: data.length / 8,
+      getChannelData: () => data,
+    };
+  }
+
+  function readBuffer(buffer) {
+    return Array.from(buffer.getChannelData(0), value => Number(value.toFixed(3)));
+  }
+
+  it('overdubs only the selected bar range and leaves the rest unchanged', () => {
+    const loop = makeMonoBuffer([0, 0, 0, 0, 0.25, 0.25, 0.25, 0.25]);
+    const take = makeMonoBuffer([0.5, 0.5, 0.5, 0.5]);
+
+    const out = applyPunchIn(loop, take, {
+      startBar: 1,
+      endBar: 1,
+      bpm,
+      beatsPerBar,
+      audioContext: ctx,
+    });
+
+    expect(readBuffer(out)).toEqual([
+      0.5, 0.5, 0.5, 0.5,
+      0.25, 0.25, 0.25, 0.25,
+    ]);
+  });
+
+  it('starts the overdub at the selected later bar', () => {
+    const loop = makeMonoBuffer([
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+      0, 0, 0, 0, 0, 0, 0, 0,
+    ]);
+    const take = makeMonoBuffer([0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4]);
+
+    const out = applyPunchIn(loop, take, {
+      startBar: 2,
+      endBar: 2,
+      bpm,
+      beatsPerBar,
+      audioContext: ctx,
+    });
+
+    expect(readBuffer(out)).toEqual([
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+      0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4,
+    ]);
+  });
+
+  it('truncates the take when it is longer than the punched range', () => {
+    const loop = makeMonoBuffer([
+      0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0,
+    ]);
+    const take = makeMonoBuffer([
+      0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2,
+      0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9,
+    ]);
+
+    const out = applyPunchIn(loop, take, {
+      startBar: 1,
+      endBar: 1,
+      bpm,
+      beatsPerBar,
+      audioContext: ctx,
+    });
+
+    expect(readBuffer(out)).toEqual([
+      0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2,
+      0, 0, 0, 0, 0, 0, 0, 0,
+    ]);
+  });
+
+  it('clips mixed samples to the valid audio range', () => {
+    const loop = makeMonoBuffer([0.8, -0.8, 0, 0]);
+    const take = makeMonoBuffer([0.8, -0.8, 0, 0]);
+
+    const out = applyPunchIn(loop, take, {
+      startBar: 1,
+      endBar: 1,
+      bpm,
+      beatsPerBar,
+      audioContext: ctx,
+    });
+
+    expect(readBuffer(out)).toEqual([1, -1, 0, 0]);
   });
 });
 

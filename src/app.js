@@ -30,6 +30,7 @@ import {
   quantizeBuffer as _quantizeBuffer,
   offsetBuffer as _offsetBuffer,
   reverseBuffer as _reverseBuffer,
+  applyPunchIn as _applyPunchIn,
   transformBuffer as _transformBuffer,
   unpackSharedSession,
 } from './utils.js';
@@ -54,6 +55,9 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
+// Wait a few fade time-constants before restarting playback so the old source
+// has decayed enough to avoid an audible click or doubled attack.
+const FADE_SETTLE_MULTIPLIER = 6;
 const LOOP_EDIT_RESOLUTION = 1000;
 const LOOP_RESTART_DELAY_MULTIPLIER = 6; // wait a few fade time-constants before restarting a loop
 const NORMAL_PLAYBACK_RATE = 1;
@@ -92,6 +96,8 @@ let isRecording    = false;
 let timerInterval  = null;
 let recordStartTime = 0;
 let loopCounter    = 0;
+let currentPunchIn = null;
+let punchStopTimeout = null;
 let playbackPositionInterval = null;
 let transportStartTime = null;
 let nextLoopCursor = 0;
@@ -204,6 +210,11 @@ const btnDismissDetectedTempo = $('btn-dismiss-detected-tempo');
 const recordControls     = $('record-controls');
 const btnRecord          = $('btn-record');
 const btnStopRecord      = $('btn-stop-record');
+const punchToggle        = $('punch-toggle');
+const punchLoopSelect    = $('punch-loop-select');
+const punchStartBarInput = $('punch-start-bar');
+const punchEndBarInput   = $('punch-end-bar');
+const punchBarsTotal     = $('punch-bars-total');
 const recordTimer        = $('record-timer');
 const statusDot          = $('status-dot');
 const statusText         = $('status-text');
@@ -307,6 +318,10 @@ function init() {
   inputChannelSelect.addEventListener('change', onInputChannelChange);
   btnRecord.addEventListener('click', handleRecordButton);
   btnStopRecord.addEventListener('click', discardRecording);
+  punchToggle.addEventListener('change', updatePunchControls);
+  punchLoopSelect.addEventListener('change', syncPunchBarInputs);
+  punchStartBarInput.addEventListener('change', syncPunchBarInputs);
+  punchEndBarInput.addEventListener('change', syncPunchBarInputs);
   btnPlayAll.addEventListener('click', playAllLoops);
   btnStopAll.addEventListener('click', stopAllLoops);
   btnExportMix.addEventListener('click', exportMix);
@@ -342,6 +357,7 @@ function init() {
   document.addEventListener('keydown', onGlobalKeydown);
   startGamepadPolling();
 
+  updatePunchControls();
   applyTheme(getPreferredTheme());
   followSystemTheme();
   updateMidiStatus('Connect a controller, then click Learn to map pads, buttons, or faders.');
@@ -685,10 +701,11 @@ function handleRecordButton() {
 
 async function beginRecording() {
   if (!mediaStream) return;
+  const punchIn = getSelectedPunchIn();
   if (countInEnabled) {
     await doCountIn();
   }
-  startRecording();
+  startRecording(punchIn);
 }
 
 function doCountIn() {
@@ -710,7 +727,7 @@ function doCountIn() {
   });
 }
 
-function startRecording() {
+function startRecording(punchIn = null) {
   if (!mediaStream) return;
 
   recordedChunks = [];
@@ -729,13 +746,22 @@ function startRecording() {
   mediaRecorder.start(100);
 
   isRecording = true;
+  currentPunchIn = punchIn;
   recordStartTime = Date.now();
 
   btnRecord.textContent = '■ STOP';
   btnRecord.classList.add('recording');
   btnStopRecord.disabled = false;
   statusDot.classList.add('recording');
-  setStatus('Recording…');
+  clearPunchStopTimer();
+  if (punchIn) {
+    setStatus(`Punching into "${punchIn.loop.name}" (bars ${punchIn.startBar}-${punchIn.endBar})…`);
+    punchStopTimeout = setTimeout(() => {
+      if (isRecording) stopRecording();
+    }, punchIn.durationSeconds * 1000);
+  } else {
+    setStatus('Recording…');
+  }
   startTimer();
 }
 
@@ -743,6 +769,7 @@ function stopRecording() {
   if (!isRecording || !mediaRecorder) return;
   mediaRecorder.stop();
   isRecording = false;
+  clearPunchStopTimer();
   clearInterval(timerInterval);
 
   btnRecord.textContent = '● REC';
@@ -758,6 +785,8 @@ function discardRecording() {
   try { mediaRecorder.stop(); } catch { /* ignore */ }
   recordedChunks = [];
   isRecording = false;
+  currentPunchIn = null;
+  clearPunchStopTimer();
   clearInterval(timerInterval);
 
   btnRecord.textContent = '● REC';
@@ -772,6 +801,8 @@ async function onRecordingStop() {
   const mimeType = (mediaRecorder && mediaRecorder.mimeType) || 'audio/webm';
   const blob = new Blob(recordedChunks, { type: mimeType });
   recordedChunks = [];
+  const punchIn = currentPunchIn;
+  currentPunchIn = null;
 
   try {
     const arrayBuffer = await blob.arrayBuffer();
@@ -780,29 +811,36 @@ async function onRecordingStop() {
       // A positive user-facing compensation value should pull the recorded take earlier.
       audioBuffer = _offsetBuffer(audioBuffer, -monitorLatencyOffsetMs / 1000, audioContext);
     }
-    let suggestedTempo = false;
-    if (loops.length === 0 && !firstLoopTempoHandled) {
-      suggestedTempo = maybeSuggestTempo(audioBuffer);
-    }
-    if (quantizeEnabled) {
-      audioBuffer = quantizeBuffer(audioBuffer);
-    }
-    const detectedKey = detectLoopKey(audioBuffer);
-    const shouldWarn = shouldWarnAboutKeyClash(
-      detectedKey,
-      loops.map((loop) => loop.detectedKey),
-    );
-    addLoop(audioBuffer, {
-      sourceBlob: quantizeEnabled ? audioBufferToWav(audioBuffer) : blob,
-      detectedKey,
-    });
-    if (shouldWarn && detectedKey) {
-      showWarning(`New loop sounds like ${detectedKey.name}, which may clash with your existing loops.`);
-      setStatus(`Loop added with warning: detected key ${detectedKey.name}.`);
-    } else if (detectedKey) {
-      setStatus(`Loop added! Detected key: ${detectedKey.name}. Press ● REC to record another.`);
-    } else if (!suggestedTempo) {
-      setStatus('Loop added! Key unclear. Press ● REC to record another.');
+    if (punchIn) {
+      // Punch-in uses an explicit target bar range, so preserve the take as
+      // recorded instead of re-quantizing it to a fresh loop length.
+      applyPunchInToLoop(punchIn.loop, audioBuffer, punchIn);
+      setStatus(`Punch-in applied to "${punchIn.loop.name}" (bars ${punchIn.startBar}-${punchIn.endBar}).`);
+    } else {
+      let suggestedTempo = false;
+      if (loops.length === 0 && !firstLoopTempoHandled) {
+        suggestedTempo = maybeSuggestTempo(audioBuffer);
+      }
+      if (quantizeEnabled) {
+        audioBuffer = quantizeBuffer(audioBuffer);
+      }
+      const detectedKey = detectLoopKey(audioBuffer);
+      const shouldWarn = shouldWarnAboutKeyClash(
+        detectedKey,
+        loops.map((loop) => loop.detectedKey),
+      );
+      addLoop(audioBuffer, {
+        sourceBlob: quantizeEnabled ? audioBufferToWav(audioBuffer) : blob,
+        detectedKey,
+      });
+      if (shouldWarn && detectedKey) {
+        showWarning(`New loop sounds like ${detectedKey.name}, which may clash with your existing loops.`);
+        setStatus(`Loop added with warning: detected key ${detectedKey.name}.`);
+      } else if (detectedKey) {
+        setStatus(`Loop added! Detected key: ${detectedKey.name}. Press ● REC to record another.`);
+      } else if (!suggestedTempo) {
+        setStatus('Loop added! Key unclear. Press ● REC to record another.');
+      }
     }
   } catch (err) {
     showError('Could not decode audio: ' + err.message);
@@ -816,6 +854,21 @@ async function onRecordingStop() {
 
 function quantizeBuffer(buffer) {
   return _quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext });
+}
+
+function applyPunchInToLoop(loop, takeBuffer, punchIn) {
+  loop.audioBuffer = _applyPunchIn(loop.audioBuffer, takeBuffer, {
+    startBar: punchIn.startBar,
+    endBar: punchIn.endBar,
+    bpm,
+    beatsPerBar,
+    audioContext,
+  });
+  loop.reversedBuffer = null;
+  loop.duration = loop.audioBuffer.duration;
+  updateLoopCard(loop);
+  refreshLoopPlayback(loop);
+  syncPunchBarInputs();
 }
 
 // ─── Loop management ──────────────────────────────────────────────────────────
@@ -864,6 +917,7 @@ function addLoop(audioBuffer, options = {}) {
   loops.push(loop);
   renderLoop(loop);
   updateEmptyState();
+  refreshPunchLoopOptions();
   updateHistoryButtons();
 }
 
@@ -1214,6 +1268,12 @@ function stopLoop(loop, options = {}) {
   updatePlaybackPosition();
 }
 
+function refreshLoopPlayback(loop) {
+  if (!loop.playing) return;
+  stopLoop(loop);
+  setTimeout(() => playLoop(loop), getFadeSettleDelayMs());
+}
+
 function deleteLoop(loopId) {
   const idx = loops.findIndex(l => l.id === loopId);
   if (idx === -1) return;
@@ -1228,6 +1288,7 @@ function deleteLoop(loopId) {
   applyDeleteAction(action);
   rememberUndoAction(action);
   refreshAllGains();
+  refreshPunchLoopOptions();
   showInfo(`Deleted "${loop.name}" – press ↶ Undo (or Ctrl+Z) to restore.`);
 }
 
@@ -1239,6 +1300,7 @@ function undoDelete() {
   if (redoStack.length > MAX_UNDO) redoStack.shift();
   updateHistoryButtons();
   refreshAllGains();
+  refreshPunchLoopOptions();
   setStatus(`Restored ${describeAction(action)}.`);
 }
 
@@ -1250,6 +1312,7 @@ function redoDelete() {
   if (undoStack.length > MAX_UNDO) undoStack.shift();
   updateHistoryButtons();
   refreshAllGains();
+  refreshPunchLoopOptions();
   setStatus(`Redid deletion of ${describeAction(action)}.`);
 }
 
@@ -1481,6 +1544,7 @@ function requantizeLoop(loop) {
 function renameLoop(loop, newName) {
   const trimmed = (newName || '').trim();
   loop.name = trimmed || loop.name;
+  refreshPunchLoopOptions();
 }
 
 function playAllLoops() {
@@ -1682,6 +1746,7 @@ function updateMidiStatus(msg) {
 function onBpmChange() {
   hideTempoSuggestion();
   applyBpmValue(bpmInput.value);
+  syncPunchBarInputs();
 }
 
 function onBeatsPerBarChange() {
@@ -1690,6 +1755,7 @@ function onBeatsPerBarChange() {
   if (v > 12) v = 12;
   beatsPerBar = v;
   beatsPerBarInput.value = String(v);
+  syncPunchBarInputs();
   updatePlaybackPosition();
 }
 
@@ -1942,6 +2008,104 @@ function exportLoop(loop) {
   const wavBlob = audioBufferToWav(getPlaybackBuffer(loop));
   const safeName = loop.name.replace(/[^a-z0-9_-]+/gi, '_') || `loop-${loop.id}`;
   downloadBlob(wavBlob, `${safeName}.wav`);
+}
+
+function getBarDurationSeconds() {
+  return (60 / bpm) * beatsPerBar;
+}
+
+function getLoopBarCount(loop) {
+  return Math.max(1, Math.round(loop.duration / getBarDurationSeconds()));
+}
+
+function getFadeSettleDelayMs() {
+  return Math.ceil(FADE_TIME * 1000 * FADE_SETTLE_MULTIPLIER);
+}
+
+function clampValue(value, min, max) {
+  const numericValue = typeof value === 'number' ? value : parseInt(value, 10);
+  if (Number.isNaN(numericValue)) return min;
+  return Math.max(min, Math.min(max, numericValue));
+}
+
+function getPunchBarRange(loop) {
+  const totalBars = getLoopBarCount(loop);
+  const startBar = clampValue(punchStartBarInput.value, 1, totalBars);
+  const endBar = clampValue(punchEndBarInput.value, startBar, totalBars);
+  return { totalBars, startBar, endBar };
+}
+
+function refreshPunchLoopOptions() {
+  const selectedValue = punchLoopSelect.value;
+  punchLoopSelect.innerHTML = '';
+
+  for (const loop of loops) {
+    const option = document.createElement('option');
+    option.value = String(loop.id);
+    option.textContent = loop.name;
+    punchLoopSelect.appendChild(option);
+  }
+
+  if (loops.length > 0) {
+    const nextValue = loops.some(loop => String(loop.id) === selectedValue)
+      ? selectedValue
+      : String(loops[0].id);
+    punchLoopSelect.value = nextValue;
+  } else {
+    punchToggle.checked = false;
+  }
+
+  updatePunchControls();
+}
+
+function updatePunchControls() {
+  const hasLoops = loops.length > 0;
+  const enabled = hasLoops && punchToggle.checked;
+  punchToggle.disabled = !hasLoops;
+  punchLoopSelect.disabled = !enabled;
+  punchStartBarInput.disabled = !enabled;
+  punchEndBarInput.disabled = !enabled;
+  syncPunchBarInputs();
+}
+
+function syncPunchBarInputs() {
+  const loop = loops.find(item => String(item.id) === punchLoopSelect.value) || loops[0];
+  if (!loop) {
+    punchBarsTotal.textContent = '/ 1 bar';
+    punchStartBarInput.value = '1';
+    punchEndBarInput.value = '1';
+    return;
+  }
+
+  const { totalBars, startBar, endBar } = getPunchBarRange(loop);
+  punchStartBarInput.max = String(totalBars);
+  punchEndBarInput.max = String(totalBars);
+  punchStartBarInput.value = String(startBar);
+  punchEndBarInput.value = String(endBar);
+  punchBarsTotal.textContent = `/ ${totalBars} ${totalBars === 1 ? 'bar' : 'bars'}`;
+}
+
+function getSelectedPunchIn() {
+  if (!punchToggle.checked || loops.length === 0) return null;
+  const loop = loops.find(item => String(item.id) === punchLoopSelect.value) || loops[0];
+  if (!loop) return null;
+
+  const { startBar, endBar } = getPunchBarRange(loop);
+  punchStartBarInput.value = String(startBar);
+  punchEndBarInput.value = String(endBar);
+
+  return {
+    loop,
+    startBar,
+    endBar,
+    durationSeconds: (endBar - startBar + 1) * getBarDurationSeconds(),
+  };
+}
+
+function clearPunchStopTimer() {
+  if (!punchStopTimeout) return;
+  clearTimeout(punchStopTimeout);
+  punchStopTimeout = null;
 }
 
 function downloadBlob(blob, filename) {
@@ -2397,6 +2561,15 @@ function renderLoop(loop) {
   updateLoopPlayhead(loop, loop.playOffset);
   updateAllMidiBindingLabels();
   updateLoopEditor();
+}
+
+function updateLoopCard(loop) {
+  const card = document.getElementById(`loop-card-${loop.id}`);
+  if (!card) return;
+  const durationEl = card.querySelector('.loop-duration');
+  if (durationEl) durationEl.textContent = formatDuration(loop.duration);
+  const canvas = card.querySelector('canvas');
+  if (canvas) drawWaveform(canvas, loop.audioBuffer);
 }
 
 function iconButton(cls, text, title, onClick) {
