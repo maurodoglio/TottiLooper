@@ -99,10 +99,11 @@ const midiBindings = {
   playAll: null,
   stopAll: null,
 };
-
-// Undo stack for deleted loops
-const deletedStack = [];
 const gamepadButtonStates = new Map();
+
+// Undo / redo history for delete-style actions
+const undoStack = [];
+const redoStack = [];
 
 /**
  * @typedef {Object} Loop
@@ -164,6 +165,8 @@ const btnExportMix       = $('btn-export-mix');
 const btnShareSession    = $('btn-share-session');
 const exportMidiToggle   = $('export-midi-toggle');
 const btnUndo            = $('btn-undo');
+const btnRedo            = $('btn-redo');
+const btnClearAll        = $('btn-clear-all');
 const masterVolumeInput  = $('master-volume');
 const playbackPosition   = $('playback-position');
 const midiControls       = $('midi-controls');
@@ -225,6 +228,8 @@ function init() {
   btnExportMix.addEventListener('click', exportMix);
   btnShareSession.addEventListener('click', shareSession);
   btnUndo.addEventListener('click', undoDelete);
+  btnRedo.addEventListener('click', redoDelete);
+  btnClearAll.addEventListener('click', clearAllLoops);
   btnEnableMidi.addEventListener('click', enableMidi);
 
   masterVolumeInput.addEventListener('input', onMasterVolumeChange);
@@ -254,7 +259,7 @@ function init() {
   updateMidiStatus('Connect a controller, then click Learn to map pads, buttons, or faders.');
   updateAllMidiBindingLabels();
   syncMonitoringControls();
-  updateUndoButton();
+  updateHistoryButtons();
   void restoreSharedSessionFromUrl();
 }
 
@@ -740,6 +745,7 @@ function addLoop(audioBuffer, options = {}) {
   loops.push(loop);
   renderLoop(loop);
   updateEmptyState();
+  updateHistoryButtons();
 }
 
 /** Effective gain for a loop accounting for mute/solo/volume. */
@@ -959,38 +965,114 @@ function deleteLoop(loopId) {
   if (midiLearnTarget && midiLearnTarget.target.startsWith(`loop-${loopId}-`)) {
     stopMidiLearn();
   }
-  stopLoop(loop);
-  loops.splice(idx, 1);
-
-  deletedStack.push(loop);
-  if (deletedStack.length > MAX_UNDO) deletedStack.shift();
-
-  const card = document.getElementById(`loop-card-${loopId}`);
-  if (card) card.remove();
-
-  updateEmptyState();
-  updateUndoButton();
+  const action = {
+    kind: 'delete',
+    loops: [{ loop, index: idx }],
+  };
+  applyDeleteAction(action);
+  rememberUndoAction(action);
   refreshAllGains();
   showInfo(`Deleted "${loop.name}" – press ↶ Undo (or Ctrl+Z) to restore.`);
 }
 
 function undoDelete() {
-  const loop = deletedStack.pop();
-  if (!loop) return;
+  const action = undoStack.pop();
+  if (!action) return;
+  restoreDeleteAction(action);
+  redoStack.push(action);
+  if (redoStack.length > MAX_UNDO) redoStack.shift();
+  updateHistoryButtons();
+  refreshAllGains();
+  setStatus(`Restored ${describeAction(action)}.`);
+}
+
+function redoDelete() {
+  const action = redoStack.pop();
+  if (!action) return;
+  applyDeleteAction(action);
+  undoStack.push(action);
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  updateHistoryButtons();
+  refreshAllGains();
+  setStatus(`Redid deletion of ${describeAction(action)}.`);
+}
+
+function clearAllLoops() {
+  if (loops.length === 0) return;
+  const confirmed = window.confirm(getClearAllConfirmationMessage(loops.length));
+  if (!confirmed) return;
+
+  const action = {
+    kind: 'clear-all',
+    loops: loops.map((loop, index) => ({ loop, index })),
+  };
+  applyDeleteAction(action);
+  rememberUndoAction(action);
+  showInfo(`Cleared all ${formatLoopCount(action.loops.length)} – press ↶ Undo (or Ctrl+Z) to restore ${action.loops.length === 1 ? 'it' : 'them'}.`);
+}
+
+function rememberUndoAction(action) {
+  undoStack.push(action);
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack.length = 0;
+  updateHistoryButtons();
+}
+
+function applyDeleteAction(action) {
+  const ids = new Set(action.loops.map(({ loop }) => loop.id));
+  for (const loop of loops) {
+    if (ids.has(loop.id)) stopLoop(loop);
+  }
+  for (let i = loops.length - 1; i >= 0; i--) {
+    if (ids.has(loops[i].id)) loops.splice(i, 1);
+  }
+  renderAllLoops();
+}
+
+function restoreDeleteAction(action) {
+  const entries = [...action.loops].sort((a, b) => a.index - b.index);
+  const existingIds = new Set(loops.map(loop => loop.id));
+  for (const { loop, index } of entries) {
+    resetLoopPlaybackState(loop);
+    if (existingIds.has(loop.id)) continue;
+    loops.splice(Math.min(index, loops.length), 0, loop);
+    existingIds.add(loop.id);
+  }
+  renderAllLoops();
+}
+
+function resetLoopPlaybackState(loop) {
   loop.node = null;
   loop.gainNode = null;
   loop.pannerNode = null;
   loop.playing = false;
-  loops.push(loop);
-  renderLoop(loop);
-  updateEmptyState();
-  updateUndoButton();
-  refreshAllGains();
-  setStatus(`Restored "${loop.name}".`);
 }
 
-function updateUndoButton() {
-  btnUndo.disabled = deletedStack.length === 0;
+function renderAllLoops() {
+  loopsList.querySelectorAll('.loop-card').forEach(card => card.remove());
+  loops.forEach(renderLoop);
+  updateEmptyState();
+  updateHistoryButtons();
+}
+
+function describeAction(action) {
+  if (action.loops.length === 1) return `"${action.loops[0].loop.name}"`;
+  return formatLoopCount(action.loops.length);
+}
+
+function formatLoopCount(count) {
+  return `${count} loop${count === 1 ? '' : 's'}`;
+}
+
+function getClearAllConfirmationMessage(count) {
+  if (count === 1) return 'Clear the only loop? This will remove it from your current session.';
+  return `Clear all ${count} loops? This will remove them from your current session.`;
+}
+
+function updateHistoryButtons() {
+  btnUndo.disabled = undoStack.length === 0;
+  btnRedo.disabled = redoStack.length === 0;
+  btnClearAll.disabled = loops.length === 0;
 }
 
 function toggleMute(loop) {
@@ -1924,6 +2006,15 @@ function onGlobalKeydown(e) {
   }
 
   if (!audioContext) return;
+
+  if (
+    (((e.ctrlKey || e.metaKey) && e.shiftKey) && (e.key === 'z' || e.key === 'Z'))
+    || ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y'))
+  ) {
+    e.preventDefault();
+    redoDelete();
+    return;
+  }
 
   switch (action) {
     case 'toggleRecord':

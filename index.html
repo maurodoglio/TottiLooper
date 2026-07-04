@@ -133,8 +133,10 @@
         <span>MIDI click</span>
       </label>
       <button id="btn-export-mix" class="btn-secondary" title="Export mix as WAV">⬇ Export</button>
+      <button id="btn-clear-all" class="btn-danger" title="Clear all loops" disabled>✕ Clear All</button>
       <button id="btn-share-session" class="btn-secondary" title="Copy a shareable link">🔗 Share</button>
       <button id="btn-undo" class="btn-secondary" title="Undo delete (Ctrl+Z)" disabled>↶ Undo</button>
+      <button id="btn-redo" class="btn-secondary" title="Redo delete (Ctrl+Shift+Z / Ctrl+Y)" disabled>↷ Redo</button>
     </div>
 
     <!-- MIDI controls -->
@@ -211,7 +213,7 @@
         <li><strong>S</strong> – solo this loop (everything not soloed is silenced).</li>
         <li><strong>⇄</strong> – play the loop in reverse.</li>
         <li><strong>⬇</strong> – download this loop as a WAV file.</li>
-        <li><strong>✕</strong> – delete the loop. Use <strong>↶ Undo</strong> or <span id="shortcut-undo-inline"></span> to bring it back.</li>
+        <li><strong>✕</strong> – delete the loop. Use <strong>↶ Undo</strong> / <strong>↷ Redo</strong> or <span id="shortcut-undo-inline"></span> to step backward and forward through deletions.</li>
         <li><strong>Vol / Pan / Speed</strong> sliders – mix each loop and warp its pitch via playback rate.</li>
         <li>Click or drag the <strong>waveform</strong> to scrub to a new playback position.</li>
         <li>Click the <strong>loop name</strong> field to rename it (e.g. "Bass", "Chords", "Beatbox").</li>
@@ -225,6 +227,7 @@
         <li><strong>MIDI click</strong> – optionally export a click-track MIDI file at the current tempo for easy DAW alignment.</li>
         <li><strong>⬇ Export</strong> – render the current mix to a WAV file, and optionally download the matching MIDI click track alongside it.</li>
         <li><strong>🔗 Share</strong> – encode a small session into the page URL so you can send it as a link.</li>
+        <li><strong>✕ Clear All</strong> – remove every loop after confirming, with undo / redo support if you change your mind.</li>
       </ul>
 
       <h3>MIDI learn</h3>

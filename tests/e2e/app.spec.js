@@ -9,6 +9,16 @@
 
 import { test, expect } from '@playwright/test';
 
+async function recordShortLoop(page) {
+  await page.click('#btn-record');
+  await page.waitForTimeout(600);
+  await page.click('#btn-record');
+}
+
+function deleteLoopButton(page) {
+  return page.getByRole('button', { name: 'Delete loop' });
+}
+
 async function installGamepadStub(page) {
   await page.addInitScript(() => {
     const state = {
@@ -258,6 +268,11 @@ test.describe('after microphone access', () => {
     await expect(page.locator('#btn-undo')).toBeDisabled();
   });
 
+  test('redo and clear-all buttons are disabled with no loops', async ({ page }) => {
+    await expect(page.locator('#btn-redo')).toBeDisabled();
+    await expect(page.locator('#btn-clear-all')).toBeDisabled();
+  });
+
   test('master volume slider defaults to 1', async ({ page }) => {
     await expect(page.locator('#master-volume')).toHaveValue('1');
   });
@@ -393,9 +408,7 @@ test.describe('loop controls', () => {
     await page.click('#btn-request-mic');
     await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
     // Record one short loop.
-    await page.click('#btn-record');
-    await page.waitForTimeout(600);
-    await page.click('#btn-record');
+    await recordShortLoop(page);
     await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
   });
 
@@ -456,21 +469,65 @@ test.describe('loop controls', () => {
   });
 
   test('undo button becomes enabled after a loop is deleted', async ({ page }) => {
-    await page.locator('.btn-danger').click();
+    await deleteLoopButton(page).click();
     await expect(page.locator('#btn-undo')).toBeEnabled();
   });
 
   test('deleted loop can be restored via undo button', async ({ page }) => {
-    await page.locator('.btn-danger').click();
+    await deleteLoopButton(page).click();
     await expect(page.locator('.loop-card')).not.toBeVisible();
     await page.click('#btn-undo');
     await expect(page.locator('.loop-card')).toBeVisible();
   });
 
   test('Ctrl+Z restores the last deleted loop', async ({ page }) => {
-    await page.locator('.btn-danger').click();
+    await deleteLoopButton(page).click();
     await page.keyboard.press('Control+z');
     await expect(page.locator('.loop-card')).toBeVisible();
+  });
+
+  test('redo button re-applies the last undone delete', async ({ page }) => {
+    await deleteLoopButton(page).click();
+    await page.click('#btn-undo');
+    await expect(page.locator('#btn-redo')).toBeEnabled();
+    await page.click('#btn-redo');
+    await expect(page.locator('.loop-card')).toHaveCount(0);
+  });
+
+  test('Ctrl+Shift+Z re-applies the last undone delete', async ({ page }) => {
+    await deleteLoopButton(page).click();
+    await page.keyboard.press('Control+z');
+    await page.keyboard.press('Control+Shift+z');
+    await expect(page.locator('.loop-card')).toHaveCount(0);
+  });
+
+  test('clear all asks for confirmation and leaves loops untouched when cancelled', async ({ page }) => {
+    await recordShortLoop(page);
+    await expect(page.locator('.loop-card')).toHaveCount(2, { timeout: 8000 });
+
+    let dialogMessage = '';
+    page.once('dialog', async (dialog) => {
+      dialogMessage = dialog.message();
+      await dialog.dismiss();
+    });
+
+    await page.click('#btn-clear-all');
+
+    await expect(page.locator('.loop-card')).toHaveCount(2);
+    expect(dialogMessage).toBe('Clear all 2 loops? This will remove them from your current session.');
+  });
+
+  test('clear all removes every loop and can be undone', async ({ page }) => {
+    await recordShortLoop(page);
+    await expect(page.locator('.loop-card')).toHaveCount(2, { timeout: 8000 });
+
+    page.once('dialog', dialog => dialog.accept());
+    await page.click('#btn-clear-all');
+
+    await expect(page.locator('.loop-card')).toHaveCount(0);
+    await expect(page.locator('#empty-state')).toBeVisible();
+    await page.click('#btn-undo');
+    await expect(page.locator('.loop-card')).toHaveCount(2);
   });
 
   test('now-playing indicator updates while a loop is playing', async ({ page }) => {
