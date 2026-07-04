@@ -27,6 +27,7 @@ them on top of each other – your one-man band for busking starts here.
 - ⬇ **Export the full mix as WAV** (rendered via `OfflineAudioContext`)
 - ⬇ **Export any individual loop as WAV**
 - ↶ **Undo delete** – last 20 deleted loops can be restored (also `Ctrl`+`Z`)
+- 📲 **Install to your home screen** with offline-ready cached assets
 
 ### Accessibility & UX
 - ⌨️ **Keyboard shortcuts** for all common actions (see Help)

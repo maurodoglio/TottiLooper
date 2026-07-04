@@ -988,4 +988,10 @@ function showToast(msg, isInfo) {
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+  });
+}
+
 document.addEventListener('DOMContentLoaded', init);
