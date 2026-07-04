@@ -66,7 +66,7 @@ time to open the in-app tutorial.
 ### Gamepad / foot-switch controls
 
 If your browser exposes a connected USB foot switch or gamepad through the
-Gamepad API, the first four buttons map to:
+Gamepad API, the first four buttons (indices 0–3) map to:
 
 | Button | Action |
 | --- | --- |

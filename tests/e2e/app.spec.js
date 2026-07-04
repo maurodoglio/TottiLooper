@@ -321,7 +321,7 @@ test.describe('gamepad controls', () => {
     await expect(page.locator('.loop-card')).not.toHaveClass(/playing/);
   });
 
-  test('button 4 cycles through loops and toggles them in order', async ({ page }) => {
+  test('the fourth gamepad button cycles through loops and toggles them in order', async ({ page }) => {
     for (let i = 0; i < 2; i++) {
       await page.click('#btn-record');
       await page.waitForTimeout(600);
