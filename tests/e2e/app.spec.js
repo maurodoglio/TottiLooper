@@ -43,6 +43,11 @@ test.describe('initial state', () => {
   test('beats-per-bar input defaults to 4', async ({ page }) => {
     await expect(page.locator('#beats-per-bar-input')).toHaveValue('4');
   });
+
+  test('swing slider defaults to 0%', async ({ page }) => {
+    await expect(page.locator('#swing-input')).toHaveValue('0');
+    await expect(page.locator('#swing-value')).toHaveText('0%');
+  });
 });
 
 // ─── Help modal ───────────────────────────────────────────────────────────────
@@ -283,6 +288,12 @@ test.describe('tempo controls', () => {
   test('metronome toggle can be enabled', async ({ page }) => {
     await page.locator('#metronome-toggle').check();
     await expect(page.locator('#metronome-toggle')).toBeChecked();
+  });
+
+  test('swing slider can be adjusted', async ({ page }) => {
+    await page.locator('#swing-input').fill('60');
+    await expect(page.locator('#swing-input')).toHaveValue('60');
+    await expect(page.locator('#swing-value')).toHaveText('60%');
   });
 
   test('count-in toggle can be enabled', async ({ page }) => {

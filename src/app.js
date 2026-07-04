@@ -10,9 +10,12 @@
 import {
   formatDuration,
   panText,
+  clampSwing,
   audioBufferToWav,
   getSupportedMimeType,
   effectiveGain as computeEffectiveGain,
+  getSwingPairDurations,
+  getSwingSubdivisionPlaybackRate,
   quantizeBuffer as _quantizeBuffer,
   reverseBuffer as _reverseBuffer,
 } from './utils.js';
@@ -45,11 +48,12 @@ let inputAnalyser  = null;
 // Tempo / metronome
 let bpm              = DEFAULT_BPM;
 let beatsPerBar      = 4;
+let swingAmount      = 0;
 let metronomeEnabled = false;
 let countInEnabled   = false;
 let quantizeEnabled  = false;
-let metronomeInterval = null;
-let metronomeBeatIdx  = 0;
+let metronomeTimer    = null;
+let metronomeStepIdx  = 0;
 
 // Undo stack for deleted loops
 const deletedStack = [];
@@ -71,6 +75,8 @@ const deletedStack = [];
  * @property {number} pan
  * @property {number} playbackRate
  * @property {boolean} reversed
+ * @property {Array<AudioBufferSourceNode>} sourceNodes
+ * @property {number|null} swingTimerId
  */
 
 /** @type {Array<Loop>} */
@@ -85,6 +91,8 @@ const btnRequestMic      = $('btn-request-mic');
 const tempoControls      = $('tempo-controls');
 const bpmInput           = $('bpm-input');
 const beatsPerBarInput   = $('beats-per-bar-input');
+const swingInput         = $('swing-input');
+const swingValue         = $('swing-value');
 const metronomeToggle    = $('metronome-toggle');
 const countInToggle      = $('count-in-toggle');
 const quantizeToggle     = $('quantize-toggle');
@@ -128,6 +136,7 @@ function init() {
 
   bpmInput.addEventListener('change', onBpmChange);
   beatsPerBarInput.addEventListener('change', onBeatsPerBarChange);
+  swingInput.addEventListener('input', onSwingChange);
   metronomeToggle.addEventListener('change', onMetronomeToggle);
   countInToggle.addEventListener('change', (e) => { countInEnabled = e.target.checked; });
   quantizeToggle.addEventListener('change', (e) => { quantizeEnabled = e.target.checked; });
@@ -216,20 +225,42 @@ async function beginRecording() {
 
 function doCountIn() {
   return new Promise((resolve) => {
-    const intervalMs = 60000 / bpm;
-    let beat = 1;
-    setStatus(`Count-in… ${beat}`);
-    playClick(true);
-    const id = setInterval(() => {
-      beat++;
-      if (beat > beatsPerBar) {
-        clearInterval(id);
-        resolve();
+    if (swingAmount === 0) {
+      const intervalMs = 60000 / bpm;
+      let beat = 1;
+      setStatus(`Count-in… ${beat}`);
+      playClick('downbeat');
+      const id = window.setInterval(() => {
+        beat++;
+        if (beat > beatsPerBar) {
+          clearInterval(id);
+          resolve();
+          return;
+        }
+        playClick('beat');
+        setStatus(`Count-in… ${beat}`);
+      }, intervalMs);
+      return;
+    }
+    const totalSteps = beatsPerBar * 2;
+    const stepDurations = getSwingPairDurations(bpm, swingAmount);
+    const scheduleStep = (stepIndex) => {
+      const beatNumber = Math.floor(stepIndex / 2) + 1;
+      const isBeat = stepIndex % 2 === 0;
+      if (isBeat) {
+        setStatus(`Count-in… ${beatNumber}`);
+      }
+      playClick(isBeat ? (beatNumber === 1 ? 'downbeat' : 'beat') : 'offbeat');
+      if (stepIndex >= totalSteps - 1) {
+        window.setTimeout(resolve, stepDurations[stepIndex % 2] * 1000);
         return;
       }
-      playClick(false);
-      setStatus(`Count-in… ${beat}`);
-    }, intervalMs);
+      window.setTimeout(
+        () => scheduleStep(stepIndex + 1),
+        stepDurations[stepIndex % 2] * 1000,
+      );
+    };
+    scheduleStep(0);
   });
 }
 
@@ -339,6 +370,8 @@ function addLoop(audioBuffer) {
     pan: 0,
     playbackRate: 1,
     reversed: false,
+    sourceNodes: [],
+    swingTimerId: null,
   };
   loops.push(loop);
   renderLoop(loop);
@@ -372,10 +405,29 @@ function reverseBuffer(buffer) {
   return _reverseBuffer(buffer, audioContext);
 }
 
-function playLoop(loop) {
-  if (!audioContext || loop.playing) return;
-  if (audioContext.state === 'suspended') audioContext.resume();
+function getStraightSubdivisionSeconds() {
+  return (60 / bpm) / 2;
+}
 
+function clearLoopSwingTimer(loop) {
+  if (loop.swingTimerId !== null) {
+    clearTimeout(loop.swingTimerId);
+    loop.swingTimerId = null;
+  }
+}
+
+function trackLoopSource(loop, sourceNode) {
+  loop.node = sourceNode;
+  loop.sourceNodes.push(sourceNode);
+  sourceNode.onended = () => {
+    loop.sourceNodes = loop.sourceNodes.filter(node => node !== sourceNode);
+    if (loop.node === sourceNode) {
+      loop.node = loop.sourceNodes[loop.sourceNodes.length - 1] || null;
+    }
+  };
+}
+
+function createLoopOutput(loop) {
   const gainNode = audioContext.createGain();
   const targetGain = effectiveGain(loop);
   gainNode.gain.value = 0;
@@ -386,25 +438,93 @@ function playLoop(loop) {
     : null;
   if (pannerNode) pannerNode.pan.value = loop.pan;
 
-  const sourceNode = audioContext.createBufferSource();
-  sourceNode.buffer = getPlaybackBuffer(loop);
-  sourceNode.loop = true;
-  sourceNode.playbackRate.value = loop.playbackRate;
-
-  if (pannerNode) {
-    sourceNode.connect(pannerNode);
-    pannerNode.connect(gainNode);
-  } else {
-    sourceNode.connect(gainNode);
-  }
   gainNode.connect(masterGainNode);
+  return { gainNode, pannerNode };
+}
 
-  sourceNode.start();
+function scheduleSwungLoopSegment(loop, outputTime, bufferOffset, subdivisionIndex) {
+  if (!audioContext || !loop.playing) return;
 
-  loop.node = sourceNode;
+  const buffer = getPlaybackBuffer(loop);
+  const straightSubdivision = getStraightSubdivisionSeconds();
+  const [longDuration, shortDuration] = getSwingPairDurations(bpm, swingAmount);
+  const targetDuration = subdivisionIndex % 2 === 0 ? longDuration : shortDuration;
+  const playbackRate = getSwingSubdivisionPlaybackRate(loop.playbackRate, bpm, swingAmount, subdivisionIndex);
+  let remainingBufferDuration = straightSubdivision * loop.playbackRate;
+  let nextOutputTime = outputTime;
+  let offset = bufferOffset % buffer.duration;
+
+  while (remainingBufferDuration > 0.0001) {
+    const chunkDuration = Math.min(remainingBufferDuration, buffer.duration - offset);
+    const sourceNode = audioContext.createBufferSource();
+    sourceNode.buffer = buffer;
+    sourceNode.playbackRate.value = playbackRate;
+
+    if (loop.pannerNode) {
+      sourceNode.connect(loop.pannerNode);
+    } else {
+      sourceNode.connect(loop.gainNode);
+    }
+
+    sourceNode.start(nextOutputTime, offset, chunkDuration);
+    trackLoopSource(loop, sourceNode);
+
+    const renderedDuration = chunkDuration / playbackRate;
+    nextOutputTime += renderedDuration;
+    remainingBufferDuration -= chunkDuration;
+    offset = 0;
+  }
+
+  loop.swingTimerId = window.setTimeout(() => {
+    scheduleSwungLoopSegment(
+      loop,
+      outputTime + targetDuration,
+      (bufferOffset + straightSubdivision * loop.playbackRate) % buffer.duration,
+      subdivisionIndex + 1,
+    );
+  }, Math.max(0, targetDuration * 1000 - 12));
+}
+
+function restartPlayingLoops() {
+  const activeLoops = loops.filter(loop => loop.playing);
+  if (activeLoops.length === 0) return;
+  activeLoops.forEach(loop => stopLoop(loop));
+  window.setTimeout(() => {
+    activeLoops.forEach(loop => playLoop(loop));
+  }, Math.ceil(FADE_TIME * 1000 * 6));
+}
+
+function playLoop(loop) {
+  if (!audioContext || loop.playing) return;
+  if (audioContext.state === 'suspended') audioContext.resume();
+
+  loop.playing = true;
+  loop.sourceNodes = [];
+
+  const { gainNode, pannerNode } = createLoopOutput(loop);
+  if (pannerNode) {
+    pannerNode.connect(gainNode);
+  }
   loop.gainNode = gainNode;
   loop.pannerNode = pannerNode;
-  loop.playing = true;
+
+  if (swingAmount > 0) {
+    scheduleSwungLoopSegment(loop, audioContext.currentTime, 0, 0);
+  } else {
+    const sourceNode = audioContext.createBufferSource();
+    sourceNode.buffer = getPlaybackBuffer(loop);
+    sourceNode.loop = true;
+    sourceNode.playbackRate.value = loop.playbackRate;
+
+    if (pannerNode) {
+      sourceNode.connect(pannerNode);
+    } else {
+      sourceNode.connect(gainNode);
+    }
+
+    sourceNode.start();
+    trackLoopSource(loop, sourceNode);
+  }
 
   const card = document.getElementById(`loop-card-${loop.id}`);
   if (card) {
@@ -422,8 +542,8 @@ function playLoop(loop) {
 
 function stopLoop(loop) {
   if (!loop.playing) return;
-  const node = loop.node;
   const gain = loop.gainNode;
+  clearLoopSwingTimer(loop);
 
   if (gain) {
     const t = audioContext.currentTime;
@@ -432,9 +552,12 @@ function stopLoop(loop) {
   }
   // Give the fade a few time-constants to decay before killing the source.
   const stopAt = audioContext.currentTime + FADE_TIME * 5;
-  try { node && node.stop(stopAt); } catch { /* already stopped */ }
+  for (const sourceNode of loop.sourceNodes) {
+    try { sourceNode.stop(stopAt); } catch { /* already stopped */ }
+  }
 
   loop.node = null;
+  loop.sourceNodes = [];
   loop.gainNode = null;
   loop.pannerNode = null;
   loop.playing = false;
@@ -589,6 +712,7 @@ function onBpmChange() {
     stopMetronome();
     startMetronome();
   }
+  if (swingAmount > 0) restartPlayingLoops();
 }
 
 function onBeatsPerBarChange() {
@@ -597,6 +721,21 @@ function onBeatsPerBarChange() {
   if (v > 12) v = 12;
   beatsPerBar = v;
   beatsPerBarInput.value = String(v);
+  if (metronomeEnabled) {
+    stopMetronome();
+    startMetronome();
+  }
+}
+
+function onSwingChange() {
+  swingAmount = clampSwing(parseInt(swingInput.value, 10));
+  swingInput.value = String(swingAmount);
+  swingValue.textContent = `${swingAmount}%`;
+  if (metronomeEnabled) {
+    stopMetronome();
+    startMetronome();
+  }
+  restartPlayingLoops();
 }
 
 function onMetronomeToggle(e) {
@@ -604,34 +743,66 @@ function onMetronomeToggle(e) {
   if (metronomeEnabled) startMetronome(); else stopMetronome();
 }
 
+function getMetronomeAccent(stepIndex) {
+  if (stepIndex % 2 === 1) return 'offbeat';
+  return Math.floor(stepIndex / 2) % beatsPerBar === 0 ? 'downbeat' : 'beat';
+}
+
 function startMetronome() {
-  if (metronomeInterval || !audioContext) return;
-  metronomeBeatIdx = 0;
-  playClick(true);
-  metronomeBeatIdx = 1;
-  const intervalMs = 60000 / bpm;
-  metronomeInterval = setInterval(() => {
-    const isDown = metronomeBeatIdx % beatsPerBar === 0;
-    playClick(isDown);
-    metronomeBeatIdx++;
-  }, intervalMs);
+  if (metronomeTimer || !audioContext) return;
+  if (swingAmount === 0) {
+    let beatIdx = 0;
+    playClick('downbeat');
+    beatIdx = 1;
+    const intervalMs = 60000 / bpm;
+    const tick = () => {
+      playClick(beatIdx % beatsPerBar === 0 ? 'downbeat' : 'beat');
+      beatIdx++;
+      metronomeTimer = window.setTimeout(tick, intervalMs);
+    };
+    metronomeTimer = window.setTimeout(tick, intervalMs);
+    return;
+  }
+  metronomeStepIdx = 0;
+  playClick(getMetronomeAccent(metronomeStepIdx));
+  metronomeStepIdx++;
+  const stepDurations = getSwingPairDurations(bpm, swingAmount);
+  const scheduleNextStep = () => {
+    if (!metronomeEnabled) return;
+    playClick(getMetronomeAccent(metronomeStepIdx));
+    const stepDuration = stepDurations[metronomeStepIdx % 2];
+    metronomeStepIdx++;
+    metronomeTimer = window.setTimeout(scheduleNextStep, stepDuration * 1000);
+  };
+  metronomeTimer = window.setTimeout(scheduleNextStep, stepDurations[0] * 1000);
 }
 
 function stopMetronome() {
-  if (metronomeInterval) {
-    clearInterval(metronomeInterval);
-    metronomeInterval = null;
+  if (metronomeTimer) {
+    clearTimeout(metronomeTimer);
+    metronomeTimer = null;
   }
 }
 
-function playClick(isDownbeat) {
+function playClick(accent) {
   if (!audioContext) return;
   const t = audioContext.currentTime;
   const osc = audioContext.createOscillator();
   const gain = audioContext.createGain();
-  osc.frequency.value = isDownbeat ? 1500 : 1000;
+  if (accent === 'downbeat') {
+    osc.frequency.value = 1500;
+  } else if (accent === 'beat') {
+    osc.frequency.value = 1200;
+  } else {
+    osc.frequency.value = 900;
+  }
   gain.gain.setValueAtTime(0, t);
-  gain.gain.linearRampToValueAtTime(METRONOME_VOLUME, t + 0.001);
+  const peak = accent === 'downbeat'
+    ? METRONOME_VOLUME
+    : accent === 'beat'
+      ? METRONOME_VOLUME * 0.8
+      : METRONOME_VOLUME * 0.45;
+  gain.gain.linearRampToValueAtTime(peak, t + 0.001);
   gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
   osc.connect(gain);
   // Route clicks directly to the destination so the master volume / mixer

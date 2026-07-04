@@ -132,6 +132,16 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
+#tempo-controls .field-range {
+  min-width: 180px;
+  flex: 1;
+}
+
+#tempo-controls input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
 .toggle input[type="checkbox"] {
   accent-color: var(--accent);
   width: 16px;

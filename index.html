@@ -32,6 +32,11 @@
         <span>Beats/bar</span>
         <input id="beats-per-bar-input" type="number" min="1" max="12" value="4" />
       </label>
+      <label class="field field-range">
+        <span>Swing</span>
+        <input id="swing-input" type="range" min="0" max="100" step="1" value="0" aria-label="Swing amount" />
+        <span id="swing-value">0%</span>
+      </label>
       <label class="toggle">
         <input id="metronome-toggle" type="checkbox" />
         <span>Metronome</span>
@@ -91,7 +96,7 @@
       <ol>
         <li>Click <strong>🎤 Allow Microphone</strong> and grant permission when prompted.</li>
         <li>Plug in headphones — without them your mic will re-record whatever is already playing back.</li>
-        <li>(Optional) Set your <strong>BPM</strong>, enable <strong>Metronome</strong>, <strong>Count-in</strong> and <strong>Quantize</strong> to keep layered loops locked to a bar.</li>
+        <li>(Optional) Set your <strong>BPM</strong>, dial in <strong>Swing</strong>, and enable <strong>Metronome</strong>, <strong>Count-in</strong> and <strong>Quantize</strong> to keep layered loops locked to a bar.</li>
       </ol>
 
       <h3>Recording a loop</h3>
@@ -134,6 +139,7 @@
       <h3>Tips</h3>
       <ul>
         <li>Enable <strong>Quantize</strong> for tight, bar-aligned layers that never drift.</li>
+        <li>Raise <strong>Swing</strong> for a shuffle feel — the metronome and loop playback will follow it together.</li>
         <li>Use <strong>Count-in</strong> so your first note isn't chopped off.</li>
         <li>Drop <strong>Speed</strong> below 1× for half-time pads, push above 1× for chipmunk leads.</li>
         <li>Use <strong>Pan</strong> to spread rhythm and lead parts across the stereo field — it instantly sounds bigger.</li>

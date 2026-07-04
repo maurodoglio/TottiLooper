@@ -31,6 +31,52 @@ export function panText(v) {
   return (v < 0 ? 'L' : 'R') + Math.round(Math.abs(v) * 100);
 }
 
+/**
+ * Clamp a swing amount to the supported 0…100% range.
+ *
+ * At 0% the feel is straight eighth notes (50/50). At 100% the feel reaches a
+ * triplet shuffle (roughly 67/33).
+ *
+ * @param {number} value
+ * @returns {number}
+ */
+export function clampSwing(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
+}
+
+/**
+ * Return the alternating eighth-note durations for the current swing amount.
+ *
+ * @param {number} bpm
+ * @param {number} swing
+ * @returns {[number, number]}
+ */
+export function getSwingPairDurations(bpm, swing) {
+  const beatSeconds = 60 / bpm;
+  const straightSubdivision = beatSeconds / 2;
+  const swingRatio = clampSwing(swing) / 100;
+  const delay = (beatSeconds / 6) * swingRatio;
+  return [straightSubdivision + delay, straightSubdivision - delay];
+}
+
+/**
+ * Return the playback rate needed to squeeze or stretch a straight eighth-note
+ * subdivision into the swung output duration.
+ *
+ * @param {number} basePlaybackRate
+ * @param {number} bpm
+ * @param {number} swing
+ * @param {number} subdivisionIndex
+ * @returns {number}
+ */
+export function getSwingSubdivisionPlaybackRate(basePlaybackRate, bpm, swing, subdivisionIndex) {
+  const [longDuration, shortDuration] = getSwingPairDurations(bpm, swing);
+  const targetDuration = subdivisionIndex % 2 === 0 ? longDuration : shortDuration;
+  const straightSubdivision = (60 / bpm) / 2;
+  return (straightSubdivision * basePlaybackRate) / targetDuration;
+}
+
 // ─── MIME type detection ──────────────────────────────────────────────────────
 
 /**

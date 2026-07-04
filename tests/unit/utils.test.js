@@ -9,6 +9,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   formatDuration,
   panText,
+  clampSwing,
+  getSwingPairDurations,
+  getSwingSubdivisionPlaybackRate,
   writeString,
   audioBufferToWav,
   getSupportedMimeType,
@@ -90,6 +93,52 @@ describe('panText', () => {
   it('rounds the percentage to the nearest integer', () => {
     expect(panText(0.333)).toBe('R33');
     expect(panText(-0.666)).toBe('L67');
+  });
+});
+
+// ─── swing helpers ────────────────────────────────────────────────────────────
+
+describe('clampSwing', () => {
+  it('clamps invalid values to 0', () => {
+    expect(clampSwing(NaN)).toBe(0);
+    expect(clampSwing(-25)).toBe(0);
+  });
+
+  it('clamps values above 100 down to 100', () => {
+    expect(clampSwing(140)).toBe(100);
+  });
+
+  it('returns in-range values unchanged', () => {
+    expect(clampSwing(42)).toBe(42);
+  });
+});
+
+describe('getSwingPairDurations', () => {
+  it('returns even eighth notes when swing is 0', () => {
+    expect(getSwingPairDurations(120, 0)).toEqual([0.25, 0.25]);
+  });
+
+  it('returns a triplet shuffle at 100% swing', () => {
+    const [first, second] = getSwingPairDurations(120, 100);
+    expect(first).toBeCloseTo(1 / 3, 8);
+    expect(second).toBeCloseTo(1 / 6, 8);
+  });
+
+  it('keeps the pair total equal to one beat', () => {
+    const [first, second] = getSwingPairDurations(90, 55);
+    expect(first + second).toBeCloseTo(60 / 90, 8);
+  });
+});
+
+describe('getSwingSubdivisionPlaybackRate', () => {
+  it('returns the base playback rate when swing is 0', () => {
+    expect(getSwingSubdivisionPlaybackRate(1, 120, 0, 0)).toBe(1);
+    expect(getSwingSubdivisionPlaybackRate(1.25, 120, 0, 1)).toBe(1.25);
+  });
+
+  it('slows the first subdivision and speeds the second at high swing', () => {
+    expect(getSwingSubdivisionPlaybackRate(1, 120, 100, 0)).toBeCloseTo(0.75, 8);
+    expect(getSwingSubdivisionPlaybackRate(1, 120, 100, 1)).toBeCloseTo(1.5, 8);
   });
 });
 
