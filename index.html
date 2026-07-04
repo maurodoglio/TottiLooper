@@ -96,9 +96,9 @@
 
       <h3>Recording a loop</h3>
       <ol>
-        <li>Press <strong>● REC</strong> (or the <kbd>Space</kbd> key) to start. Watch the input meter to make sure your signal is healthy.</li>
+        <li>Press <strong>● REC</strong> (or <span id="shortcut-record-inline"></span>) to start. Watch the input meter to make sure your signal is healthy.</li>
         <li>Play your riff.</li>
-        <li>Press <strong>■ STOP</strong> (or <kbd>Space</kbd> again) when finished — the loop appears in the list and is ready to play.</li>
+        <li>Press <strong>■ STOP</strong> (or the same shortcut again) when finished — the loop appears in the list and is ready to play.</li>
         <li>Press <strong>■ DISCARD</strong> to abandon the current take without saving it.</li>
       </ol>
 
@@ -109,7 +109,7 @@
         <li><strong>S</strong> – solo this loop (everything not soloed is silenced).</li>
         <li><strong>⇄</strong> – play the loop in reverse.</li>
         <li><strong>⬇</strong> – download this loop as a WAV file.</li>
-        <li><strong>✕</strong> – delete the loop. Use <strong>↶ Undo</strong> or <kbd>Ctrl</kbd>+<kbd>Z</kbd> to bring it back.</li>
+        <li><strong>✕</strong> – delete the loop. Use <strong>↶ Undo</strong> or <span id="shortcut-undo-inline"></span> to bring it back.</li>
         <li><strong>Vol / Pan / Speed</strong> sliders – mix each loop and warp its pitch via playback rate.</li>
         <li>Click the <strong>loop name</strong> field to rename it (e.g. "Bass", "Chords", "Beatbox").</li>
       </ul>
@@ -122,14 +122,12 @@
       </ul>
 
       <h3>Keyboard shortcuts</h3>
-      <ul class="shortcuts">
-        <li><kbd>Space</kbd> – start / stop recording</li>
-        <li><kbd>Enter</kbd> – play all loops</li>
-        <li><kbd>Esc</kbd> – stop all loops</li>
-        <li><kbd>1</kbd>…<kbd>9</kbd> – toggle loops 1 through 9</li>
-        <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> (or <kbd>⌘</kbd>+<kbd>Z</kbd>) – undo the last delete</li>
-        <li><kbd>?</kbd> – open this help</li>
-      </ul>
+      <ul id="shortcut-list" class="shortcuts"></ul>
+
+      <h3>Customize shortcuts</h3>
+      <p class="shortcut-help-text">Click a field, then press the shortcut you want to use. Press Backspace or Delete to clear a binding.</p>
+      <div id="shortcut-editor" class="shortcut-editor"></div>
+      <button id="btn-reset-shortcuts" type="button" class="btn-secondary shortcut-reset">Reset defaults</button>
 
       <h3>Tips</h3>
       <ul>

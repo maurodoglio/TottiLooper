@@ -16,6 +16,12 @@ import {
   quantizeBuffer as _quantizeBuffer,
   reverseBuffer as _reverseBuffer,
 } from './utils.js';
+import {
+  DEFAULT_SHORTCUTS,
+  eventToShortcut,
+  loadShortcutMappings,
+  saveShortcutMappings,
+} from './shortcuts.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -107,6 +113,30 @@ const emptyState         = $('empty-state');
 const btnHelp            = $('btn-help');
 const helpModal          = $('help-modal');
 const helpCloseButton    = $('help-close');
+const shortcutList       = $('shortcut-list');
+const shortcutEditor     = $('shortcut-editor');
+const btnResetShortcuts  = $('btn-reset-shortcuts');
+const shortcutRecordHint = $('shortcut-record-inline');
+const shortcutUndoHint   = $('shortcut-undo-inline');
+
+const shortcutDefinitions = [
+  { action: 'toggleRecord', label: 'Start / stop recording' },
+  { action: 'playAll', label: 'Play all loops' },
+  { action: 'stopAll', label: 'Stop all loops' },
+  { action: 'undoDelete', label: 'Undo the last delete' },
+  { action: 'openHelp', label: 'Open help' },
+  { action: 'toggleLoop1', label: 'Toggle loop 1' },
+  { action: 'toggleLoop2', label: 'Toggle loop 2' },
+  { action: 'toggleLoop3', label: 'Toggle loop 3' },
+  { action: 'toggleLoop4', label: 'Toggle loop 4' },
+  { action: 'toggleLoop5', label: 'Toggle loop 5' },
+  { action: 'toggleLoop6', label: 'Toggle loop 6' },
+  { action: 'toggleLoop7', label: 'Toggle loop 7' },
+  { action: 'toggleLoop8', label: 'Toggle loop 8' },
+  { action: 'toggleLoop9', label: 'Toggle loop 9' },
+];
+
+let shortcuts = { ...DEFAULT_SHORTCUTS };
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
@@ -135,7 +165,10 @@ function init() {
   btnHelp.addEventListener('click', openHelp);
   helpCloseButton.addEventListener('click', closeHelp);
   helpModal.addEventListener('click', (e) => { if (e.target === helpModal) closeHelp(); });
+  btnResetShortcuts.addEventListener('click', resetShortcuts);
 
+  shortcuts = loadShortcutMappings();
+  renderShortcutSettings();
   document.addEventListener('keydown', onGlobalKeydown);
 
   updateUndoButton();
@@ -918,7 +951,8 @@ function onGlobalKeydown(e) {
     return;
   }
 
-  if (e.key === '?') {
+  const action = findShortcutAction(e);
+  if (action === 'openHelp') {
     e.preventDefault();
     openHelp();
     return;
@@ -926,29 +960,27 @@ function onGlobalKeydown(e) {
 
   if (!audioContext) return;
 
-  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
-    e.preventDefault();
-    undoDelete();
-    return;
-  }
-
-  switch (e.key) {
-    case ' ':
+  switch (action) {
+    case 'toggleRecord':
       e.preventDefault();
       handleRecordButton();
       break;
-    case 'Enter':
+    case 'playAll':
       e.preventDefault();
       playAllLoops();
       break;
-    case 'Escape':
+    case 'stopAll':
       e.preventDefault();
       stopAllLoops();
       break;
+    case 'undoDelete':
+      e.preventDefault();
+      undoDelete();
+      break;
     default:
-      if (/^[1-9]$/.test(e.key)) {
+      if (action && action.startsWith('toggleLoop')) {
         e.preventDefault();
-        const idx = parseInt(e.key, 10) - 1;
+        const idx = parseInt(action.slice(-1), 10) - 1;
         const loop = loops[idx];
         if (loop) { loop.playing ? stopLoop(loop) : playLoop(loop); }
       }
@@ -961,6 +993,110 @@ function openHelp()  { helpModal.classList.remove('hidden'); }
 function closeHelp() { helpModal.classList.add('hidden'); }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function findShortcutAction(event) {
+  const shortcut = eventToShortcut(event);
+  if (!shortcut) return '';
+
+  for (const definition of shortcutDefinitions) {
+    if (shortcuts[definition.action] === shortcut) return definition.action;
+  }
+
+  return '';
+}
+
+function shortcutToKbdHtml(shortcut) {
+  if (!shortcut) return '<span class="shortcut-empty">Unassigned</span>';
+
+  return shortcut
+    .split('+')
+    .map((part) => `<kbd>${part === 'Mod' ? 'Ctrl/⌘' : part}</kbd>`)
+    .join('+');
+}
+
+function renderShortcutSettings() {
+  shortcutList.innerHTML = '';
+  shortcutEditor.innerHTML = '';
+
+  for (const definition of shortcutDefinitions) {
+    const shortcut = shortcuts[definition.action];
+
+    const listItem = document.createElement('li');
+    listItem.innerHTML = `${shortcutToKbdHtml(shortcut)} – ${definition.label.toLowerCase()}`;
+    shortcutList.appendChild(listItem);
+
+    const label = document.createElement('label');
+    label.className = 'shortcut-field';
+
+    const text = document.createElement('span');
+    text.textContent = definition.label;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.readOnly = true;
+    input.value = shortcut;
+    input.placeholder = 'Unassigned';
+    input.dataset.action = definition.action;
+    input.setAttribute('aria-label', `${definition.label} shortcut`);
+    input.addEventListener('keydown', onShortcutInputKeydown);
+
+    label.append(text, input);
+    shortcutEditor.appendChild(label);
+  }
+
+  shortcutRecordHint.innerHTML = shortcutToKbdHtml(shortcuts.toggleRecord);
+  shortcutUndoHint.innerHTML = shortcutToKbdHtml(shortcuts.undoDelete);
+  btnHelp.title = `Help (press ${shortcuts.openHelp || 'unassigned'})`;
+  btnUndo.title = `Undo delete (${shortcuts.undoDelete || 'unassigned'})`;
+}
+
+function onShortcutInputKeydown(e) {
+  if (e.key === 'Tab') return;
+
+  e.preventDefault();
+  const action = e.currentTarget.dataset.action;
+  if (!action) return;
+
+  if (e.key === 'Backspace' || e.key === 'Delete') {
+    shortcuts[action] = '';
+    persistShortcuts();
+    showInfo(`Cleared shortcut for ${getShortcutLabel(action)}.`);
+    return;
+  }
+
+  const shortcut = eventToShortcut(e);
+  if (!shortcut) {
+    showError('Shortcut must include a non-modifier key.');
+    return;
+  }
+
+  const conflict = shortcutDefinitions.find((definition) => (
+    definition.action !== action && shortcuts[definition.action] === shortcut
+  ));
+  if (conflict) {
+    showError(`${shortcut} is already assigned to ${conflict.label.toLowerCase()}.`);
+    return;
+  }
+
+  shortcuts[action] = shortcut;
+  persistShortcuts();
+  showInfo(`Saved shortcut for ${getShortcutLabel(action)}.`);
+}
+
+function persistShortcuts() {
+  saveShortcutMappings(shortcuts);
+  renderShortcutSettings();
+}
+
+function resetShortcuts() {
+  shortcuts = { ...DEFAULT_SHORTCUTS };
+  persistShortcuts();
+  showInfo('Keyboard shortcuts reset to defaults.');
+}
+
+function getShortcutLabel(action) {
+  return shortcutDefinitions.find((definition) => definition.action === action)?.label || action;
+}
 
 function setStatus(msg) {
   statusText.textContent = msg;
