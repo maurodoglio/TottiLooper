@@ -380,6 +380,10 @@ test.describe('recording flow', () => {
 // ─── Loop controls ────────────────────────────────────────────────────────────
 
 test.describe('loop controls', () => {
+  async function getPlayheadLeftPercent(page) {
+    return page.locator('.loop-playhead').evaluate((el) => parseFloat(el.style.left || '0'));
+  }
+
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.click('#btn-request-mic');
@@ -403,6 +407,37 @@ test.describe('loop controls', () => {
 
   test('loop card shows the duration', async ({ page }) => {
     await expect(page.locator('.loop-duration')).toBeVisible();
+  });
+
+  test('waveform shows an animated playhead during playback', async ({ page }) => {
+    const playhead = page.locator('.loop-playhead');
+    await page.locator('.btn-play').click();
+    await expect(playhead).toHaveClass(/active/);
+
+    const before = await getPlayheadLeftPercent(page);
+    await expect
+      .poll(async () => {
+        const after = await getPlayheadLeftPercent(page);
+        return after >= before ? after - before : after + 100 - before;
+      }, { timeout: 1000 })
+      .toBeGreaterThan(5);
+  });
+
+  test('clicking the waveform scrubs the loop position', async ({ page }) => {
+    const waveform = page.locator('.loop-waveform');
+    const box = await waveform.boundingBox();
+    if (!box) throw new Error('Waveform was not rendered');
+
+    await waveform.click({ position: { x: box.width * 0.75, y: box.height / 2 } });
+    await expect
+      .poll(() => getPlayheadLeftPercent(page), { timeout: 1000 })
+      .toBeGreaterThan(65);
+
+    await page.locator('.btn-play').click();
+    await expect(page.locator('.loop-playhead')).toHaveClass(/active/);
+    await expect
+      .poll(() => getPlayheadLeftPercent(page), { timeout: 1000 })
+      .toBeGreaterThan(65);
   });
 
   test('existing loop can be re-quantized to the current BPM grid', async ({ page }) => {
