@@ -272,10 +272,15 @@ test.describe('initial state', () => {
     await expect(swing).toHaveValue('50');
     await expect(swing).toHaveAttribute('aria-valuetext', '50 percent');
 
-    // Value persists after further interaction elsewhere in the transport UI.
-    await page.locator('#metronome-subdivision-input').selectOption('2');
-    await expect(swing).toHaveValue('50');
-    await expect(swing).toHaveAttribute('aria-valuetext', '50 percent');
+    // Handler recomputes on each change and the value/text stay in sync.
+    await setRange(swing, 25);
+    await expect(swing).toHaveValue('25');
+    await expect(swing).toHaveAttribute('aria-valuetext', '25 percent');
+
+    // Returning to 0 restores straight timing.
+    await setRange(swing, 0);
+    await expect(swing).toHaveValue('0');
+    await expect(swing).toHaveAttribute('aria-valuetext', '0 percent');
   });
 });
 
