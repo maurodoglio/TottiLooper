@@ -173,6 +173,28 @@ main {
   flex-wrap: wrap;
 }
 
+/* ── Input controls ── */
+#input-controls .field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 180px;
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+#input-controls select {
+  width: 100%;
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+}
+
 /* ── Tempo controls ── */
 #tempo-controls .field,
 #tempo-controls .toggle {
@@ -274,6 +296,34 @@ main {
   transition: width 0.05s linear;
 }
 
+.record-monitoring,
+.monitor-offset-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.record-monitoring {
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.monitor-offset-field input[type="number"] {
+  width: 72px;
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.monitor-offset-field input[type="number"]:disabled {
+  opacity: 0.6;
+}
+
 /* ── Master controls ── */
 #master-controls .master-volume-field {
   flex: 1;
@@ -283,6 +333,67 @@ main {
 #master-controls input[type="range"] {
   flex: 1;
   width: 100%;
+}
+
+/* ── MIDI controls ── */
+#midi-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.midi-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.midi-header h2 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.midi-header p {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.midi-bindings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.midi-binding-row,
+.loop-midi {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.midi-binding-label {
+  color: var(--text);
+  font-size: 0.85rem;
+  min-width: 96px;
+}
+
+.midi-binding-value {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  min-width: 120px;
+  flex: 1;
+}
+
+.btn-secondary.learning {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* ── Buttons ── */
@@ -494,6 +605,16 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.loop-midi {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.loop-midi-title {
+  color: var(--text);
+  font-weight: 600;
+}
+
 /* Faders row */
 .loop-faders {
   display: flex;
@@ -634,6 +755,49 @@ button:disabled {
 
 .shortcuts { list-style: none; padding-left: 0; }
 .shortcuts li { margin-bottom: 6px; }
+
+.shortcut-help-text {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+
+.shortcut-editor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px 14px;
+  margin-top: 12px;
+}
+
+.shortcut-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.shortcut-field input {
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+}
+
+.shortcut-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.shortcut-reset {
+  margin-top: 14px;
+}
+
+.shortcut-empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
 
 .help-close {
   position: absolute;
