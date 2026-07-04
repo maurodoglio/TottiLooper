@@ -339,7 +339,7 @@ describe('fitBufferToBars', () => {
       length: samples,
       sampleRate,
       duration: samples / sampleRate,
-      getChannelData: (ch) => (ch === 0 ? data : new Float32Array(samples)),
+      getChannelData: () => data,
     };
   }
 
@@ -369,7 +369,18 @@ describe('fitBufferToBars', () => {
       bpm,
       beatsPerBar,
       audioContext: ctx,
-    })).toThrow('bars must be at least 1, got 0');
+    })).toThrow('bars must be a whole number >= 1, got 0');
+  });
+
+  it('rejects fractional bar counts', () => {
+    const src = makeBuffer(barSamples);
+
+    expect(() => fitBufferToBars(src, {
+      bars: 1.5,
+      bpm,
+      beatsPerBar,
+      audioContext: ctx,
+    })).toThrow('bars must be a whole number >= 1, got 1.5');
   });
 });
 

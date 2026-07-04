@@ -75,10 +75,20 @@ export function effectiveGain(loop, loops) {
  * @returns {AudioBuffer}
  */
 export function quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext }) {
-  const beatSeconds = 60 / bpm;
-  const barSeconds  = beatSeconds * beatsPerBar;
+  const barSeconds  = barsToDurationSeconds(1, { bpm, beatsPerBar });
   const numBars     = Math.max(1, Math.round(buffer.duration / barSeconds));
   return fitBufferToBars(buffer, { bars: numBars, bpm, beatsPerBar, audioContext });
+}
+
+/**
+ * Convert a whole number of bars to seconds for the current tempo grid.
+ *
+ * @param {number} bars
+ * @param {{ bpm: number, beatsPerBar: number }} opts
+ * @returns {number}
+ */
+export function barsToDurationSeconds(bars, { bpm, beatsPerBar }) {
+  return bars * (60 / bpm) * beatsPerBar;
 }
 
 /**
@@ -90,13 +100,12 @@ export function quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext }) {
  * @returns {AudioBuffer}
  */
 export function fitBufferToBars(buffer, { bars, bpm, beatsPerBar, audioContext }) {
-  if (!Number.isFinite(bars) || bars < 1) {
-    throw new Error(`bars must be at least 1, got ${bars}`);
+  const wholeBars = Math.round(bars);
+  if (!Number.isFinite(bars) || wholeBars < 1 || wholeBars !== bars) {
+    throw new Error(`bars must be a whole number >= 1, got ${bars}`);
   }
 
-  const beatSeconds = 60 / bpm;
-  const barSeconds  = beatSeconds * beatsPerBar;
-  const targetDur   = Math.round(bars) * barSeconds;
+  const targetDur   = barsToDurationSeconds(wholeBars, { bpm, beatsPerBar });
   const targetLen   = Math.round(targetDur * buffer.sampleRate);
 
   return resizeBuffer(buffer, targetLen, audioContext);

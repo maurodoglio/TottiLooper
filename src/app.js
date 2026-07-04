@@ -11,6 +11,7 @@ import {
   formatDuration,
   panText,
   audioBufferToWav,
+  barsToDurationSeconds as _barsToDurationSeconds,
   getSupportedMimeType,
   effectiveGain as computeEffectiveGain,
   fitBufferToBars as _fitBufferToBars,
@@ -354,6 +355,13 @@ function fitBufferToBars(buffer, bars) {
     beatsPerBar: currentRecordingBeatsPerBar,
     audioContext,
   });
+}
+
+function barsToDurationMs(bars, currentBpm, currentBeatsPerBar) {
+  return Math.round(_barsToDurationSeconds(bars, {
+    bpm: currentBpm,
+    beatsPerBar: currentBeatsPerBar,
+  }) * 1000);
 }
 
 // ─── Loop management ──────────────────────────────────────────────────────────
@@ -1022,8 +1030,10 @@ function scheduleRecordingAutoStop() {
   clearRecordingAutoStop();
   if (currentRecordingTargetBars < 1) return;
 
-  const durationMs = Math.round(
-    currentRecordingTargetBars * currentRecordingBeatsPerBar * (60000 / currentRecordingBpm),
+  const durationMs = barsToDurationMs(
+    currentRecordingTargetBars,
+    currentRecordingBpm,
+    currentRecordingBeatsPerBar,
   );
   recordAutoStopTimeout = setTimeout(() => {
     recordAutoStopTimeout = null;
