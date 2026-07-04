@@ -21,12 +21,14 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const FADE_TIME        = 0.015; // seconds – short fades to avoid clicks on start/stop
+const IMMEDIATE_START_THRESHOLD = 0.01;
 const METRONOME_VOLUME = 0.3;
 const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const DEFAULT_SONG_BARS = 8;
 const MAX_SONG_BARS     = 128;
+const SONG_START_DELAY  = 0.05;
 const MAX_UNDO         = 20;
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -431,7 +433,7 @@ function playLoop(loop, options = {}) {
     loop.pannerNode = null;
     setLoopPlayingState(loop, false);
   };
-  if (startTime <= audioContext.currentTime + 0.01) {
+  if (startTime <= audioContext.currentTime + IMMEDIATE_START_THRESHOLD) {
     setLoopPlayingState(loop, true);
   } else {
     setTimeout(() => {
@@ -654,7 +656,7 @@ function playSongArrangement() {
   stopAllLoops();
 
   const barSeconds = (60 / bpm) * beatsPerBar;
-  const startTime = audioContext.currentTime + 0.05;
+  const startTime = audioContext.currentTime + SONG_START_DELAY;
 
   loops.forEach((loop) => {
     applySongTimeline(loop, loop.songStartBar, loop.songBarCount);
@@ -667,7 +669,7 @@ function playSongArrangement() {
   songEndTimeout = setTimeout(() => {
     songEndTimeout = null;
     setStatus('Song arrangement finished.');
-  }, Math.ceil((0.05 + (songBars * barSeconds)) * 1000));
+  }, Math.ceil((SONG_START_DELAY + (songBars * barSeconds)) * 1000));
   setStatus('Playing song arrangement…');
 }
 
