@@ -40,9 +40,14 @@ describe('buildDrumLoopPlan', () => {
     expect(plan.hits.filter(hit => hit.sample !== 'hat').map(hit => hit.beat)).toEqual([2, 2]);
   });
 
-  it('avoids stacking reggae kick and snare on short bars', () => {
+  it('omits the reggae snare on 2-beat bars', () => {
     const plan = buildDrumLoopPlan({ style: 'reggae', bpm: 90, beatsPerBar: 2 });
     expect(plan.hits.filter(hit => hit.sample === 'kick').map(hit => hit.beat)).toEqual([1]);
     expect(plan.hits.filter(hit => hit.sample === 'snare')).toHaveLength(0);
+  });
+
+  it('keeps the reggae one-drop stacked on beat 3 for 3-beat bars', () => {
+    const plan = buildDrumLoopPlan({ style: 'reggae', bpm: 90, beatsPerBar: 3 });
+    expect(plan.hits.filter(hit => hit.sample !== 'hat').map(hit => hit.beat)).toEqual([2, 2]);
   });
 });
