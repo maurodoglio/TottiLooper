@@ -19,6 +19,9 @@
   --text: #f0f0f0;
   --text-muted: #888;
   --border: #333;
+  --danger-bg: #7b1f1f;
+  --danger-border: #a72828;
+  --danger-hover: #962626;
   --radius: 8px;
   --shadow: 0 2px 8px rgba(0,0,0,0.5);
 }
@@ -255,13 +258,13 @@ button:disabled {
 }
 
 .btn-record.recording {
-  background-color: #7b1f1f;
+  background-color: var(--danger-bg);
   color: #fff;
-  border: 2px solid #a72828;
+  border: 2px solid var(--danger-border);
 }
 
 .btn-record.recording:hover:not(:disabled) {
-  background-color: #7b1f1f;
+  background-color: var(--danger-bg);
 }
 
 .btn-stop {
@@ -293,15 +296,15 @@ button:disabled {
 }
 
 .btn-danger {
-  background-color: #7b1f1f;
+  background-color: var(--danger-bg);
   color: #fff;
-  border: 1px solid #a72828;
+  border: 1px solid var(--danger-border);
   padding: 6px 12px;
   font-size: 0.8rem;
 }
 
 .btn-danger:hover:not(:disabled) {
-  background-color: #962626;
+  background-color: var(--danger-hover);
 }
 
 .btn-icon {

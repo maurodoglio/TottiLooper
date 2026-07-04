@@ -17,24 +17,24 @@ async function setRangeValue(locator, value) {
 }
 
 async function expectContrastRatioAtLeast(locator, minimumRatio) {
-  const ratio = await locator.evaluate((el) => {
-    const toRgb = (value) => (value.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
-    const toLinear = (channel) => {
-      const c = channel / 255;
-      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-    };
-    const luminance = ([r, g, b]) =>
-      0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
-    const contrast = (a, b) => {
-      const [lighter, darker] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-      return (lighter + 0.05) / (darker + 0.05);
-    };
+  await expect
+    .poll(async () => locator.evaluate((el) => {
+      const toRgb = (value) => (value.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
+      const toLinear = (channel) => {
+        const c = channel / 255;
+        return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      };
+      const luminance = ([r, g, b]) =>
+        0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+      const contrast = (a, b) => {
+        const [lighter, darker] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+        return (lighter + 0.05) / (darker + 0.05);
+      };
 
-    const styles = globalThis.getComputedStyle(el);
-    return contrast(toRgb(styles.color), toRgb(styles.backgroundColor));
-  });
-
-  expect(ratio).toBeGreaterThanOrEqual(minimumRatio);
+      const styles = globalThis.getComputedStyle(el);
+      return contrast(toRgb(styles.color), toRgb(styles.backgroundColor));
+    }))
+    .toBeGreaterThanOrEqual(minimumRatio);
 }
 
 // ─── Initial page state ───────────────────────────────────────────────────────
@@ -183,7 +183,6 @@ test.describe('after microphone access', () => {
     await expectContrastRatioAtLeast(page.locator('#btn-play-all'), 4.5);
 
     await page.click('#btn-record');
-    await page.waitForTimeout(200);
     await expectContrastRatioAtLeast(page.locator('#btn-record'), 4.5);
   });
 });
@@ -315,7 +314,6 @@ test.describe('loop controls', () => {
   test('active loop controls and delete button meet text contrast requirements', async ({ page }) => {
     await page.locator('.btn-mute').click();
     await page.locator('.btn-reverse').click();
-    await page.waitForTimeout(200);
 
     await expectContrastRatioAtLeast(page.locator('.btn-danger'), 4.5);
     await expectContrastRatioAtLeast(page.locator('.btn-mute'), 4.5);
