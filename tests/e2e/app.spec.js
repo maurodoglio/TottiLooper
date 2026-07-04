@@ -262,6 +262,10 @@ test.describe('after microphone access', () => {
     await expect(page.locator('#master-volume')).toHaveValue('1');
   });
 
+  test('now-playing indicator starts idle', async ({ page }) => {
+    await expect(page.locator('#playback-position')).toHaveText('Now playing: —');
+  });
+
   test('MIDI click export toggle is available', async ({ page }) => {
     await expect(page.locator('#export-midi-toggle')).toBeVisible();
   });
@@ -467,6 +471,16 @@ test.describe('loop controls', () => {
     await page.locator('.btn-danger').click();
     await page.keyboard.press('Control+z');
     await expect(page.locator('.loop-card')).toBeVisible();
+  });
+
+  test('now-playing indicator updates while a loop is playing', async ({ page }) => {
+    const position = page.locator('#playback-position');
+    await expect(position).toHaveText('Now playing: —');
+    await page.locator('#bpm-input').fill('240');
+    await page.locator('#bpm-input').press('Tab');
+    await page.locator('.btn-play').click();
+    await expect(position).toContainText('Bar 1');
+    await expect.poll(async () => await position.textContent()).toMatch(/Beat [2-4]/);
   });
 });
 

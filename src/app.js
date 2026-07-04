@@ -9,6 +9,7 @@
 
 import {
   formatDuration,
+  formatBarBeatPosition,
   panText,
   parseMidiMessage,
   createMidiBinding,
@@ -42,6 +43,8 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
+const POSITION_UPDATE_INTERVAL_MS = 50;
+const IDLE_PLAYBACK_POSITION = 'Now playing: —';
 const THEME_STORAGE_KEY = 'tottilooper-theme';
 const GAMEPAD_RECORD_BUTTON = 0;
 const GAMEPAD_PLAY_BUTTON   = 1;
@@ -62,6 +65,8 @@ let isRecording    = false;
 let timerInterval  = null;
 let recordStartTime = 0;
 let loopCounter    = 0;
+let playbackPositionInterval = null;
+let transportStartTime = null;
 let nextLoopCursor = 0;
 
 let masterGainNode = null;
@@ -160,6 +165,7 @@ const btnShareSession    = $('btn-share-session');
 const exportMidiToggle   = $('export-midi-toggle');
 const btnUndo            = $('btn-undo');
 const masterVolumeInput  = $('master-volume');
+const playbackPosition   = $('playback-position');
 const midiControls       = $('midi-controls');
 const midiStatus         = $('midi-status');
 const btnEnableMidi      = $('btn-enable-midi');
@@ -206,6 +212,7 @@ function init() {
   midiControls.classList.add('hidden');
   loopsSection.classList.add('hidden');
   tempoControls.classList.add('hidden');
+  updatePlaybackPosition();
 
   btnThemeToggle.addEventListener('click', toggleTheme);
   btnRequestMic.addEventListener('click', requestMicrophoneAccess);
@@ -327,6 +334,7 @@ async function requestMicrophoneAccess() {
     masterControls.classList.remove('hidden');
     midiControls.classList.remove('hidden');
     loopsSection.classList.remove('hidden');
+    updatePlaybackPosition();
     setStatus('Ready. Press ● REC to start recording.');
   } catch (err) {
     showError('Microphone access denied. Please allow microphone access and reload.');
@@ -798,14 +806,51 @@ function reverseBuffer(buffer) {
   return _reverseBuffer(buffer, audioContext);
 }
 
-function playLoop(loop, startOffset) {
+function getLoopStartOffset(loop, buffer, startTime) {
+  if (transportStartTime === null || buffer.duration <= 0) return 0;
+  const elapsed = Math.max(0, startTime - transportStartTime);
+  return (elapsed * loop.playbackRate) % buffer.duration;
+}
+
+function hasActiveLoops() {
+  return loops.some(loop => loop.playing);
+}
+
+function startPlaybackPositionTimer() {
+  if (playbackPositionInterval || !playbackPosition) return;
+  playbackPositionInterval = setInterval(updatePlaybackPosition, POSITION_UPDATE_INTERVAL_MS);
+}
+
+function stopPlaybackPositionTimer() {
+  if (!playbackPositionInterval) return;
+  clearInterval(playbackPositionInterval);
+  playbackPositionInterval = null;
+}
+
+function updatePlaybackPosition() {
+  if (!playbackPosition) return;
+  if (!audioContext || transportStartTime === null || !hasActiveLoops()) {
+    playbackPosition.textContent = IDLE_PLAYBACK_POSITION;
+    return;
+  }
+  const elapsed = Math.max(0, audioContext.currentTime - transportStartTime);
+  playbackPosition.textContent = `Now playing: ${formatBarBeatPosition(elapsed, bpm, beatsPerBar)}`;
+}
+
+function playLoop(loop, arg = {}) {
+  const options = typeof arg === 'number' ? { startOffset: arg } : (arg || {});
   if (!audioContext || loop.playing) return;
   if (audioContext.state === 'suspended') audioContext.resume();
+  const startAt = options.startAt ?? (audioContext.currentTime + 0.02);
+  const isNewTransport = transportStartTime === null;
+  if (isNewTransport) {
+    transportStartTime = startAt;
+  }
 
   const gainNode = audioContext.createGain();
   const targetGain = effectiveGain(loop);
   gainNode.gain.value = 0;
-  gainNode.gain.setTargetAtTime(targetGain, audioContext.currentTime, FADE_TIME);
+  gainNode.gain.setTargetAtTime(targetGain, startAt, FADE_TIME);
 
   const pannerNode = audioContext.createStereoPanner
     ? audioContext.createStereoPanner()
@@ -813,7 +858,8 @@ function playLoop(loop, startOffset) {
   if (pannerNode) pannerNode.pan.value = loop.pan;
 
   const sourceNode = audioContext.createBufferSource();
-  sourceNode.buffer = getPlaybackBuffer(loop);
+  const buffer = getPlaybackBuffer(loop);
+  sourceNode.buffer = buffer;
   sourceNode.loop = true;
   sourceNode.playbackRate.value = loop.playbackRate;
 
@@ -825,8 +871,15 @@ function playLoop(loop, startOffset) {
   }
   gainNode.connect(masterGainNode);
 
-  const offset = normalizeLoopOffset(loop, startOffset ?? loop.playOffset);
-  sourceNode.start(audioContext.currentTime, offset);
+  let offset;
+  if (options.startOffset != null) {
+    offset = normalizeLoopOffset(loop, options.startOffset);
+  } else if (options.startAt != null) {
+    offset = normalizeLoopOffset(loop, getLoopStartOffset(loop, buffer, startAt));
+  } else {
+    offset = normalizeLoopOffset(loop, loop.playOffset);
+  }
+  sourceNode.start(startAt, offset);
 
   loop.node = sourceNode;
   loop.gainNode = gainNode;
@@ -849,6 +902,8 @@ function playLoop(loop, startOffset) {
   updateLoopPlayhead(loop, offset);
   startLoopPlayheadAnimation(loop);
   refreshAllGains();
+  startPlaybackPositionTimer();
+  updatePlaybackPosition();
 }
 
 function stopLoop(loop, options = {}) {
@@ -890,6 +945,11 @@ function stopLoop(loop, options = {}) {
       btn.setAttribute('aria-label', 'Play loop');
     }
   }
+  if (!hasActiveLoops()) {
+    transportStartTime = null;
+    stopPlaybackPositionTimer();
+  }
+  updatePlaybackPosition();
 }
 
 function deleteLoop(loopId) {
@@ -1034,7 +1094,13 @@ function renameLoop(loop, newName) {
 }
 
 function playAllLoops() {
-  loops.forEach(loop => playLoop(loop));
+  if (!audioContext) return;
+  if (audioContext.state === 'suspended') audioContext.resume();
+  const startAt = audioContext.currentTime + 0.02;
+  if (!hasActiveLoops()) {
+    transportStartTime = startAt;
+  }
+  loops.forEach(loop => playLoop(loop, { startAt }));
 }
 
 function stopAllLoops() {
@@ -1228,6 +1294,7 @@ function onBpmChange() {
   v = Math.max(MIN_BPM, Math.min(MAX_BPM, v));
   bpm = v;
   bpmInput.value = String(v);
+  updatePlaybackPosition();
   if (metronomeEnabled) {
     stopMetronome();
     startMetronome();
@@ -1240,6 +1307,7 @@ function onBeatsPerBarChange() {
   if (v > 12) v = 12;
   beatsPerBar = v;
   beatsPerBarInput.value = String(v);
+  updatePlaybackPosition();
 }
 
 function onMetronomeToggle(e) {

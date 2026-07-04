@@ -39,6 +39,40 @@ export function panText(v) {
 }
 
 /**
+ * Convert elapsed transport time into a 1-based bar/beat position.
+ *
+ * @param {number} elapsedSeconds
+ * @param {number} bpm
+ * @param {number} beatsPerBar
+ * @returns {{ bar: number, beat: number }}
+ */
+export function getBarBeatPosition(elapsedSeconds, bpm, beatsPerBar) {
+  const safeBpm = Math.max(1, bpm || 0);
+  const safeBeatsPerBar = Math.max(1, Math.floor(beatsPerBar || 0));
+  const beatSeconds = 60 / safeBpm;
+  // Nudge values by a tiny epsilon to avoid floating-point underflow at beat
+  // boundaries (for example, 1.999999999 s instead of an exact 2.0 s).
+  const totalBeats = Math.max(0, Math.floor(((elapsedSeconds || 0) + 1e-9) / beatSeconds));
+  return {
+    bar: Math.floor(totalBeats / safeBeatsPerBar) + 1,
+    beat: (totalBeats % safeBeatsPerBar) + 1,
+  };
+}
+
+/**
+ * Format elapsed transport time as "Bar X • Beat Y".
+ *
+ * @param {number} elapsedSeconds
+ * @param {number} bpm
+ * @param {number} beatsPerBar
+ * @returns {string}
+ */
+export function formatBarBeatPosition(elapsedSeconds, bpm, beatsPerBar) {
+  const { bar, beat } = getBarBeatPosition(elapsedSeconds, bpm, beatsPerBar);
+  return `Bar ${bar} • Beat ${beat}`;
+}
+
+/**
  * Parse a raw MIDI message into a small normalized descriptor.
  *
  * @param {ArrayLike<number>} data

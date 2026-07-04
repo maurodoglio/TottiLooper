@@ -123,6 +123,7 @@
     <div id="master-controls" class="panel">
       <button id="btn-play-all" class="btn-primary">▶ Play All</button>
       <button id="btn-stop-all" class="btn-stop">■ Stop All</button>
+      <span id="playback-position" aria-live="polite"></span>
       <label class="field master-volume-field">
         <span>Master</span>
         <input id="master-volume" type="range" min="0" max="1.5" step="0.01" value="1" aria-label="Master volume" />
@@ -219,6 +220,7 @@
       <h3>Master controls</h3>
       <ul>
         <li><strong>▶ Play All</strong> / <strong>■ Stop All</strong> – start or stop every loop at once.</li>
+        <li><strong>Now playing</strong> – shows the current bar and beat shared by the active loops.</li>
         <li><strong>Master</strong> slider – sets the overall output level.</li>
         <li><strong>MIDI click</strong> – optionally export a click-track MIDI file at the current tempo for easy DAW alignment.</li>
         <li><strong>⬇ Export</strong> – render the current mix to a WAV file, and optionally download the matching MIDI click track alongside it.</li>
