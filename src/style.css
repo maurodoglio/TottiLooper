@@ -583,6 +583,15 @@ button:disabled {
   background-color: var(--accent);
 }
 
+.btn-icon.btn-half-time,
+.btn-icon.btn-double-time {
+  border-radius: 999px;
+  width: auto;
+  min-width: 44px;
+  padding: 0 10px;
+  font-size: 0.85rem;
+}
+
 /* ── Loops section ── */
 #loops-section h2 {
   font-size: 0.8rem;

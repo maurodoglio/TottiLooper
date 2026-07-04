@@ -53,6 +53,10 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
+const NORMAL_PLAYBACK_RATE = 1;
+const HALF_TIME_PLAYBACK_RATE = 0.5;
+const DOUBLE_TIME_PLAYBACK_RATE = 2;
+const PLAYBACK_RATE_EPSILON = 0.001;
 const PARAM_TRANSITION = 0.01;
 const LOW_EQ_FREQUENCY = 200;
 const MID_EQ_FREQUENCY = 1200;
@@ -1327,6 +1331,48 @@ function setLoopPlaybackRate(loop, value) {
   loop.playbackRate = value;
   invalidateLoopProcessing(loop);
   restartLoopPlayback(loop);
+  syncLoopPlaybackRateControls(loop);
+}
+
+function isPlaybackRate(value, target) {
+  return Math.abs(value - target) < PLAYBACK_RATE_EPSILON;
+}
+
+function syncLoopPlaybackRateControls(loop) {
+  const card = document.getElementById(`loop-card-${loop.id}`);
+  if (!card) return;
+
+  const speedFader = card.querySelector('.fader[data-fader="speed"]');
+  if (speedFader) {
+    const speedInput = speedFader.querySelector('input[type="range"]');
+    if (speedInput) {
+      speedInput.value = String(loop.playbackRate);
+      setRangeValueText(speedInput, formatPlaybackRateValueText(loop.playbackRate));
+    }
+    const speedValue = speedFader.querySelector('.fader-value');
+    if (speedValue) speedValue.textContent = `${loop.playbackRate.toFixed(2)}×`;
+  }
+
+  const btnHalfTime = card.querySelector('.btn-half-time');
+  if (btnHalfTime) {
+    const active = isPlaybackRate(loop.playbackRate, HALF_TIME_PLAYBACK_RATE);
+    btnHalfTime.classList.toggle('active', active);
+    btnHalfTime.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+
+  const btnDoubleTime = card.querySelector('.btn-double-time');
+  if (btnDoubleTime) {
+    const active = isPlaybackRate(loop.playbackRate, DOUBLE_TIME_PLAYBACK_RATE);
+    btnDoubleTime.classList.toggle('active', active);
+    btnDoubleTime.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+}
+
+function toggleLoopPlaybackRate(loop, targetRate) {
+  const nextRate = isPlaybackRate(loop.playbackRate, targetRate)
+    ? NORMAL_PLAYBACK_RATE
+    : targetRate;
+  setLoopPlaybackRate(loop, nextRate);
 }
 
 function setLoopPitch(loop, value) {
@@ -2055,6 +2101,20 @@ function renderLoop(loop) {
   btnReverse.setAttribute('aria-pressed', loop.reversed ? 'true' : 'false');
   if (loop.reversed) btnReverse.classList.add('active');
 
+  const btnHalfTime = iconButton(
+    'btn-half-time',
+    '½×',
+    'Toggle half-time',
+    () => toggleLoopPlaybackRate(loop, HALF_TIME_PLAYBACK_RATE),
+  );
+
+  const btnDoubleTime = iconButton(
+    'btn-double-time',
+    '2×',
+    'Toggle double-time',
+    () => toggleLoopPlaybackRate(loop, DOUBLE_TIME_PLAYBACK_RATE),
+  );
+
   const btnExport = iconButton('btn-export', '⬇', 'Export as WAV', () => exportLoop(loop));
 
   const btnDelete = document.createElement('button');
@@ -2064,7 +2124,17 @@ function renderLoop(loop) {
   btnDelete.setAttribute('aria-label', 'Delete loop');
   btnDelete.addEventListener('click', () => deleteLoop(loop.id));
 
-  actions.append(btnPlay, btnMute, btnSolo, btnQuantize, btnReverse, btnExport, btnDelete);
+  actions.append(
+    btnPlay,
+    btnMute,
+    btnSolo,
+    btnQuantize,
+    btnReverse,
+    btnHalfTime,
+    btnDoubleTime,
+    btnExport,
+    btnDelete,
+  );
   topRow.append(nameInput, waveformEl, metaEl, actions);
 
   // Bottom row: faders
@@ -2123,6 +2193,7 @@ function renderLoop(loop) {
 
   // Canvas sizing requires the element be in the DOM to measure offsetWidth.
   loopsList.appendChild(card);
+  syncLoopPlaybackRateControls(loop);
   drawWaveform(canvas, loop.audioBuffer);
   updateLoopPlayhead(loop, loop.playOffset);
   updateAllMidiBindingLabels();
