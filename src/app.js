@@ -36,6 +36,8 @@ import {
   quantizeBuffer as _quantizeBuffer,
   offsetBuffer as _offsetBuffer,
   reverseBuffer as _reverseBuffer,
+  makeDistortionCurve,
+  makeReverbIR,
   sceneCrossfadeDuration,
   applyPunchIn as _applyPunchIn,
   transformBuffer as _transformBuffer,
@@ -187,6 +189,24 @@ const scenes = Array.from({ length: MAX_SCENES }, () => ({ name: '', snapshot: n
 let activeSceneIndex = -1;
 
 /**
+ * @typedef {Object} LoopFx
+ * @property {boolean} filterEnabled
+ * @property {'lowpass'|'highpass'} filterType
+ * @property {number} filterFreq
+ * @property {number} filterQ
+ * @property {boolean} distEnabled
+ * @property {number} distAmount
+ * @property {boolean} delayEnabled
+ * @property {number} delayTime
+ * @property {number} delayFeedback
+ * @property {number} delayMix
+ * @property {boolean} reverbEnabled
+ * @property {number} reverbMix
+ * @property {boolean} gateEnabled
+ * @property {number} gateThreshold
+ */
+
+/**
  * @typedef {Object} Loop
  * @property {number} id
  * @property {string} name
@@ -217,6 +237,8 @@ let activeSceneIndex = -1;
  * @property {number} fadeOut
  * @property {number} pitchSemitones
  * @property {boolean} reversed
+ * @property {LoopFx} fx
+ * @property {object|null} fxChain
  * @property {number} songStartBar
  * @property {number} songBarCount
  * @property {number|null} groupId
@@ -1038,6 +1060,23 @@ function addLoop(audioBuffer, options = {}) {
     sourceBlob: options.sourceBlob || null,
     midiToggleBinding: null,
     midiVolumeBinding: null,
+    fx: {
+      filterEnabled: false,
+      filterType: 'lowpass',
+      filterFreq: 2000,
+      filterQ: 1,
+      distEnabled: false,
+      distAmount: 100,
+      delayEnabled: false,
+      delayTime: 0.3,
+      delayFeedback: 0.4,
+      delayMix: 0.4,
+      reverbEnabled: false,
+      reverbMix: 0.3,
+      gateEnabled: false,
+      gateThreshold: -50,
+    },
+    fxChain: null,
   };
   loops.push(loop);
   renderLoop(loop);
@@ -1244,6 +1283,227 @@ function reverseBuffer(buffer) {
   return _reverseBuffer(buffer, audioContext);
 }
 
+// ─── Effects chain ────────────────────────────────────────────────────────────
+
+/**
+ * Build and wire an effects chain for a loop using the given AudioContext.
+ *
+ * Returns an object whose `input` and `output` GainNodes should be spliced
+ * between the source/panner node and the gain (volume) node.
+ *
+ * Audio signal path:
+ *   input → gateAnalyser → gate → filter → distortion
+ *   distortion → delayBus (dry)
+ *   distortion → delay → delayFeedback ↺ → delayWet → delayBus (wet)
+ *   delayBus → output (dry reverb path)
+ *   delayBus → convolver → reverbWet → output (wet reverb path)
+ *
+ * @param {Loop} loop
+ * @param {AudioContext|OfflineAudioContext} ctx
+ * @returns {object} fxChain
+ */
+function buildFxChain(loop, ctx) {
+  const { fx } = loop;
+
+  // ── Gate ──────────────────────────────────────────────────────────────────
+  const gateAnalyser = ctx.createAnalyser();
+  gateAnalyser.fftSize = 1024;
+  const gate = ctx.createGain();
+  gate.gain.value = 1; // default open
+
+  // ── Filter ────────────────────────────────────────────────────────────────
+  const filter = ctx.createBiquadFilter();
+  filter.type = fx.filterEnabled ? fx.filterType : 'allpass';
+  filter.frequency.value = fx.filterFreq;
+  filter.Q.value = fx.filterQ;
+
+  // ── Distortion ────────────────────────────────────────────────────────────
+  const distortion = ctx.createWaveShaper();
+  distortion.oversample = '4x';
+  distortion.curve = fx.distEnabled ? makeDistortionCurve(fx.distAmount) : null;
+
+  // ── Delay ─────────────────────────────────────────────────────────────────
+  const delayBus = ctx.createGain(); // sums dry + delay-wet
+  delayBus.gain.value = 1;
+  const delay = ctx.createDelay(4.0);
+  delay.delayTime.value = fx.delayTime;
+  const delayFeedback = ctx.createGain();
+  delayFeedback.gain.value = fx.delayEnabled ? fx.delayFeedback : 0;
+  const delayWet = ctx.createGain();
+  delayWet.gain.value = fx.delayEnabled ? fx.delayMix : 0;
+
+  // ── Reverb ────────────────────────────────────────────────────────────────
+  const convolver = ctx.createConvolver();
+  convolver.buffer = makeReverbIR(ctx);
+  const reverbWet = ctx.createGain();
+  reverbWet.gain.value = fx.reverbEnabled ? fx.reverbMix : 0;
+
+  // ── Input / Output buses ───────────────────────────────────────────────────
+  const input = ctx.createGain();
+  input.gain.value = 1;
+  const output = ctx.createGain(); // sums dry-reverb + wet-reverb
+  output.gain.value = 1;
+
+  // ── Wiring ────────────────────────────────────────────────────────────────
+  input.connect(gateAnalyser);
+  gateAnalyser.connect(gate);
+  gate.connect(filter);
+  filter.connect(distortion);
+
+  // Delay section
+  distortion.connect(delayBus);          // dry pass-through
+  distortion.connect(delay);             // feed delay
+  delay.connect(delayFeedback);          // feedback tap
+  delayFeedback.connect(delay);          // feedback loop
+  delay.connect(delayWet);              // wet tap
+  delayWet.connect(delayBus);           // merge wet into bus
+
+  // Reverb section
+  delayBus.connect(output);             // dry pass-through
+  delayBus.connect(convolver);          // feed reverb
+  convolver.connect(reverbWet);         // wet tap
+  reverbWet.connect(output);            // merge wet into output
+
+  // ── Gate polling (live AudioContext only) ─────────────────────────────────
+  const gateState = { rafId: null };
+  if (typeof requestAnimationFrame === 'function' && ctx === audioContext) {
+    const buf = new Float32Array(gateAnalyser.fftSize);
+    const tick = () => {
+      if (!loop.fxChain || !loop.playing) return;
+      if (fx.gateEnabled) {
+        gateAnalyser.getFloatTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+        const rms = Math.sqrt(sum / buf.length);
+        const db = 20 * Math.log10(rms < 1e-10 ? 1e-10 : rms);
+        const open = db >= fx.gateThreshold;
+        gate.gain.setTargetAtTime(open ? 1 : 0, ctx.currentTime, 0.02);
+      } else {
+        gate.gain.setTargetAtTime(1, ctx.currentTime, 0.02);
+      }
+      gateState.rafId = requestAnimationFrame(tick);
+    };
+    gateState.rafId = requestAnimationFrame(tick);
+  }
+
+  return {
+    input, output,
+    gateAnalyser, gate, gateState,
+    filter, distortion,
+    delay, delayFeedback, delayWet, delayBus,
+    convolver, reverbWet,
+  };
+}
+
+// ─── Effect setters ───────────────────────────────────────────────────────────
+
+function setFxFilterEnabled(loop, enabled) {
+  loop.fx.filterEnabled = enabled;
+  if (loop.fxChain) {
+    loop.fxChain.filter.type = enabled ? loop.fx.filterType : 'allpass';
+  }
+}
+
+function setFxFilterType(loop, type) {
+  loop.fx.filterType = type;
+  if (loop.fxChain && loop.fx.filterEnabled) {
+    loop.fxChain.filter.type = type;
+  }
+}
+
+function setFxFilterFreq(loop, freq) {
+  loop.fx.filterFreq = freq;
+  if (loop.fxChain) {
+    loop.fxChain.filter.frequency.setTargetAtTime(freq, audioContext.currentTime, 0.01);
+  }
+}
+
+function setFxFilterQ(loop, q) {
+  loop.fx.filterQ = q;
+  if (loop.fxChain) {
+    loop.fxChain.filter.Q.setTargetAtTime(q, audioContext.currentTime, 0.01);
+  }
+}
+
+function setFxDistEnabled(loop, enabled) {
+  loop.fx.distEnabled = enabled;
+  if (loop.fxChain) {
+    loop.fxChain.distortion.curve = enabled
+      ? makeDistortionCurve(loop.fx.distAmount)
+      : null;
+  }
+}
+
+function setFxDistAmount(loop, amount) {
+  loop.fx.distAmount = amount;
+  if (loop.fxChain && loop.fx.distEnabled) {
+    loop.fxChain.distortion.curve = makeDistortionCurve(amount);
+  }
+}
+
+function setFxDelayEnabled(loop, enabled) {
+  loop.fx.delayEnabled = enabled;
+  if (loop.fxChain) {
+    const t = audioContext.currentTime;
+    loop.fxChain.delayFeedback.gain.setTargetAtTime(
+      enabled ? loop.fx.delayFeedback : 0, t, 0.01,
+    );
+    loop.fxChain.delayWet.gain.setTargetAtTime(
+      enabled ? loop.fx.delayMix : 0, t, 0.01,
+    );
+  }
+}
+
+function setFxDelayTime(loop, time) {
+  loop.fx.delayTime = time;
+  if (loop.fxChain) {
+    loop.fxChain.delay.delayTime.setTargetAtTime(time, audioContext.currentTime, 0.01);
+  }
+}
+
+function setFxDelayFeedback(loop, fb) {
+  loop.fx.delayFeedback = fb;
+  if (loop.fxChain && loop.fx.delayEnabled) {
+    loop.fxChain.delayFeedback.gain.setTargetAtTime(fb, audioContext.currentTime, 0.01);
+  }
+}
+
+function setFxDelayMix(loop, mix) {
+  loop.fx.delayMix = mix;
+  if (loop.fxChain && loop.fx.delayEnabled) {
+    loop.fxChain.delayWet.gain.setTargetAtTime(mix, audioContext.currentTime, 0.01);
+  }
+}
+
+function setFxReverbEnabled(loop, enabled) {
+  loop.fx.reverbEnabled = enabled;
+  if (loop.fxChain) {
+    loop.fxChain.reverbWet.gain.setTargetAtTime(
+      enabled ? loop.fx.reverbMix : 0, audioContext.currentTime, 0.01,
+    );
+  }
+}
+
+function setFxReverbMix(loop, mix) {
+  loop.fx.reverbMix = mix;
+  if (loop.fxChain && loop.fx.reverbEnabled) {
+    loop.fxChain.reverbWet.gain.setTargetAtTime(mix, audioContext.currentTime, 0.01);
+  }
+}
+
+function setFxGateEnabled(loop, enabled) {
+  loop.fx.gateEnabled = enabled;
+  if (loop.fxChain && !enabled) {
+    loop.fxChain.gate.gain.setTargetAtTime(1, audioContext.currentTime, 0.02);
+  }
+}
+
+function setFxGateThreshold(loop, threshold) {
+  loop.fx.gateThreshold = threshold;
+}
+
+// ─── Playback ─────────────────────────────────────────────────────────────────
+
 function rampLoopGain(loop, targetGain, durationSeconds) {
   if (!loop.gainNode || !audioContext) return;
   const now = audioContext.currentTime;
@@ -1387,14 +1647,18 @@ function playLoop(loop, arg = {}) {
     : 1;
   const eqNodes = createEqNodes(audioContext, loop);
 
+  // Build effects chain and wire: source → panner → fxChain → gain → master
+  const fxChain = buildFxChain(loop, audioContext);
+
   if (pannerNode) {
     sourceNode.connect(eqNodes.lowShelf);
     eqNodes.highShelf.connect(pannerNode);
-    pannerNode.connect(gainNode);
+    pannerNode.connect(fxChain.input);
   } else {
     sourceNode.connect(eqNodes.lowShelf);
-    eqNodes.highShelf.connect(gainNode);
+    eqNodes.highShelf.connect(fxChain.input);
   }
+  fxChain.output.connect(gainNode);
   gainNode.connect(masterGainNode);
 
   let offset;
@@ -1414,8 +1678,10 @@ function playLoop(loop, arg = {}) {
   loop.gainNode = gainNode;
   loop.pannerNode = pannerNode;
   loop.eqNodes = eqNodes;
+  loop.fxChain = fxChain;
   loop.playStartTime = startAt;
   loop.playOffset = offset;
+  loop.playing = true;
 
   // Reset loop state when a scheduled (song-mode) stop fires.
   sourceNode.onended = () => {
@@ -1500,9 +1766,15 @@ function stopLoop(loop, options = {}) {
       : audioContext.currentTime + fadeDuration * 5;
   try { node && node.stop(stopAt); } catch { /* already stopped */ }
 
+  // Cancel the gate polling animation frame
+  if (loop.fxChain && loop.fxChain.gateState && loop.fxChain.gateState.rafId) {
+    cancelAnimationFrame(loop.fxChain.gateState.rafId);
+  }
+
   loop.node = null;
   loop.gainNode = null;
   loop.pannerNode = null;
+  loop.fxChain = null;
   loop.eqNodes = null;
   loop.playing = false;
   loop.playStartTime = 0;
@@ -1626,6 +1898,7 @@ function resetLoopPlaybackState(loop) {
   loop.node = null;
   loop.gainNode = null;
   loop.pannerNode = null;
+  loop.fxChain = null;
   loop.eqNodes = null;
   loop.playing = false;
 }
@@ -2786,16 +3059,20 @@ async function exportMix() {
     const gNode = offline.createGain();
     gNode.gain.value = g;
 
+    // Apply effects chain in the offline context
+    const offlineFx = buildFxChain(l, offline);
+
     if (offline.createStereoPanner) {
       const p = offline.createStereoPanner();
       p.pan.value = l.pan;
       src.connect(eqNodes.lowShelf);
       eqNodes.highShelf.connect(p);
-      p.connect(gNode);
+      p.connect(offlineFx.input);
     } else {
       src.connect(eqNodes.lowShelf);
-      eqNodes.highShelf.connect(gNode);
+      eqNodes.highShelf.connect(offlineFx.input);
     }
+    offlineFx.output.connect(gNode);
     gNode.connect(offlineMaster);
     src.start(0);
   }
@@ -3359,6 +3636,9 @@ function renderLoop(loop) {
   card.appendChild(makeSongTimelineFields(loop));
   card.appendChild(midiRow);
 
+  // FX section (collapsible)
+  card.appendChild(renderFxSection(loop));
+
   // Canvas sizing requires the element be in the DOM to measure offsetWidth.
   // Append to the right container (group or ungrouped).
   const container = getLoopContainer(loop.groupId);
@@ -3482,6 +3762,151 @@ function updateLoopCard(loop) {
   if (durationEl) durationEl.textContent = formatDuration(loop.duration);
   const canvas = card.querySelector('canvas');
   if (canvas) drawWaveform(canvas, loop.audioBuffer);
+}
+
+/**
+ * Build the collapsible FX section element for a loop card.
+ * @param {Loop} loop
+ * @returns {HTMLElement}
+ */
+function renderFxSection(loop) {
+  const { fx } = loop;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'loop-fx';
+
+  // ── Toggle button ────────────────────────────────────────────────────────
+  const btnToggle = document.createElement('button');
+  btnToggle.className = 'fx-toggle-btn';
+  btnToggle.setAttribute('aria-expanded', 'false');
+  btnToggle.setAttribute('aria-label', 'Toggle effects');
+  btnToggle.textContent = 'FX ▾';
+  wrapper.appendChild(btnToggle);
+
+  // ── Panel (hidden by default) ─────────────────────────────────────────────
+  const panel = document.createElement('div');
+  panel.className = 'fx-panel hidden';
+  wrapper.appendChild(panel);
+
+  btnToggle.addEventListener('click', () => {
+    const expanded = panel.classList.toggle('hidden');
+    btnToggle.setAttribute('aria-expanded', String(!expanded));
+    btnToggle.textContent = expanded ? 'FX ▾' : 'FX ▴';
+  });
+
+  // ── Helper: labeled checkbox toggle ──────────────────────────────────────
+  function fxToggle(label, checked, onChange) {
+    const lbl = document.createElement('label');
+    lbl.className = 'fx-enable';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = checked;
+    cb.addEventListener('change', () => onChange(cb.checked));
+    lbl.append(cb, document.createTextNode(label));
+    return lbl;
+  }
+
+  // ── Helper: compact slider ────────────────────────────────────────────────
+  function fxSlider(label, min, max, step, value, fmt, onChange) {
+    const wrap = document.createElement('label');
+    wrap.className = 'fx-slider';
+    const titleEl = document.createElement('span');
+    titleEl.className = 'fx-slider-label';
+    titleEl.textContent = label;
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.value = String(value);
+    input.setAttribute('aria-label', label);
+    const valueEl = document.createElement('span');
+    valueEl.className = 'fx-slider-value';
+    valueEl.textContent = fmt(value);
+    input.addEventListener('input', () => {
+      const v = parseFloat(input.value);
+      valueEl.textContent = fmt(v);
+      onChange(v);
+    });
+    wrap.append(titleEl, input, valueEl);
+    return wrap;
+  }
+
+  // ── Filter ────────────────────────────────────────────────────────────────
+  const filterSection = document.createElement('div');
+  filterSection.className = 'fx-row';
+
+  const filterTypeSelect = document.createElement('select');
+  filterTypeSelect.className = 'fx-select';
+  filterTypeSelect.setAttribute('aria-label', 'Filter type');
+  [['lowpass', 'LP'], ['highpass', 'HP']].forEach(([val, text]) => {
+    const opt = document.createElement('option');
+    opt.value = val;
+    opt.textContent = text;
+    opt.selected = fx.filterType === val;
+    filterTypeSelect.appendChild(opt);
+  });
+  filterTypeSelect.addEventListener('change', () => setFxFilterType(loop, filterTypeSelect.value));
+
+  filterSection.append(
+    fxToggle('Filter', fx.filterEnabled, (v) => setFxFilterEnabled(loop, v)),
+    filterTypeSelect,
+    fxSlider('Freq', 20, 20000, 1, fx.filterFreq,
+      (v) => `${v >= 1000 ? (v / 1000).toFixed(1) + 'k' : Math.round(v)}Hz`,
+      (v) => setFxFilterFreq(loop, v)),
+    fxSlider('Q', 0.1, 18, 0.1, fx.filterQ,
+      (v) => v.toFixed(1),
+      (v) => setFxFilterQ(loop, v)),
+  );
+
+  // ── Distortion ────────────────────────────────────────────────────────────
+  const distSection = document.createElement('div');
+  distSection.className = 'fx-row';
+  distSection.append(
+    fxToggle('Dist', fx.distEnabled, (v) => setFxDistEnabled(loop, v)),
+    fxSlider('Drive', 0, 400, 1, fx.distAmount,
+      (v) => Math.round(v),
+      (v) => setFxDistAmount(loop, v)),
+  );
+
+  // ── Delay ─────────────────────────────────────────────────────────────────
+  const delaySection = document.createElement('div');
+  delaySection.className = 'fx-row';
+  delaySection.append(
+    fxToggle('Delay', fx.delayEnabled, (v) => setFxDelayEnabled(loop, v)),
+    fxSlider('Time', 0.01, 2, 0.01, fx.delayTime,
+      (v) => `${v.toFixed(2)}s`,
+      (v) => setFxDelayTime(loop, v)),
+    fxSlider('Fbk', 0, 0.95, 0.01, fx.delayFeedback,
+      (v) => `${Math.round(v * 100)}%`,
+      (v) => setFxDelayFeedback(loop, v)),
+    fxSlider('Mix', 0, 1, 0.01, fx.delayMix,
+      (v) => `${Math.round(v * 100)}%`,
+      (v) => setFxDelayMix(loop, v)),
+  );
+
+  // ── Reverb ────────────────────────────────────────────────────────────────
+  const reverbSection = document.createElement('div');
+  reverbSection.className = 'fx-row';
+  reverbSection.append(
+    fxToggle('Reverb', fx.reverbEnabled, (v) => setFxReverbEnabled(loop, v)),
+    fxSlider('Mix', 0, 1, 0.01, fx.reverbMix,
+      (v) => `${Math.round(v * 100)}%`,
+      (v) => setFxReverbMix(loop, v)),
+  );
+
+  // ── Noise Gate ────────────────────────────────────────────────────────────
+  const gateSection = document.createElement('div');
+  gateSection.className = 'fx-row';
+  gateSection.append(
+    fxToggle('Gate', fx.gateEnabled, (v) => setFxGateEnabled(loop, v)),
+    fxSlider('Thresh', -80, 0, 1, fx.gateThreshold,
+      (v) => `${v}dB`,
+      (v) => setFxGateThreshold(loop, v)),
+  );
+
+  panel.append(filterSection, distSection, delaySection, reverbSection, gateSection);
+  return wrapper;
 }
 
 function iconButton(cls, text, title, onClick) {

@@ -37,6 +37,8 @@ import {
   quantizeBuffer,
   offsetBuffer,
   reverseBuffer,
+  makeDistortionCurve,
+  makeReverbIR,
   resampleBuffer,
   timeStretchBuffer,
   transformBuffer,
@@ -1002,6 +1004,89 @@ describe('reverseBuffer', () => {
     const once = reverseBuffer(src, ctx);
     const twice = reverseBuffer(once, ctx);
     expect(Array.from(twice.getChannelData(0))).toEqual(Array.from(samples));
+  });
+});
+
+// ─── makeDistortionCurve ──────────────────────────────────────────────────────
+
+describe('makeDistortionCurve', () => {
+  it('returns a Float32Array of the requested length', () => {
+    const curve = makeDistortionCurve(100, 256);
+    expect(curve).toBeInstanceOf(Float32Array);
+    expect(curve.length).toBe(256);
+  });
+
+  it('uses 256 samples by default', () => {
+    const curve = makeDistortionCurve(100);
+    expect(curve.length).toBe(256);
+  });
+
+  it('maps the centre sample (mid-point) to approximately 0', () => {
+    const curve = makeDistortionCurve(100, 257);
+    // The centre index maps x ≈ 0, so output should be ≈ 0.
+    expect(curve[128]).toBeCloseTo(0, 5);
+  });
+
+  it('produces a monotonically increasing curve', () => {
+    const curve = makeDistortionCurve(200, 256);
+    for (let i = 1; i < curve.length; i++) {
+      expect(curve[i]).toBeGreaterThanOrEqual(curve[i - 1]);
+    }
+  });
+
+  it('is bounded within [-1, 1]', () => {
+    const curve = makeDistortionCurve(400, 256);
+    for (let i = 0; i < curve.length; i++) {
+      expect(curve[i]).toBeGreaterThanOrEqual(-1);
+      expect(curve[i]).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('with amount 0 produces a near-identity (linear) curve', () => {
+    const curve = makeDistortionCurve(0, 257);
+    // At amount=0 the formula reduces to x (identity), so first ≈ -1, last ≈ 1.
+    expect(curve[0]).toBeCloseTo(-1, 5);
+    expect(curve[256]).toBeCloseTo(1, 5);
+  });
+});
+
+// ─── makeReverbIR ─────────────────────────────────────────────────────────────
+
+describe('makeReverbIR', () => {
+  const ctx = makeMockAudioContext();
+
+  it('returns an AudioBuffer with 2 channels', () => {
+    const ir = makeReverbIR(ctx);
+    expect(ir.numberOfChannels).toBe(2);
+  });
+
+  it('defaults to approximately 1.5 s of samples', () => {
+    const ir = makeReverbIR(ctx);
+    expect(ir.length).toBe(Math.floor(ctx.sampleRate * 1.5));
+  });
+
+  it('respects a custom duration', () => {
+    const ir = makeReverbIR(ctx, { duration: 2.0 });
+    expect(ir.length).toBe(Math.floor(ctx.sampleRate * 2.0));
+  });
+
+  it('has non-zero samples (the IR is not silent)', () => {
+    const ir = makeReverbIR(ctx);
+    const data = ir.getChannelData(0);
+    const anyNonZero = Array.from(data).some((v) => v !== 0);
+    expect(anyNonZero).toBe(true);
+  });
+
+  it('the IR decays towards 0 (tail is quieter than the head)', () => {
+    const ir = makeReverbIR(ctx, { duration: 1.0 });
+    const data = ir.getChannelData(0);
+    // Compute RMS of first and last 10 % of the IR.
+    const segLen = Math.floor(data.length * 0.1);
+    let headRms = 0;
+    let tailRms = 0;
+    for (let i = 0; i < segLen; i++) headRms += data[i] * data[i];
+    for (let i = data.length - segLen; i < data.length; i++) tailRms += data[i] * data[i];
+    expect(tailRms).toBeLessThan(headRms);
   });
 });
 
