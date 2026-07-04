@@ -50,6 +50,7 @@
   --toast-error: #b64242;
   --toast-info: #335c99;
   --waveform-bg: #d9e1ec;
+  --waveform-stroke: var(--accent);
   --solo-text: #17202c;
   color-scheme: light;
 }

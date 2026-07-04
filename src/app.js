@@ -191,7 +191,11 @@ function applyTheme(theme, persist = false) {
 }
 
 function toggleTheme() {
-  const currentTheme = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+  const currentTheme = document.documentElement.dataset.theme === 'dark'
+    ? 'dark'
+    : document.documentElement.dataset.theme === 'light'
+      ? 'light'
+      : getPreferredTheme();
   applyTheme(currentTheme === 'dark' ? 'light' : 'dark', true);
 }
 
