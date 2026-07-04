@@ -210,14 +210,17 @@ async function refreshInputDeviceOptions() {
   const devices = await navigator.mediaDevices.enumerateDevices();
   const audioInputs = devices.filter(device => device.kind === 'audioinput');
   inputDeviceSelect.textContent = '';
+  inputDeviceSelect.disabled = audioInputs.length === 0;
+
+  if (audioInputs.length === 0) {
+    inputDeviceSelect.appendChild(new Option('Current input', ''));
+    inputDeviceSelect.selectedIndex = 0;
+    return;
+  }
 
   for (const [index, device] of audioInputs.entries()) {
     const option = new Option(device.label || `Input ${index + 1}`, device.deviceId);
     inputDeviceSelect.appendChild(option);
-  }
-
-  if (audioInputs.length === 0) {
-    inputDeviceSelect.appendChild(new Option('Current input', selectedInputDeviceId));
   }
 
   if (selectedInputDeviceId && [...inputDeviceSelect.options].some(option => option.value === selectedInputDeviceId)) {
@@ -250,7 +253,7 @@ function getInputChannelCount(stream) {
 function updateInputChannelOptions(channelCount) {
   if (selectedInputChannel !== 'all') {
     const selectedChannelNumber = parseInt(selectedInputChannel, 10);
-    if (isNaN(selectedChannelNumber) || selectedChannelNumber > channelCount) {
+    if (isNaN(selectedChannelNumber) || selectedChannelNumber < 1 || selectedChannelNumber > channelCount) {
       selectedInputChannel = 'all';
     }
   }
