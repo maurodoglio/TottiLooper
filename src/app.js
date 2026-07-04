@@ -348,7 +348,7 @@ async function onRecordingStop() {
     let audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
     if (monitorLatencyOffsetMs !== 0) {
       // A positive user-facing compensation value should pull the recorded take earlier.
-      audioBuffer = offsetBuffer(audioBuffer, -monitorLatencyOffsetMs / 1000, audioContext);
+      audioBuffer = _offsetBuffer(audioBuffer, -monitorLatencyOffsetMs / 1000, audioContext);
     }
     if (quantizeEnabled) {
       audioBuffer = quantizeBuffer(audioBuffer);
@@ -367,10 +367,6 @@ async function onRecordingStop() {
 
 function quantizeBuffer(buffer) {
   return _quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext });
-}
-
-function offsetBuffer(buffer, offsetSeconds, audioContext) {
-  return _offsetBuffer(buffer, offsetSeconds, audioContext);
 }
 
 // ─── Loop management ──────────────────────────────────────────────────────────

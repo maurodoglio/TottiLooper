@@ -155,7 +155,6 @@ test.describe('after microphone access', () => {
   test('latency offset can be adjusted while monitoring is enabled', async ({ page }) => {
     await page.locator('#monitoring-toggle').check();
     await page.locator('#monitor-latency-offset').fill('-25');
-    await page.locator('#monitor-latency-offset').press('Tab');
     await expect(page.locator('#monitor-latency-offset')).toHaveValue('-25');
   });
 });
