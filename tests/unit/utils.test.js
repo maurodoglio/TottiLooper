@@ -622,6 +622,10 @@ describe('UndoStack', () => {
     const stack = new UndoStack(0);
     stack.push('x');
     expect(stack.size).toBe(1);
+    // The effective maxSize is 1, so a second push should evict the first
+    stack.push('y');
+    expect(stack.size).toBe(1);
+    expect(stack.pop()).toBe('y');
   });
 
   it('clear empties the stack', () => {
