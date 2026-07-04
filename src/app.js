@@ -157,6 +157,7 @@ function init() {
   helpCloseButton.addEventListener('click', closeHelp);
   helpModal.addEventListener('click', (e) => { if (e.target === helpModal) closeHelp(); });
   midiControls.addEventListener('click', onMidiControlsClick);
+  loopsList.addEventListener('click', onMidiControlsClick);
 
   document.addEventListener('keydown', onGlobalKeydown);
 

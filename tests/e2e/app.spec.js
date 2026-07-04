@@ -31,7 +31,7 @@ async function installFakeMidi(page) {
       value: async () => access,
     });
 
-    window.__dispatchMidi = (data) => {
+    globalThis.__dispatchMidi = (data) => {
       input.onmidimessage?.({ data: new Uint8Array(data), target: input });
     };
   });
@@ -295,10 +295,10 @@ test.describe('MIDI controls', () => {
 
   test('can learn a MIDI button for recording', async ({ page }) => {
     await page.locator('[data-midi-action="record"] .btn-midi-learn').click();
-    await page.evaluate(() => window.__dispatchMidi([0x90, 36, 127]));
+    await page.evaluate(() => globalThis.__dispatchMidi([0x90, 36, 127]));
     await expect(page.locator('[data-midi-action="record"] .midi-binding-value')).toHaveText('Note 36 · Ch 1');
 
-    await page.evaluate(() => window.__dispatchMidi([0x90, 36, 127]));
+    await page.evaluate(() => globalThis.__dispatchMidi([0x90, 36, 127]));
     await expect(page.locator('#btn-record')).toContainText('STOP');
   });
 
@@ -311,17 +311,17 @@ test.describe('MIDI controls', () => {
     const loopCard = page.locator('.loop-card').first();
 
     await loopCard.locator('.btn-midi-learn[data-midi-target="loop-1-toggle"]').click();
-    await page.evaluate(() => window.__dispatchMidi([0x90, 40, 127]));
+    await page.evaluate(() => globalThis.__dispatchMidi([0x90, 40, 127]));
     await expect(loopCard.locator('[data-midi-binding="toggle"]')).toHaveText('Note 40 · Ch 1');
 
-    await page.evaluate(() => window.__dispatchMidi([0x90, 40, 127]));
+    await page.evaluate(() => globalThis.__dispatchMidi([0x90, 40, 127]));
     await expect(loopCard).toHaveClass(/playing/);
 
     await loopCard.locator('.btn-midi-learn[data-midi-target="loop-1-volume"]').click();
-    await page.evaluate(() => window.__dispatchMidi([0xb0, 7, 64]));
+    await page.evaluate(() => globalThis.__dispatchMidi([0xb0, 7, 64]));
     await expect(loopCard.locator('[data-midi-binding="volume"]')).toHaveText('CC 7 · Ch 1');
 
-    await page.evaluate(() => window.__dispatchMidi([0xb0, 7, 0]));
+    await page.evaluate(() => globalThis.__dispatchMidi([0xb0, 7, 0]));
     await expect(loopCard.locator('[data-fader="volume"] input')).toHaveValue('0');
   });
 });
