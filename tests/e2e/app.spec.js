@@ -239,8 +239,15 @@ test.describe('loop controls', () => {
     await expect(page.getByLabel('Mid')).toHaveValue('0');
     await expect(page.getByLabel('High')).toHaveValue('0');
 
-    const eqValues = page.locator('.fader').filter({ hasText: /^(Low|Mid|High)/ }).locator('.fader-value');
-    await expect(eqValues).toHaveText(['0dB', '0dB', '0dB']);
+    await expect(
+      page.getByLabel('Low').locator('xpath=ancestor::label[1]').locator('.fader-value'),
+    ).toHaveText('0dB');
+    await expect(
+      page.getByLabel('Mid').locator('xpath=ancestor::label[1]').locator('.fader-value'),
+    ).toHaveText('0dB');
+    await expect(
+      page.getByLabel('High').locator('xpath=ancestor::label[1]').locator('.fader-value'),
+    ).toHaveText('0dB');
   });
 
   test('EQ slider updates its displayed gain', async ({ page }) => {
@@ -250,7 +257,7 @@ test.describe('loop controls', () => {
     });
 
     await expect(
-      page.locator('.fader').filter({ hasText: /^Mid/ }).locator('.fader-value'),
+      page.getByLabel('Mid').locator('xpath=ancestor::label[1]').locator('.fader-value'),
     ).toHaveText('+6dB');
   });
 
