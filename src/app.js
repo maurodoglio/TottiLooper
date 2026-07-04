@@ -25,7 +25,7 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
-const EQ_TRANSITION    = 0.01;
+const PARAM_TRANSITION = 0.01;
 const LOW_EQ_FREQUENCY = 200;
 const MID_EQ_FREQUENCY = 1200;
 const MID_EQ_Q         = 0.8;
@@ -571,7 +571,7 @@ function setLoopVolume(loop, value) {
 function setLoopPan(loop, value) {
   loop.pan = value;
   if (loop.pannerNode) {
-    loop.pannerNode.pan.setTargetAtTime(value, audioContext.currentTime, EQ_TRANSITION);
+    loop.pannerNode.pan.setTargetAtTime(value, audioContext.currentTime, PARAM_TRANSITION);
   }
 }
 
@@ -585,14 +585,14 @@ function setLoopEq(loop, band, value) {
   else if (band === 'highEq') filterNode = loop.eqNodes.highShelf;
 
   if (filterNode) {
-    filterNode.gain.setTargetAtTime(value, audioContext.currentTime, EQ_TRANSITION);
+    filterNode.gain.setTargetAtTime(value, audioContext.currentTime, PARAM_TRANSITION);
   }
 }
 
 function setLoopPlaybackRate(loop, value) {
   loop.playbackRate = value;
   if (loop.node) {
-    loop.node.playbackRate.setTargetAtTime(value, audioContext.currentTime, EQ_TRANSITION);
+    loop.node.playbackRate.setTargetAtTime(value, audioContext.currentTime, PARAM_TRANSITION);
   }
 }
 
