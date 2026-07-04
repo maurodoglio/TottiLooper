@@ -10,21 +10,45 @@
 import {
   formatDuration,
   panText,
+  parseMidiMessage,
+  createMidiBinding,
+  matchesMidiBinding,
+  isMidiButtonPress,
+  scaleMidiValue,
+  formatMidiBinding,
   audioBufferToWav,
+  clickTrackToMidi,
   getSupportedMimeType,
+  packSharedSession,
   effectiveGain as computeEffectiveGain,
   quantizeBuffer as _quantizeBuffer,
+  offsetBuffer as _offsetBuffer,
   reverseBuffer as _reverseBuffer,
+  unpackSharedSession,
 } from './utils.js';
+import {
+  DEFAULT_SHORTCUTS,
+  eventToShortcut,
+  loadShortcutMappings,
+  saveShortcutMappings,
+} from './shortcuts.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const FADE_TIME        = 0.015; // seconds – short fades to avoid clicks on start/stop
+const LOOP_RESTART_DELAY_MS = Math.ceil(FADE_TIME * 1000 * 6);
 const METRONOME_VOLUME = 0.3;
 const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
+const GAMEPAD_RECORD_BUTTON = 0;
+const GAMEPAD_PLAY_BUTTON   = 1;
+const GAMEPAD_STOP_BUTTON   = 2;
+const GAMEPAD_NEXT_BUTTON   = 3;
+const MAX_SHARE_FRAGMENT_LENGTH = 12000; // Keeps shared URLs comfortably below common browser limits.
+const MIN_MONITOR_OFFSET_MS = -250;
+const MAX_MONITOR_OFFSET_MS = 250;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +61,7 @@ let isRecording    = false;
 let timerInterval  = null;
 let recordStartTime = 0;
 let loopCounter    = 0;
+let nextLoopCursor = 0;
 
 let masterGainNode = null;
 let masterVolume   = 1;
@@ -48,6 +73,9 @@ let inputChannelSplitter = null;
 let inputChannelGainNode = null;
 let selectedInputDeviceId = '';
 let selectedInputChannel = 'all';
+let monitorGainNode  = null;
+let monitoringEnabled = false;
+let monitorLatencyOffsetMs = 0;
 
 // Tempo / metronome
 let bpm              = DEFAULT_BPM;
@@ -58,8 +86,17 @@ let quantizeEnabled  = false;
 let metronomeInterval = null;
 let metronomeBeatIdx  = 0;
 
+let midiAccess = null;
+let midiLearnTarget = null;
+const midiBindings = {
+  record: null,
+  playAll: null,
+  stopAll: null,
+};
+
 // Undo stack for deleted loops
 const deletedStack = [];
+const gamepadButtonStates = new Map();
 
 /**
  * @typedef {Object} Loop
@@ -78,6 +115,9 @@ const deletedStack = [];
  * @property {number} pan
  * @property {number} playbackRate
  * @property {boolean} reversed
+ * @property {{ source: 'note' | 'cc', channel: number, number: number, mode: 'button' | 'range' } | null} midiToggleBinding
+ * @property {{ source: 'note' | 'cc', channel: number, number: number, mode: 'button' | 'range' } | null} midiVolumeBinding
+ * @property {Blob|null} sourceBlob
  */
 
 /** @type {Array<Loop>} */
@@ -105,18 +145,49 @@ const recordTimer        = $('record-timer');
 const statusDot          = $('status-dot');
 const statusText         = $('status-text');
 const inputMeterFill     = $('input-meter-fill');
+const monitoringToggle   = $('monitoring-toggle');
+const monitorLatencyInput = $('monitor-latency-offset');
 const masterControls     = $('master-controls');
 const btnPlayAll         = $('btn-play-all');
 const btnStopAll         = $('btn-stop-all');
 const btnExportMix       = $('btn-export-mix');
+const btnShareSession    = $('btn-share-session');
+const exportMidiToggle   = $('export-midi-toggle');
 const btnUndo            = $('btn-undo');
 const masterVolumeInput  = $('master-volume');
+const midiControls       = $('midi-controls');
+const midiStatus         = $('midi-status');
+const btnEnableMidi      = $('btn-enable-midi');
 const loopsSection       = $('loops-section');
 const loopsList          = $('loops-list');
 const emptyState         = $('empty-state');
 const btnHelp            = $('btn-help');
 const helpModal          = $('help-modal');
 const helpCloseButton    = $('help-close');
+const shortcutList       = $('shortcut-list');
+const shortcutEditor     = $('shortcut-editor');
+const btnResetShortcuts  = $('btn-reset-shortcuts');
+const shortcutRecordHint = $('shortcut-record-inline');
+const shortcutUndoHint   = $('shortcut-undo-inline');
+
+const shortcutDefinitions = [
+  { action: 'toggleRecord', label: 'Start / stop recording' },
+  { action: 'playAll', label: 'Play all loops' },
+  { action: 'stopAll', label: 'Stop all loops' },
+  { action: 'undoDelete', label: 'Undo the last delete' },
+  { action: 'openHelp', label: 'Open help' },
+  { action: 'toggleLoop1', label: 'Toggle loop 1' },
+  { action: 'toggleLoop2', label: 'Toggle loop 2' },
+  { action: 'toggleLoop3', label: 'Toggle loop 3' },
+  { action: 'toggleLoop4', label: 'Toggle loop 4' },
+  { action: 'toggleLoop5', label: 'Toggle loop 5' },
+  { action: 'toggleLoop6', label: 'Toggle loop 6' },
+  { action: 'toggleLoop7', label: 'Toggle loop 7' },
+  { action: 'toggleLoop8', label: 'Toggle loop 8' },
+  { action: 'toggleLoop9', label: 'Toggle loop 9' },
+];
+
+let shortcuts = { ...DEFAULT_SHORTCUTS };
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
@@ -124,6 +195,7 @@ function init() {
   inputControls.classList.add('hidden');
   recordControls.classList.add('hidden');
   masterControls.classList.add('hidden');
+  midiControls.classList.add('hidden');
   loopsSection.classList.add('hidden');
   tempoControls.classList.add('hidden');
 
@@ -135,7 +207,9 @@ function init() {
   btnPlayAll.addEventListener('click', playAllLoops);
   btnStopAll.addEventListener('click', stopAllLoops);
   btnExportMix.addEventListener('click', exportMix);
+  btnShareSession.addEventListener('click', shareSession);
   btnUndo.addEventListener('click', undoDelete);
+  btnEnableMidi.addEventListener('click', enableMidi);
 
   masterVolumeInput.addEventListener('input', onMasterVolumeChange);
 
@@ -144,36 +218,43 @@ function init() {
   metronomeToggle.addEventListener('change', onMetronomeToggle);
   countInToggle.addEventListener('change', (e) => { countInEnabled = e.target.checked; });
   quantizeToggle.addEventListener('change', (e) => { quantizeEnabled = e.target.checked; });
+  monitoringToggle.addEventListener('change', onMonitoringToggle);
+  monitorLatencyInput.addEventListener('change', onMonitorLatencyChange);
 
   btnHelp.addEventListener('click', openHelp);
   helpCloseButton.addEventListener('click', closeHelp);
   helpModal.addEventListener('click', (e) => { if (e.target === helpModal) closeHelp(); });
+  midiControls.addEventListener('click', onMidiControlsClick);
+  loopsList.addEventListener('click', onMidiControlsClick);
+  btnResetShortcuts.addEventListener('click', resetShortcuts);
 
+  shortcuts = loadShortcutMappings();
+  renderShortcutSettings();
   document.addEventListener('keydown', onGlobalKeydown);
+  startGamepadPolling();
 
+  updateMidiStatus('Connect a controller, then click Learn to map pads, buttons, or faders.');
+  updateAllMidiBindingLabels();
+  syncMonitoringControls();
   updateUndoButton();
+  void restoreSharedSessionFromUrl();
 }
 
 // ─── Microphone access ────────────────────────────────────────────────────────
 
 async function requestMicrophoneAccess() {
   try {
-    if (!audioContext) {
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    }
+    ensureAudioEngine();
 
     await refreshInputStream();
     await refreshInputDeviceOptions();
-
-    masterGainNode = audioContext.createGain();
-    masterGainNode.gain.value = masterVolume;
-    masterGainNode.connect(audioContext.destination);
 
     permissionBanner.classList.add('hidden');
     inputControls.classList.remove('hidden');
     tempoControls.classList.remove('hidden');
     recordControls.classList.remove('hidden');
     masterControls.classList.remove('hidden');
+    midiControls.classList.remove('hidden');
     loopsSection.classList.remove('hidden');
     setStatus('Ready. Press ● REC to start recording.');
   } catch (err) {
@@ -306,6 +387,15 @@ function setInputAnalyserSource(sourceNode) {
   inputAnalyser = audioContext.createAnalyser();
   inputAnalyser.fftSize = 512;
   sourceNode.connect(inputAnalyser);
+
+  if (!monitorGainNode) {
+    monitorGainNode = audioContext.createGain();
+    monitorGainNode.gain.value = 0;
+    monitorGainNode.connect(masterGainNode);
+  }
+  sourceNode.connect(monitorGainNode);
+  updateMonitoringState();
+
   startInputMeter();
 }
 
@@ -350,6 +440,17 @@ function onInputChannelChange(e) {
   setStatus('Input updated. Press ● REC to start recording.');
 }
 
+function ensureAudioEngine() {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (!masterGainNode) {
+    masterGainNode = audioContext.createGain();
+    masterGainNode.gain.value = masterVolume;
+    masterGainNode.connect(audioContext.destination);
+  }
+}
+
 // ─── Input level meter ────────────────────────────────────────────────────────
 
 function startInputMeter() {
@@ -369,6 +470,34 @@ function startInputMeter() {
     inputMeterFrameId = requestAnimationFrame(tick);
   };
   tick();
+}
+
+function onMonitoringToggle(e) {
+  monitoringEnabled = e.target.checked;
+  if (monitoringEnabled && audioContext && audioContext.state === 'suspended') {
+    audioContext.resume();
+  }
+  updateMonitoringState();
+}
+
+function onMonitorLatencyChange() {
+  let v = parseInt(monitorLatencyInput.value, 10);
+  if (isNaN(v)) v = 0;
+  v = Math.max(MIN_MONITOR_OFFSET_MS, Math.min(MAX_MONITOR_OFFSET_MS, v));
+  monitorLatencyOffsetMs = v;
+  monitorLatencyInput.value = String(v);
+}
+
+function syncMonitoringControls() {
+  monitoringToggle.checked = monitoringEnabled;
+  monitorLatencyInput.value = String(monitorLatencyOffsetMs);
+  monitorLatencyInput.disabled = !monitoringEnabled;
+}
+
+function updateMonitoringState() {
+  syncMonitoringControls();
+  if (!audioContext || !monitorGainNode) return;
+  monitorGainNode.gain.setTargetAtTime(monitoringEnabled ? 1 : 0, audioContext.currentTime, 0.01);
 }
 
 // ─── Recording ────────────────────────────────────────────────────────────────
@@ -474,10 +603,16 @@ async function onRecordingStop() {
   try {
     const arrayBuffer = await blob.arrayBuffer();
     let audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    if (monitorLatencyOffsetMs !== 0) {
+      // A positive user-facing compensation value should pull the recorded take earlier.
+      audioBuffer = _offsetBuffer(audioBuffer, -monitorLatencyOffsetMs / 1000, audioContext);
+    }
     if (quantizeEnabled) {
       audioBuffer = quantizeBuffer(audioBuffer);
     }
-    addLoop(audioBuffer);
+    addLoop(audioBuffer, {
+      sourceBlob: quantizeEnabled ? audioBufferToWav(audioBuffer) : blob,
+    });
     setStatus('Loop added! Press ● REC to record another.');
   } catch (err) {
     showError('Could not decode audio: ' + err.message);
@@ -495,12 +630,13 @@ function quantizeBuffer(buffer) {
 
 // ─── Loop management ──────────────────────────────────────────────────────────
 
-function addLoop(audioBuffer) {
+function addLoop(audioBuffer, options = {}) {
   loopCounter++;
+  const name = (options.name || '').trim() || `Loop ${loopCounter}`;
   /** @type {Loop} */
   const loop = {
     id: loopCounter,
-    name: `Loop ${loopCounter}`,
+    name,
     audioBuffer,
     reversedBuffer: null,
     duration: audioBuffer.duration,
@@ -508,12 +644,15 @@ function addLoop(audioBuffer) {
     gainNode: null,
     pannerNode: null,
     playing: false,
-    muted: false,
-    soloed: false,
-    volume: 1,
-    pan: 0,
-    playbackRate: 1,
-    reversed: false,
+    muted: !!options.muted,
+    soloed: !!options.soloed,
+    volume: options.volume ?? 1,
+    pan: options.pan ?? 0,
+    playbackRate: options.playbackRate ?? 1,
+    reversed: !!options.reversed,
+    sourceBlob: options.sourceBlob || null,
+    midiToggleBinding: null,
+    midiVolumeBinding: null,
   };
   loops.push(loop);
   renderLoop(loop);
@@ -631,6 +770,9 @@ function deleteLoop(loopId) {
   const idx = loops.findIndex(l => l.id === loopId);
   if (idx === -1) return;
   const loop = loops[idx];
+  if (midiLearnTarget && midiLearnTarget.target.startsWith(`loop-${loopId}-`)) {
+    stopMidiLearn();
+  }
   stopLoop(loop);
   loops.splice(idx, 1);
 
@@ -698,6 +840,7 @@ function toggleSolo(loop) {
 
 function setLoopVolume(loop, value) {
   loop.volume = value;
+  updateLoopVolumeUI(loop);
   refreshAllGains();
 }
 
@@ -720,7 +863,7 @@ function toggleReverse(loop) {
   const wasPlaying = loop.playing;
   if (wasPlaying) {
     stopLoop(loop);
-    setTimeout(() => playLoop(loop), Math.ceil(FADE_TIME * 1000 * 6));
+    setTimeout(() => playLoop(loop), LOOP_RESTART_DELAY_MS);
   }
   const card = document.getElementById(`loop-card-${loop.id}`);
   if (card) {
@@ -730,6 +873,29 @@ function toggleReverse(loop) {
       btn.setAttribute('aria-pressed', loop.reversed ? 'true' : 'false');
     }
   }
+}
+
+function requantizeLoop(loop) {
+  const wasPlaying = loop.playing;
+  loop.audioBuffer = quantizeBuffer(loop.audioBuffer);
+  loop.reversedBuffer = null;
+  loop.duration = loop.audioBuffer.duration;
+
+  const card = document.getElementById(`loop-card-${loop.id}`);
+  if (card) {
+    const durationEl = card.querySelector('.loop-duration');
+    if (durationEl) durationEl.textContent = formatDuration(loop.duration);
+
+    const canvas = card.querySelector('canvas');
+    if (canvas) drawWaveform(canvas, loop.audioBuffer);
+  }
+
+  if (wasPlaying) {
+    stopLoop(loop);
+    setTimeout(() => playLoop(loop), LOOP_RESTART_DELAY_MS);
+  }
+
+  setStatus(`Re-quantized "${loop.name}".`);
 }
 
 function renameLoop(loop, newName) {
@@ -750,6 +916,178 @@ function onMasterVolumeChange(e) {
   if (masterGainNode) {
     masterGainNode.gain.setTargetAtTime(masterVolume, audioContext.currentTime, 0.01);
   }
+}
+
+// ─── MIDI ─────────────────────────────────────────────────────────────────────
+
+async function enableMidi() {
+  if (!navigator.requestMIDIAccess) {
+    updateMidiStatus('Web MIDI is not available in this browser.');
+    btnEnableMidi.disabled = true;
+    return;
+  }
+  try {
+    midiAccess = await navigator.requestMIDIAccess();
+    attachMidiInputs();
+    if (typeof midiAccess.addEventListener === 'function') {
+      midiAccess.addEventListener('statechange', attachMidiInputs);
+    } else {
+      midiAccess.onstatechange = attachMidiInputs;
+    }
+    btnEnableMidi.textContent = 'MIDI ready';
+    btnEnableMidi.disabled = true;
+    updateMidiStatus(`Listening to ${midiAccess.inputs.size} MIDI input${midiAccess.inputs.size === 1 ? '' : 's'}.`);
+  } catch (err) {
+    updateMidiStatus('Could not enable MIDI access.');
+    showError('MIDI access denied or unavailable.');
+    console.error('requestMIDIAccess error:', err);
+  }
+}
+
+function attachMidiInputs() {
+  if (!midiAccess) return;
+  for (const input of midiAccess.inputs.values()) {
+    input.onmidimessage = onMidiMessage;
+  }
+  if (!midiLearnTarget) {
+    updateMidiStatus(`Listening to ${midiAccess.inputs.size} MIDI input${midiAccess.inputs.size === 1 ? '' : 's'}.`);
+  }
+}
+
+function onMidiControlsClick(e) {
+  const learnBtn = e.target.closest('.btn-midi-learn');
+  if (learnBtn) {
+    const target = learnBtn.dataset.midiTarget;
+    if (target) startMidiLearn(target, learnBtn);
+    return;
+  }
+  const clearBtn = e.target.closest('.btn-midi-clear');
+  if (clearBtn) {
+    const target = clearBtn.dataset.midiTarget;
+    if (target) clearMidiBinding(target);
+  }
+}
+
+function startMidiLearn(target, buttonEl) {
+  stopMidiLearn();
+  if (!buttonEl.dataset.defaultLabel) buttonEl.dataset.defaultLabel = buttonEl.textContent;
+  midiLearnTarget = { target, buttonEl };
+  buttonEl.classList.add('learning');
+  buttonEl.textContent = 'Listening…';
+  updateMidiStatus(isVolumeTarget(target)
+    ? 'Move a MIDI fader or knob to bind volume.'
+    : 'Press a MIDI pad or button to bind this action.');
+}
+
+function stopMidiLearn() {
+  if (!midiLearnTarget) return;
+  midiLearnTarget.buttonEl.classList.remove('learning');
+  midiLearnTarget.buttonEl.textContent = midiLearnTarget.buttonEl.dataset.defaultLabel || 'Learn';
+  midiLearnTarget = null;
+}
+
+function onMidiMessage(event) {
+  const message = parseMidiMessage(event.data);
+  if (!message) return;
+
+  if (midiLearnTarget) {
+    const binding = createMidiBinding(message, isVolumeTarget(midiLearnTarget.target) ? 'range' : 'button');
+    if (!binding) {
+      updateMidiStatus('That control type is not supported for this mapping. Try again.');
+      return;
+    }
+    assignMidiBinding(midiLearnTarget.target, binding);
+    updateMidiStatus(`${midiTargetLabel(midiLearnTarget.target)} mapped to ${formatMidiBinding(binding)}.`);
+    stopMidiLearn();
+    return;
+  }
+
+  if (matchesMidiBinding(midiBindings.record, message) && isMidiButtonPress(message)) {
+    handleRecordButton();
+  }
+  if (matchesMidiBinding(midiBindings.playAll, message) && isMidiButtonPress(message)) {
+    playAllLoops();
+  }
+  if (matchesMidiBinding(midiBindings.stopAll, message) && isMidiButtonPress(message)) {
+    stopAllLoops();
+  }
+
+  for (const loop of loops) {
+    if (matchesMidiBinding(loop.midiToggleBinding, message) && isMidiButtonPress(message)) {
+      loop.playing ? stopLoop(loop) : playLoop(loop);
+    }
+    if (matchesMidiBinding(loop.midiVolumeBinding, message)) {
+      setLoopVolume(loop, scaleMidiValue(message.value, 0, 1.5));
+    }
+  }
+}
+
+function assignMidiBinding(target, binding) {
+  if (target === 'record') midiBindings.record = binding;
+  else if (target === 'play-all') midiBindings.playAll = binding;
+  else if (target === 'stop-all') midiBindings.stopAll = binding;
+  else {
+    const { loop, type } = getLoopTarget(target);
+    if (!loop) return;
+    if (type === 'toggle') loop.midiToggleBinding = binding;
+    if (type === 'volume') loop.midiVolumeBinding = binding;
+  }
+  updateAllMidiBindingLabels();
+}
+
+function clearMidiBinding(target) {
+  if (target === 'record') midiBindings.record = null;
+  else if (target === 'play-all') midiBindings.playAll = null;
+  else if (target === 'stop-all') midiBindings.stopAll = null;
+  else {
+    const { loop, type } = getLoopTarget(target);
+    if (!loop) return;
+    if (type === 'toggle') loop.midiToggleBinding = null;
+    if (type === 'volume') loop.midiVolumeBinding = null;
+  }
+  if (midiLearnTarget && midiLearnTarget.target === target) stopMidiLearn();
+  updateAllMidiBindingLabels();
+}
+
+function getLoopTarget(target) {
+  const match = /^loop-(\d+)-(toggle|volume)$/.exec(target);
+  if (!match) return { loop: null, type: null };
+  return {
+    loop: loops.find((item) => item.id === parseInt(match[1], 10)) || null,
+    type: match[2],
+  };
+}
+
+function isVolumeTarget(target) {
+  return target.endsWith('-volume');
+}
+
+function midiTargetLabel(target) {
+  if (target === 'record') return 'Record toggle';
+  if (target === 'play-all') return 'Play all';
+  if (target === 'stop-all') return 'Stop all';
+  const { loop, type } = getLoopTarget(target);
+  if (!loop) return 'Control';
+  return type === 'toggle' ? `${loop.name} toggle` : `${loop.name} volume`;
+}
+
+function updateAllMidiBindingLabels() {
+  updateMidiBindingLabel('[data-midi-action="record"] .midi-binding-value', midiBindings.record);
+  updateMidiBindingLabel('[data-midi-action="play-all"] .midi-binding-value', midiBindings.playAll);
+  updateMidiBindingLabel('[data-midi-action="stop-all"] .midi-binding-value', midiBindings.stopAll);
+  loops.forEach((loop) => {
+    updateMidiBindingLabel(`#loop-card-${loop.id} [data-midi-binding="toggle"]`, loop.midiToggleBinding);
+    updateMidiBindingLabel(`#loop-card-${loop.id} [data-midi-binding="volume"]`, loop.midiVolumeBinding);
+  });
+}
+
+function updateMidiBindingLabel(selector, binding) {
+  const el = document.querySelector(selector);
+  if (el) el.textContent = formatMidiBinding(binding);
+}
+
+function updateMidiStatus(msg) {
+  midiStatus.textContent = msg;
 }
 
 // ─── Metronome ────────────────────────────────────────────────────────────────
@@ -862,11 +1200,53 @@ async function exportMix() {
   try {
     const rendered = await offline.startRendering();
     const wavBlob = audioBufferToWav(rendered);
-    downloadBlob(wavBlob, `tottilooper-mix-${Date.now()}.wav`);
-    setStatus('Mix exported.');
+    const exportBase = `tottilooper-mix-${Date.now()}`;
+    downloadBlob(wavBlob, `${exportBase}.wav`);
+    if (exportMidiToggle.checked) {
+      const midiBlob = clickTrackToMidi({ bpm, beatsPerBar, durationSeconds: duration });
+      downloadBlob(midiBlob, `${exportBase}-click.mid`);
+    }
+    setStatus(exportMidiToggle.checked ? 'Mix + MIDI exported.' : 'Mix exported.');
   } catch (err) {
     showError('Export failed: ' + err.message);
     setStatus('Ready.');
+  }
+}
+
+async function shareSession() {
+  if (loops.length === 0) {
+    showInfo('Nothing to share – record a loop first.');
+    return;
+  }
+
+  try {
+    const payload = await buildSharedSessionPayload();
+    const shareUrl = new URL(window.location.href);
+    shareUrl.hash = `share=${payload}`;
+
+    if (shareUrl.hash.length > MAX_SHARE_FRAGMENT_LENGTH) {
+      showError('This session is too large to fit in a shareable URL.');
+      return;
+    }
+
+    history.replaceState(null, '', shareUrl);
+
+    let copied = false;
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(shareUrl.toString());
+        copied = true;
+      } catch {
+        copied = false;
+      }
+    }
+
+    setStatus('Share link ready.');
+    showInfo(copied
+      ? 'Share link copied to your clipboard.'
+      : 'Share link saved in the URL bar. Copy it from there to share it.');
+  } catch (err) {
+    showError('Could not create share link: ' + err.message);
   }
 }
 
@@ -885,6 +1265,82 @@ function downloadBlob(blob, filename) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function buildSharedSessionPayload() {
+  const packed = packSharedSession({
+    bpm,
+    beatsPerBar,
+    masterVolume,
+    loops: await Promise.all(loops.map(async (loop) => {
+      const shareBlob = getLoopShareBlob(loop);
+      return {
+        name: loop.name,
+        volume: loop.volume,
+        pan: loop.pan,
+        playbackRate: loop.playbackRate,
+        muted: loop.muted,
+        soloed: loop.soloed,
+        reversed: loop.reversed,
+        mimeType: shareBlob.type || 'audio/wav',
+        audioBytes: new Uint8Array(await shareBlob.arrayBuffer()),
+      };
+    })),
+  });
+
+  return packed;
+}
+
+function getLoopShareBlob(loop) {
+  return loop.sourceBlob || audioBufferToWav(loop.audioBuffer);
+}
+
+async function restoreSharedSessionFromUrl() {
+  const sharePayload = new URLSearchParams(window.location.hash.slice(1)).get('share');
+  if (!sharePayload) return;
+
+  try {
+    const sharedSession = unpackSharedSession(sharePayload);
+    ensureAudioEngine();
+    applySharedSessionSettings(sharedSession);
+
+    for (const sharedLoop of sharedSession.loops) {
+      const sourceBlob = new Blob([sharedLoop.audioBytes], { type: sharedLoop.mimeType || 'audio/wav' });
+      const arrayBuffer = await sourceBlob.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      addLoop(audioBuffer, {
+        name: sharedLoop.name,
+        volume: sharedLoop.volume,
+        pan: sharedLoop.pan,
+        playbackRate: sharedLoop.playbackRate,
+        muted: sharedLoop.muted,
+        soloed: sharedLoop.soloed,
+        reversed: sharedLoop.reversed,
+        sourceBlob,
+      });
+    }
+
+    tempoControls.classList.remove('hidden');
+    masterControls.classList.remove('hidden');
+    loopsSection.classList.remove('hidden');
+    updateEmptyState();
+    setStatus(`Loaded shared session with ${sharedSession.loops.length} loop${sharedSession.loops.length === 1 ? '' : 's'}.`);
+    showInfo('Shared session loaded from the URL.');
+  } catch (err) {
+    showError('Could not load shared session: ' + err.message);
+  }
+}
+
+function applySharedSessionSettings(sharedSession) {
+  bpm = sharedSession.bpm;
+  beatsPerBar = sharedSession.beatsPerBar;
+  masterVolume = sharedSession.masterVolume;
+  bpmInput.value = String(bpm);
+  beatsPerBarInput.value = String(beatsPerBar);
+  masterVolumeInput.value = String(masterVolume);
+  if (masterGainNode) {
+    masterGainNode.gain.value = masterVolume;
+  }
 }
 
 // ─── Rendering ────────────────────────────────────────────────────────────────
@@ -947,6 +1403,13 @@ function renderLoop(loop) {
   btnSolo.setAttribute('aria-pressed', loop.soloed ? 'true' : 'false');
   if (loop.soloed) btnSolo.classList.add('active');
 
+  const btnQuantize = iconButton(
+    'btn-quantize',
+    'Q',
+    'Snap loop to current BPM grid',
+    () => requantizeLoop(loop),
+  );
+
   const btnReverse = iconButton('btn-reverse', '⇄', 'Reverse', () => toggleReverse(loop));
   btnReverse.setAttribute('aria-pressed', loop.reversed ? 'true' : 'false');
   if (loop.reversed) btnReverse.classList.add('active');
@@ -960,17 +1423,20 @@ function renderLoop(loop) {
   btnDelete.setAttribute('aria-label', 'Delete loop');
   btnDelete.addEventListener('click', () => deleteLoop(loop.id));
 
-  actions.append(btnPlay, btnMute, btnSolo, btnReverse, btnExport, btnDelete);
+  actions.append(btnPlay, btnMute, btnSolo, btnQuantize, btnReverse, btnExport, btnDelete);
   topRow.append(nameInput, waveformEl, durationEl, actions);
 
   // Bottom row: faders
   const faderRow = document.createElement('div');
   faderRow.className = 'loop-faders';
 
+  const volumeFader = makeFader('Vol',   0,    1.5, 0.01, loop.volume,
+    (v) => `${Math.round(v * 100)}%`,
+    (v) => setLoopVolume(loop, v));
+  volumeFader.dataset.fader = 'volume';
+
   faderRow.append(
-    makeFader('Vol',   0,    1.5, 0.01, loop.volume,
-      (v) => `${Math.round(v * 100)}%`,
-      (v) => setLoopVolume(loop, v)),
+    volumeFader,
     makeFader('Pan',  -1,    1,   0.01, loop.pan,
       panText,
       (v) => setLoopPan(loop, v)),
@@ -979,12 +1445,26 @@ function renderLoop(loop) {
       (v) => setLoopPlaybackRate(loop, v)),
   );
 
+  const midiRow = document.createElement('div');
+  midiRow.className = 'loop-midi';
+  midiRow.innerHTML = `
+    <span class="loop-midi-title">MIDI</span>
+    <span class="midi-binding-value" data-midi-binding="toggle">Unassigned</span>
+    <button class="btn-secondary btn-midi-learn" data-midi-target="loop-${loop.id}-toggle">Learn toggle</button>
+    <button class="btn-secondary btn-midi-clear" data-midi-target="loop-${loop.id}-toggle">Clear</button>
+    <span class="midi-binding-value" data-midi-binding="volume">Unassigned</span>
+    <button class="btn-secondary btn-midi-learn" data-midi-target="loop-${loop.id}-volume">Learn volume</button>
+    <button class="btn-secondary btn-midi-clear" data-midi-target="loop-${loop.id}-volume">Clear</button>
+  `;
+
   card.appendChild(topRow);
   card.appendChild(faderRow);
+  card.appendChild(midiRow);
 
   // Canvas sizing requires the element be in the DOM to measure offsetWidth.
   loopsList.appendChild(card);
   drawWaveform(canvas, loop.audioBuffer);
+  updateAllMidiBindingLabels();
 }
 
 function iconButton(cls, text, title, onClick) {
@@ -1025,6 +1505,17 @@ function makeFader(label, min, max, step, value, formatValue, onInput) {
 
   wrap.append(title, input, valueEl);
   return wrap;
+}
+
+function updateLoopVolumeUI(loop) {
+  const card = document.getElementById(`loop-card-${loop.id}`);
+  if (!card) return;
+  const fader = card.querySelector('[data-fader="volume"]');
+  if (!fader) return;
+  const input = fader.querySelector('input[type="range"]');
+  const valueEl = fader.querySelector('.fader-value');
+  if (input) input.value = String(loop.volume);
+  if (valueEl) valueEl.textContent = `${Math.round(loop.volume * 100)}%`;
 }
 
 function drawWaveform(canvas, audioBuffer) {
@@ -1081,6 +1572,84 @@ function resetTimer() {
   recordTimer.classList.remove('active');
 }
 
+// ─── Gamepad controls ─────────────────────────────────────────────────────────
+
+function startGamepadPolling() {
+  if (typeof navigator.getGamepads !== 'function') return;
+
+  const tick = () => {
+    pollGamepads();
+    window.requestAnimationFrame(tick);
+  };
+
+  tick();
+}
+
+function pollGamepads() {
+  const pads = navigator.getGamepads() || [];
+  const nextStates = new Map();
+  const actionButtons = [
+    GAMEPAD_RECORD_BUTTON,
+    GAMEPAD_PLAY_BUTTON,
+    GAMEPAD_STOP_BUTTON,
+    GAMEPAD_NEXT_BUTTON,
+  ];
+
+  for (const pad of pads) {
+    if (!pad) continue;
+
+    for (const buttonIndex of actionButtons) {
+      const key = `${pad.index}:${buttonIndex}`;
+      const pressed = isGamepadButtonPressed(pad.buttons[buttonIndex]);
+      nextStates.set(key, pressed);
+
+      if (pressed && !gamepadButtonStates.get(key)) {
+        handleGamepadAction(buttonIndex);
+      }
+    }
+  }
+
+  gamepadButtonStates.clear();
+  nextStates.forEach((pressed, key) => gamepadButtonStates.set(key, pressed));
+}
+
+function isGamepadButtonPressed(button) {
+  return !!(button && (button.pressed || button.value > 0.5));
+}
+
+function handleGamepadAction(buttonIndex) {
+  if (!audioContext) return;
+
+  switch (buttonIndex) {
+    case GAMEPAD_RECORD_BUTTON:
+      handleRecordButton();
+      break;
+    case GAMEPAD_PLAY_BUTTON:
+      playAllLoops();
+      break;
+    case GAMEPAD_STOP_BUTTON:
+      stopAllLoops();
+      break;
+    case GAMEPAD_NEXT_BUTTON:
+      toggleNextLoop();
+      break;
+  }
+}
+
+function toggleLoopByIndex(idx) {
+  const loop = loops[idx];
+  if (!loop) return;
+  loop.playing ? stopLoop(loop) : playLoop(loop);
+}
+
+function toggleNextLoop() {
+  if (loops.length === 0) return;
+
+  const idx = nextLoopCursor % loops.length;
+  toggleLoopByIndex(idx);
+  nextLoopCursor = (idx + 1) % loops.length;
+}
+
 // ─── Keyboard shortcuts ──────────────────────────────────────────────────────
 
 function onGlobalKeydown(e) {
@@ -1093,7 +1662,8 @@ function onGlobalKeydown(e) {
     return;
   }
 
-  if (e.key === '?') {
+  const action = findShortcutAction(e);
+  if (action === 'openHelp') {
     e.preventDefault();
     openHelp();
     return;
@@ -1101,31 +1671,28 @@ function onGlobalKeydown(e) {
 
   if (!audioContext) return;
 
-  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
-    e.preventDefault();
-    undoDelete();
-    return;
-  }
-
-  switch (e.key) {
-    case ' ':
+  switch (action) {
+    case 'toggleRecord':
       e.preventDefault();
       handleRecordButton();
       break;
-    case 'Enter':
+    case 'playAll':
       e.preventDefault();
       playAllLoops();
       break;
-    case 'Escape':
+    case 'stopAll':
       e.preventDefault();
       stopAllLoops();
       break;
+    case 'undoDelete':
+      e.preventDefault();
+      undoDelete();
+      break;
     default:
-      if (/^[1-9]$/.test(e.key)) {
+      if (action && action.startsWith('toggleLoop')) {
         e.preventDefault();
-        const idx = parseInt(e.key, 10) - 1;
-        const loop = loops[idx];
-        if (loop) { loop.playing ? stopLoop(loop) : playLoop(loop); }
+        const idx = parseInt(action.slice(-1), 10) - 1;
+        toggleLoopByIndex(idx);
       }
   }
 }
@@ -1136,6 +1703,110 @@ function openHelp()  { helpModal.classList.remove('hidden'); }
 function closeHelp() { helpModal.classList.add('hidden'); }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function findShortcutAction(event) {
+  const shortcut = eventToShortcut(event);
+  if (!shortcut) return '';
+
+  for (const definition of shortcutDefinitions) {
+    if (shortcuts[definition.action] === shortcut) return definition.action;
+  }
+
+  return '';
+}
+
+function shortcutToKbdHtml(shortcut) {
+  if (!shortcut) return '<span class="shortcut-empty">Unassigned</span>';
+
+  return shortcut
+    .split('+')
+    .map((part) => `<kbd>${part === 'Mod' ? 'Ctrl/⌘' : part}</kbd>`)
+    .join('+');
+}
+
+function renderShortcutSettings() {
+  shortcutList.innerHTML = '';
+  shortcutEditor.innerHTML = '';
+
+  for (const definition of shortcutDefinitions) {
+    const shortcut = shortcuts[definition.action];
+
+    const listItem = document.createElement('li');
+    listItem.innerHTML = `${shortcutToKbdHtml(shortcut)} – ${definition.label.toLowerCase()}`;
+    shortcutList.appendChild(listItem);
+
+    const label = document.createElement('label');
+    label.className = 'shortcut-field';
+
+    const text = document.createElement('span');
+    text.textContent = definition.label;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.readOnly = true;
+    input.value = shortcut;
+    input.placeholder = 'Unassigned';
+    input.dataset.action = definition.action;
+    input.setAttribute('aria-label', `${definition.label} shortcut`);
+    input.addEventListener('keydown', onShortcutInputKeydown);
+
+    label.append(text, input);
+    shortcutEditor.appendChild(label);
+  }
+
+  shortcutRecordHint.innerHTML = shortcutToKbdHtml(shortcuts.toggleRecord);
+  shortcutUndoHint.innerHTML = shortcutToKbdHtml(shortcuts.undoDelete);
+  btnHelp.title = `Help (press ${shortcuts.openHelp || 'unassigned'})`;
+  btnUndo.title = `Undo delete (${shortcuts.undoDelete || 'unassigned'})`;
+}
+
+function onShortcutInputKeydown(e) {
+  if (e.key === 'Tab') return;
+
+  e.preventDefault();
+  const action = e.currentTarget.dataset.action;
+  if (!action) return;
+
+  if (e.key === 'Backspace' || e.key === 'Delete') {
+    shortcuts[action] = '';
+    persistShortcuts();
+    showInfo(`Cleared shortcut for ${getShortcutLabel(action)}.`);
+    return;
+  }
+
+  const shortcut = eventToShortcut(e);
+  if (!shortcut) {
+    showError('Shortcut must include a non-modifier key.');
+    return;
+  }
+
+  const conflict = shortcutDefinitions.find((definition) => (
+    definition.action !== action && shortcuts[definition.action] === shortcut
+  ));
+  if (conflict) {
+    showError(`${shortcut} is already assigned to ${conflict.label.toLowerCase()}.`);
+    return;
+  }
+
+  shortcuts[action] = shortcut;
+  persistShortcuts();
+  showInfo(`Saved shortcut for ${getShortcutLabel(action)}.`);
+}
+
+function persistShortcuts() {
+  saveShortcutMappings(shortcuts);
+  renderShortcutSettings();
+}
+
+function resetShortcuts() {
+  shortcuts = { ...DEFAULT_SHORTCUTS };
+  persistShortcuts();
+  showInfo('Keyboard shortcuts reset to defaults.');
+}
+
+function getShortcutLabel(action) {
+  return shortcutDefinitions.find((definition) => definition.action === action)?.label || action;
+}
 
 function setStatus(msg) {
   statusText.textContent = msg;
