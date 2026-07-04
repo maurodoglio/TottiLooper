@@ -234,6 +234,11 @@ test.describe('loop controls', () => {
     await expect(page.locator('.loop-duration')).toBeVisible();
   });
 
+  test('loop card exposes independent speed and pitch sliders', async ({ page }) => {
+    await expect(page.locator('.fader:has-text("Speed") input[aria-label="Speed"]')).toBeVisible();
+    await expect(page.locator('.fader:has-text("Pitch") input[aria-label="Pitch"]')).toBeVisible();
+  });
+
   test('undo button becomes enabled after a loop is deleted', async ({ page }) => {
     await page.locator('.btn-danger').click();
     await expect(page.locator('#btn-undo')).toBeEnabled();

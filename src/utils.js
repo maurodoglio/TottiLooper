@@ -118,6 +118,149 @@ export function reverseBuffer(buffer, audioContext) {
   return rev;
 }
 
+/**
+ * Clone an AudioBuffer into a fresh buffer owned by the provided AudioContext.
+ *
+ * @param {AudioBuffer} buffer
+ * @param {AudioContext} audioContext
+ * @returns {AudioBuffer}
+ */
+export function cloneBuffer(buffer, audioContext) {
+  const out = audioContext.createBuffer(
+    buffer.numberOfChannels,
+    buffer.length,
+    buffer.sampleRate,
+  );
+  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+    out.getChannelData(ch).set(buffer.getChannelData(ch));
+  }
+  return out;
+}
+
+/**
+ * Return a new AudioBuffer resampled by the given ratio.
+ *
+ * ratio > 1 raises pitch and shortens the buffer; ratio < 1 lowers pitch and
+ * lengthens it.
+ *
+ * @param {AudioBuffer} buffer
+ * @param {number} ratio
+ * @param {AudioContext} audioContext
+ * @returns {AudioBuffer}
+ */
+export function resampleBuffer(buffer, ratio, audioContext) {
+  if (!Number.isFinite(ratio) || ratio <= 0) {
+    throw new Error('Resample ratio must be a positive number.');
+  }
+  if (Math.abs(ratio - 1) < 1e-6) return cloneBuffer(buffer, audioContext);
+
+  const outLen = Math.max(1, Math.round(buffer.length / ratio));
+  const out = audioContext.createBuffer(
+    buffer.numberOfChannels,
+    outLen,
+    buffer.sampleRate,
+  );
+
+  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+    const src = buffer.getChannelData(ch);
+    const dst = out.getChannelData(ch);
+    for (let i = 0; i < outLen; i++) {
+      const pos = i * ratio;
+      const lo = Math.floor(pos);
+      const hi = Math.min(src.length - 1, lo + 1);
+      const frac = pos - lo;
+      const a = src[Math.min(src.length - 1, lo)];
+      const b = src[hi];
+      dst[i] = a + (b - a) * frac;
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Time-stretch an AudioBuffer using a simple granular overlap-add process.
+ *
+ * factor > 1 lengthens the buffer while roughly preserving pitch; factor < 1
+ * shortens it while roughly preserving pitch.
+ *
+ * @param {AudioBuffer} buffer
+ * @param {number} factor
+ * @param {AudioContext} audioContext
+ * @returns {AudioBuffer}
+ */
+export function timeStretchBuffer(buffer, factor, audioContext) {
+  if (!Number.isFinite(factor) || factor <= 0) {
+    throw new Error('Stretch factor must be a positive number.');
+  }
+  if (Math.abs(factor - 1) < 1e-6) return cloneBuffer(buffer, audioContext);
+  if (buffer.length < 32) {
+    return resampleBuffer(buffer, 1 / factor, audioContext);
+  }
+
+  const outLen = Math.max(1, Math.round(buffer.length * factor));
+  const out = audioContext.createBuffer(
+    buffer.numberOfChannels,
+    outLen,
+    buffer.sampleRate,
+  );
+
+  const grainSize = Math.max(32, Math.min(2048, buffer.length));
+  const analysisHop = Math.max(16, Math.min(Math.floor(grainSize / 8), grainSize));
+  const synthesisHop = Math.max(8, Math.round(analysisHop * factor));
+  const window = new Float32Array(grainSize);
+  const normalizer = new Float32Array(outLen);
+
+  for (let i = 0; i < grainSize; i++) {
+    window[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (grainSize - 1 || 1));
+  }
+
+  for (let inPos = 0, outPos = 0; outPos < outLen; inPos += analysisHop, outPos += synthesisHop) {
+    const sourceStart = Math.min(Math.max(0, inPos), Math.max(0, buffer.length - grainSize));
+
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const src = buffer.getChannelData(ch);
+      const dst = out.getChannelData(ch);
+
+      for (let i = 0; i < grainSize; i++) {
+        const dstIndex = outPos + i;
+        if (dstIndex >= outLen) break;
+        const weight = window[i];
+        dst[dstIndex] += src[sourceStart + i] * weight;
+        if (ch === 0) normalizer[dstIndex] += weight;
+      }
+    }
+  }
+
+  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+    const dst = out.getChannelData(ch);
+    for (let i = 0; i < outLen; i++) {
+      const weight = normalizer[i];
+      if (weight > 1e-6) dst[i] /= weight;
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Transform a loop buffer so speed and pitch can be controlled independently.
+ *
+ * @param {AudioBuffer} buffer
+ * @param {{ speed: number, pitchSemitones: number, audioContext: AudioContext }} opts
+ * @returns {AudioBuffer}
+ */
+export function transformBuffer(buffer, { speed, pitchSemitones, audioContext }) {
+  const pitchRatio = 2 ** (pitchSemitones / 12);
+  const pitched = Math.abs(pitchRatio - 1) < 1e-6
+    ? cloneBuffer(buffer, audioContext)
+    : resampleBuffer(buffer, pitchRatio, audioContext);
+  const stretchFactor = pitchRatio / speed;
+  return Math.abs(stretchFactor - 1) < 1e-6
+    ? pitched
+    : timeStretchBuffer(pitched, stretchFactor, audioContext);
+}
+
 // ─── WAV encoding ─────────────────────────────────────────────────────────────
 
 /**
