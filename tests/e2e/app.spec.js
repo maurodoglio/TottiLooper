@@ -139,6 +139,24 @@ test.describe('after microphone access', () => {
   test('status text shows ready message', async ({ page }) => {
     await expect(page.locator('#status-text')).toContainText('Ready');
   });
+
+  test('input monitoring defaults to off with latency offset disabled', async ({ page }) => {
+    await expect(page.locator('#monitoring-toggle')).not.toBeChecked();
+    await expect(page.locator('#monitor-latency-offset')).toHaveValue('0');
+    await expect(page.locator('#monitor-latency-offset')).toBeDisabled();
+  });
+
+  test('enabling input monitoring enables the latency offset control', async ({ page }) => {
+    await page.locator('#monitoring-toggle').check();
+    await expect(page.locator('#monitoring-toggle')).toBeChecked();
+    await expect(page.locator('#monitor-latency-offset')).toBeEnabled();
+  });
+
+  test('latency offset can be adjusted while monitoring is enabled', async ({ page }) => {
+    await page.locator('#monitoring-toggle').check();
+    await page.locator('#monitor-latency-offset').fill('-25');
+    await expect(page.locator('#monitor-latency-offset')).toHaveValue('-25');
+  });
 });
 
 // ─── Recording flow ───────────────────────────────────────────────────────────

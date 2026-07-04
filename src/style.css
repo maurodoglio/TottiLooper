@@ -212,6 +212,34 @@ main {
   transition: width 0.05s linear;
 }
 
+.record-monitoring,
+.monitor-offset-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.record-monitoring {
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.monitor-offset-field input[type="number"] {
+  width: 72px;
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.monitor-offset-field input[type="number"]:disabled {
+  opacity: 0.6;
+}
+
 /* ── Master controls ── */
 #master-controls .master-volume-field {
   flex: 1;

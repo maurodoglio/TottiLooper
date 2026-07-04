@@ -96,6 +96,44 @@ export function quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext }) {
 }
 
 /**
+ * Shift an AudioBuffer earlier or later without changing its total length.
+ * Positive offsets add silence at the start; negative offsets trim the start.
+ * This is intended for corrective alignment, so callers can negate user-facing
+ * compensation values as needed before invoking it.
+ *
+ * @param {AudioBuffer} buffer
+ * @param {number} offsetSeconds
+ * @param {AudioContext} audioContext
+ * @returns {AudioBuffer}
+ */
+export function offsetBuffer(buffer, offsetSeconds, audioContext) {
+  const sampleOffset = Math.round(offsetSeconds * buffer.sampleRate);
+  if (sampleOffset === 0) return buffer;
+
+  const out = audioContext.createBuffer(
+    buffer.numberOfChannels,
+    buffer.length,
+    buffer.sampleRate,
+  );
+
+  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+    const src = buffer.getChannelData(ch);
+    const dst = out.getChannelData(ch);
+
+    if (sampleOffset > 0) {
+      if (sampleOffset >= dst.length) continue;
+      const copyLen = Math.max(0, src.length - sampleOffset);
+      dst.set(src.subarray(0, copyLen), sampleOffset);
+    } else {
+      const start = Math.min(src.length, Math.abs(sampleOffset));
+      dst.set(src.subarray(start), 0);
+    }
+  }
+
+  return out;
+}
+
+/**
  * Return a new AudioBuffer with all channel data reversed.
  *
  * @param {AudioBuffer} buffer
