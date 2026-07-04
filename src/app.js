@@ -26,6 +26,7 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
+const POSITION_UPDATE_INTERVAL_MS = 50;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -389,7 +390,7 @@ function hasActiveLoops() {
 
 function startPlaybackPositionTimer() {
   if (playbackPositionInterval || !playbackPosition) return;
-  playbackPositionInterval = setInterval(updatePlaybackPosition, 50);
+  playbackPositionInterval = setInterval(updatePlaybackPosition, POSITION_UPDATE_INTERVAL_MS);
 }
 
 function stopPlaybackPositionTimer() {
