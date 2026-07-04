@@ -30,7 +30,7 @@ async function expectContrastRatioAtLeast(locator, minimumRatio) {
       return (lighter + 0.05) / (darker + 0.05);
     };
 
-    const styles = getComputedStyle(el);
+    const styles = globalThis.getComputedStyle(el);
     return contrast(toRgb(styles.color), toRgb(styles.backgroundColor));
   });
 
@@ -183,6 +183,7 @@ test.describe('after microphone access', () => {
     await expectContrastRatioAtLeast(page.locator('#btn-play-all'), 4.5);
 
     await page.click('#btn-record');
+    await page.waitForTimeout(200);
     await expectContrastRatioAtLeast(page.locator('#btn-record'), 4.5);
   });
 });
@@ -314,6 +315,7 @@ test.describe('loop controls', () => {
   test('active loop controls and delete button meet text contrast requirements', async ({ page }) => {
     await page.locator('.btn-mute').click();
     await page.locator('.btn-reverse').click();
+    await page.waitForTimeout(200);
 
     await expectContrastRatioAtLeast(page.locator('.btn-danger'), 4.5);
     await expectContrastRatioAtLeast(page.locator('.btn-mute'), 4.5);

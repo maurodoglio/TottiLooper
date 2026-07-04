@@ -246,18 +246,22 @@ button:disabled {
 }
 
 .btn-record {
-  background: var(--accent);
+  background-color: var(--accent);
   color: #111;
 }
 
 .btn-record:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background-color: var(--accent-hover);
 }
 
 .btn-record.recording {
-  background: #7b1f1f;
+  background-color: #7b1f1f;
   color: #fff;
   border: 2px solid #a72828;
+}
+
+.btn-record.recording:hover:not(:disabled) {
+  background-color: #7b1f1f;
 }
 
 .btn-stop {
@@ -270,12 +274,12 @@ button:disabled {
 }
 
 .btn-primary {
-  background: var(--green);
+  background-color: var(--green);
   color: #111;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--green-hover);
+  background-color: var(--green-hover);
 }
 
 .btn-secondary {
@@ -289,7 +293,7 @@ button:disabled {
 }
 
 .btn-danger {
-  background: #7b1f1f;
+  background-color: #7b1f1f;
   color: #fff;
   border: 1px solid #a72828;
   padding: 6px 12px;
@@ -297,11 +301,11 @@ button:disabled {
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #962626;
+  background-color: #962626;
 }
 
 .btn-icon {
-  background: var(--surface-raised);
+  background-color: var(--surface-raised);
   color: var(--text);
   border-radius: 50%;
   width: 36px;
@@ -314,27 +318,43 @@ button:disabled {
 }
 
 .btn-icon:hover:not(:disabled) {
-  background: #3a3a3a;
+  background-color: #3a3a3a;
 }
 
 .btn-icon.active {
-  background: var(--green);
+  background-color: var(--green);
   color: #111;
+}
+
+.btn-icon.active:hover:not(:disabled) {
+  background-color: var(--green);
 }
 
 .btn-icon.btn-solo.active {
-  background: var(--amber);
+  background-color: var(--amber);
   color: #222;
 }
 
+.btn-icon.btn-solo.active:hover:not(:disabled) {
+  background-color: var(--amber);
+}
+
 .btn-icon.btn-reverse.active {
-  background: var(--purple);
+  background-color: var(--purple);
   color: #111;
 }
 
+.btn-icon.btn-reverse.active:hover:not(:disabled) {
+  background-color: var(--purple);
+}
+
 .btn-icon.btn-mute.active {
-  background: var(--accent);
+  background-color: var(--accent);
   color: #111;
+}
+
+.btn-icon.btn-mute.active:hover:not(:disabled) {
+  background-color: var(--accent);
 }
 
 /* ── Loops section ── */
