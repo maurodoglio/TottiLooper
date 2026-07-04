@@ -1,5 +1,7 @@
 'use strict';
 
+import { swingDelaySeconds } from './utils.js';
+
 export const DRUM_STYLE_OPTIONS = [
   { value: 'rock', label: 'Rock' },
   { value: 'funk', label: 'Funk' },
@@ -29,12 +31,13 @@ export function getDrumStyleLabel(style) {
   return STYLE_LABELS[normalizeStyle(style)];
 }
 
-export function buildDrumLoopPlan({ style, bpm, beatsPerBar }) {
+export function buildDrumLoopPlan({ style, bpm, beatsPerBar, swing = 0 }) {
   const safeStyle = normalizeStyle(style);
   const safeBpm = Number.isFinite(bpm) && bpm > 0 ? bpm : 100;
   const safeBeatsPerBar = Number.isFinite(beatsPerBar) && beatsPerBar > 0
     ? Math.max(1, Math.floor(beatsPerBar))
     : 4;
+  const safeSwing = Number.isFinite(swing) ? swing : 0;
   const beatDuration = 60 / safeBpm;
   const barDuration = beatDuration * safeBeatsPerBar;
   const hits = [];
@@ -77,15 +80,26 @@ export function buildDrumLoopPlan({ style, bpm, beatsPerBar }) {
     }
   }
 
+  const swingSubdivision = beatDuration / 2;
   return {
     style: safeStyle,
     beatDuration,
     barDuration,
+    swing: safeSwing,
     hits: hits
-      .map((hit) => ({
-        ...hit,
-        time: hit.beat * beatDuration,
-      }))
+      .map((hit) => {
+        // Swing the off-beat 8th notes to match the metronome shuffle feel.
+        // Hits that sit exactly on an 8th-note gridline get nudged; finer
+        // subdivisions (16th hats) stay put, as in a natural swing groove.
+        const gridIndex = hit.beat * 2;
+        const swingDelay = Number.isInteger(gridIndex)
+          ? swingDelaySeconds(gridIndex, safeSwing, swingSubdivision)
+          : 0;
+        return {
+          ...hit,
+          time: hit.beat * beatDuration + swingDelay,
+        };
+      })
       .sort((a, b) => a.time - b.time),
   };
 }

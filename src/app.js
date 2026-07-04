@@ -42,6 +42,7 @@ import {
   applyPunchIn as _applyPunchIn,
   transformBuffer as _transformBuffer,
   unpackSharedSession,
+  swingDelaySeconds,
 } from './utils.js';
 import {
   DRUM_SAMPLE_FILES,
@@ -67,6 +68,7 @@ const METRONOME_SUBDIVISION_FREQ = 880;
 const METRONOME_DOWNBEAT_VOLUME_MULTIPLIER = 1.5;
 const METRONOME_SUBDIVISION_VOLUME_MULTIPLIER = 0.5;
 const VALID_METRONOME_SUBDIVISIONS = [1, 2, 3, 4];
+const MAX_SWING_PERCENT = 75;
 const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
@@ -167,6 +169,10 @@ let songBars         = DEFAULT_SONG_BARS;
 let songEndTimeout    = null;
 // Number of clicks per beat: 1=quarter, 2=8ths, 3=triplets, 4=16ths.
 let metronomeSubdivision = 1;
+// Swing depth as a fraction in [0, MAX_SWING] (0 = straight). Delays every
+// other subdivision to create a shuffle groove; composes with subdivision,
+// beatUnit and quantize without touching the core scheduler.
+let swingAmount       = 0;
 let metronomeInterval = null;
 let metronomeBeatIdx  = 0;
 let sceneCrossfadeBars = DEFAULT_SCENE_CROSSFADE_BARS;
@@ -293,6 +299,8 @@ const beatsPerBarInput   = $('beats-per-bar-input');
 const loopLengthBarsInput = $('loop-length-bars');
 const beatUnitInput      = $('beat-unit-input');
 const metronomeSubdivisionInput = $('metronome-subdivision-input');
+const swingInput         = $('swing-input');
+const swingValue         = $('swing-value');
 const drumStyleSelect    = $('drum-style');
 const btnGenerateDrums   = $('btn-generate-drums');
 const metronomeToggle    = $('metronome-toggle');
@@ -449,6 +457,7 @@ function init() {
   loopLengthBarsInput.addEventListener('change', onLoopLengthBarsChange);
   beatUnitInput.addEventListener('change', onBeatUnitChange);
   metronomeSubdivisionInput.addEventListener('change', onMetronomeSubdivisionChange);
+  swingInput.addEventListener('input', onSwingChange);
   metronomeToggle.addEventListener('change', onMetronomeToggle);
   countInToggle.addEventListener('change', (e) => { countInEnabled = e.target.checked; });
   quantizeToggle.addEventListener('change', (e) => { quantizeEnabled = e.target.checked; });
@@ -2917,6 +2926,17 @@ function onMetronomeSubdivisionChange() {
   }
 }
 
+function onSwingChange() {
+  let v = parseInt(swingInput.value, 10);
+  if (isNaN(v)) v = 0;
+  v = Math.max(0, Math.min(MAX_SWING_PERCENT, v));
+  swingAmount = v / 100;
+  swingInput.value = String(v);
+  swingValue.textContent = `${v}%`;
+  // Swing only nudges individual hits later in time; the straight setInterval
+  // grid keeps ticking, so there is no need to restart the metronome here.
+}
+
 function startMetronome() {
   if (metronomeInterval || !audioContext) return;
   const subdivisionsPerBar = beatsPerBar * metronomeSubdivision;
@@ -2924,10 +2944,14 @@ function startMetronome() {
   playClick('downbeat');
   metronomeBeatIdx = 1;
   const intervalMs = getBeatIntervalMs() / metronomeSubdivision;
+  const subdivisionIntervalSec = intervalMs / 1000;
   metronomeInterval = setInterval(() => {
     const isDownbeat = metronomeBeatIdx % subdivisionsPerBar === 0;
     const isBeat = metronomeBeatIdx % metronomeSubdivision === 0;
-    playClick(isDownbeat ? 'downbeat' : (isBeat ? 'beat' : 'subdivision'));
+    // Shuffle groove: push every other subdivision later without touching the
+    // straight grid. Even hits stay on the beat; odd hits are delayed.
+    const swingDelay = swingDelaySeconds(metronomeBeatIdx, swingAmount, subdivisionIntervalSec);
+    playClick(isDownbeat ? 'downbeat' : (isBeat ? 'beat' : 'subdivision'), swingDelay);
     metronomeBeatIdx++;
   }, intervalMs);
 }
@@ -3002,7 +3026,7 @@ async function loadDrumSampleLibrary() {
 }
 
 async function renderDrumLoop(style) {
-  const plan = buildDrumLoopPlan({ style, bpm, beatsPerBar });
+  const plan = buildDrumLoopPlan({ style, bpm, beatsPerBar, swing: swingAmount });
   const sampleRate = audioContext.sampleRate;
   const offline = new OfflineAudioContext(2, Math.ceil(plan.barDuration * sampleRate), sampleRate);
   const sampleBytes = await loadDrumSampleLibrary();
@@ -3055,9 +3079,10 @@ async function generateDrumLoop() {
   }
 }
 
-function playClick(type) {
+function playClick(type, delay = 0) {
   if (!audioContext) return;
-  const t = audioContext.currentTime;
+  const offset = Number.isFinite(delay) && delay > 0 ? delay : 0;
+  const t = audioContext.currentTime + offset;
   const osc = audioContext.createOscillator();
   const gain = audioContext.createGain();
   const isDownbeat = type === 'downbeat';

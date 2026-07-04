@@ -259,6 +259,11 @@ test.describe('initial state', () => {
   test('metronome subdivision defaults to quarter notes', async ({ page }) => {
     await expect(page.locator('#metronome-subdivision-input')).toHaveValue('1');
   });
+
+  test('swing slider defaults to 0% (straight)', async ({ page }) => {
+    await expect(page.locator('#swing-input')).toHaveValue('0');
+    await expect(page.locator('#swing-value')).toHaveText('0%');
+  });
 });
 
 // ─── Theme toggle ──────────────────────────────────────────────────────────────
@@ -1370,6 +1375,29 @@ test.describe('tempo controls', () => {
   test('metronome subdivision can be set to triplets', async ({ page }) => {
     await page.locator('#metronome-subdivision-input').selectOption('3');
     await expect(page.locator('#metronome-subdivision-input')).toHaveValue('3');
+  });
+
+  test('swing slider updates and its value is reflected in state', async ({ page }) => {
+    const swing = page.locator('#swing-input');
+    const label = page.locator('#swing-value');
+
+    await expect(swing).toHaveValue('0');
+    await expect(label).toHaveText('0%');
+
+    // Move the slider to a shuffle setting; the live label proves the value
+    // flowed through the input handler into app state, not just the DOM.
+    await swing.evaluate((el) => {
+      el.value = '66';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    await expect(swing).toHaveValue('66');
+    await expect(label).toHaveText('66%');
+
+    // Enabling the metronome must not reset or lose the swing value.
+    await page.locator('#metronome-toggle').check();
+    await expect(swing).toHaveValue('66');
+    await expect(label).toHaveText('66%');
   });
 
   test('count-in toggle can be enabled', async ({ page }) => {

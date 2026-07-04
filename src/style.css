@@ -263,6 +263,22 @@ main {
   min-width: 96px;
 }
 
+#tempo-controls .field-swing {
+  gap: 8px;
+}
+
+#tempo-controls .field-swing input[type="range"] {
+  width: 90px;
+  accent-color: var(--accent, #6c8cff);
+  cursor: pointer;
+}
+
+#tempo-controls .field-swing output {
+  min-width: 34px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
 #record-controls .field-bars {
   gap: 4px;
 }

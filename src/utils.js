@@ -466,6 +466,43 @@ export function getBeatSeconds(bpm, beatUnit = 4) {
 }
 
 /**
+ * Maximum swing amount, as a fraction of one subdivision interval. A value of
+ * ~0.66 pushes the off-beat toward a triplet feel; 0.75 is the hard cap.
+ */
+export const MAX_SWING = 0.75;
+
+/**
+ * Pure swing/shuffle timing math.
+ *
+ * Given a subdivision index on the straight metronome grid, return how far the
+ * hit should be nudged *later* in time to create a shuffle groove. Only the
+ * off-beat (odd-indexed) subdivisions are delayed; the on-beat (even-indexed)
+ * subdivisions stay exactly on the grid, so at 0% swing nothing moves and the
+ * timing is identical to the existing straight scheduler.
+ *
+ * delay = swingAmount * subdivisionInterval   (for odd indices)
+ * delay = 0                                    (for even indices)
+ *
+ * @param {number} subdivisionIndex   Zero-based index of the subdivision hit.
+ * @param {number} swingAmount        Swing depth as a fraction in [0, MAX_SWING].
+ * @param {number} subdivisionInterval Straight time between subdivisions (seconds or ms).
+ * @returns {number} Delay to add to this subdivision's scheduled time (same unit as interval).
+ */
+export function swingDelaySeconds(subdivisionIndex, swingAmount, subdivisionInterval) {
+  if (!Number.isFinite(subdivisionIndex)
+    || !Number.isFinite(swingAmount)
+    || !Number.isFinite(subdivisionInterval)
+    || subdivisionInterval <= 0) {
+    return 0;
+  }
+  // Only the off-beats (odd subdivisions) get pushed back; works for negatives too.
+  const isOffbeat = ((subdivisionIndex % 2) + 2) % 2 === 1;
+  if (!isOffbeat) return 0;
+  const amount = Math.max(0, Math.min(MAX_SWING, swingAmount));
+  return amount * subdivisionInterval;
+}
+
+/**
  * Snap a recorded AudioBuffer's length to a whole number of bars.
  *
  * @param {AudioBuffer} buffer

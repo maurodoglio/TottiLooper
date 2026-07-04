@@ -49,6 +49,8 @@ import {
   applyFadeIn,
   applyFadeOut,
   UndoStack,
+  swingDelaySeconds,
+  MAX_SWING,
 } from '../../src/utils.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -694,6 +696,49 @@ describe('getBeatSeconds', () => {
 
   it('returns eighth-note beat length for x/8 signatures', () => {
     expect(getBeatSeconds(120, 8)).toBeCloseTo(0.25);
+  });
+});
+
+describe('swingDelaySeconds', () => {
+  const interval = 0.25; // straight time between subdivisions
+
+  it('exposes a sane maximum swing cap', () => {
+    expect(MAX_SWING).toBeCloseTo(0.75);
+  });
+
+  it('returns 0 delay at 0% swing regardless of index', () => {
+    for (let i = 0; i < 8; i++) {
+      expect(swingDelaySeconds(i, 0, interval)).toBe(0);
+    }
+  });
+
+  it('leaves on-beat (even) subdivisions on the grid', () => {
+    expect(swingDelaySeconds(0, 0.5, interval)).toBe(0);
+    expect(swingDelaySeconds(2, 0.5, interval)).toBe(0);
+    expect(swingDelaySeconds(4, 0.66, interval)).toBe(0);
+  });
+
+  it('delays off-beat (odd) subdivisions by swingAmount * interval', () => {
+    expect(swingDelaySeconds(1, 0.5, interval)).toBeCloseTo(0.125);
+    expect(swingDelaySeconds(3, 0.5, interval)).toBeCloseTo(0.125);
+    expect(swingDelaySeconds(1, 0.66, interval)).toBeCloseTo(0.165);
+  });
+
+  it('scales linearly with the subdivision interval', () => {
+    expect(swingDelaySeconds(1, 0.5, 0.5)).toBeCloseTo(0.25);
+    expect(swingDelaySeconds(1, 0.5, 1)).toBeCloseTo(0.5);
+  });
+
+  it('clamps swing amount into [0, MAX_SWING]', () => {
+    expect(swingDelaySeconds(1, 2, interval)).toBeCloseTo(MAX_SWING * interval);
+    expect(swingDelaySeconds(1, -1, interval)).toBe(0);
+  });
+
+  it('returns 0 for non-finite or non-positive inputs', () => {
+    expect(swingDelaySeconds(NaN, 0.5, interval)).toBe(0);
+    expect(swingDelaySeconds(1, NaN, interval)).toBe(0);
+    expect(swingDelaySeconds(1, 0.5, 0)).toBe(0);
+    expect(swingDelaySeconds(1, 0.5, -0.25)).toBe(0);
   });
 });
 
