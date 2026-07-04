@@ -7,6 +7,16 @@
 
 'use strict';
 
+import {
+  formatDuration,
+  panText,
+  audioBufferToWav,
+  getSupportedMimeType,
+  effectiveGain as computeEffectiveGain,
+  quantizeBuffer as _quantizeBuffer,
+  reverseBuffer as _reverseBuffer,
+} from './utils.js';
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const FADE_TIME        = 0.015; // seconds – short fades to avoid clicks on start/stop
@@ -31,7 +41,6 @@ let masterGainNode = null;
 let masterVolume   = 1;
 
 let inputAnalyser  = null;
-let meterRafId     = null;
 
 // Tempo / metronome
 let bpm              = DEFAULT_BPM;
@@ -182,7 +191,7 @@ function startInputMeter() {
     }
     const pct = Math.min(100, (peak / 128) * 100 * 1.4);
     if (inputMeterFill) inputMeterFill.style.width = pct.toFixed(1) + '%';
-    meterRafId = requestAnimationFrame(tick);
+    requestAnimationFrame(tick);
   };
   tick();
 }
@@ -269,7 +278,7 @@ function stopRecording() {
 function discardRecording() {
   if (!isRecording || !mediaRecorder) return;
   mediaRecorder.onstop = null;
-  try { mediaRecorder.stop(); } catch (_) { /* ignore */ }
+  try { mediaRecorder.stop(); } catch { /* ignore */ }
   recordedChunks = [];
   isRecording = false;
   clearInterval(timerInterval);
@@ -303,38 +312,10 @@ async function onRecordingStop() {
   resetTimer();
 }
 
-function getSupportedMimeType() {
-  const types = [
-    'audio/webm;codecs=opus',
-    'audio/webm',
-    'audio/ogg;codecs=opus',
-    'audio/ogg',
-    'audio/mp4',
-  ];
-  return types.find(t => MediaRecorder.isTypeSupported(t)) || '';
-}
-
 // ─── Quantize (snap loop length to whole bars) ───────────────────────────────
 
 function quantizeBuffer(buffer) {
-  const beatSeconds = 60 / bpm;
-  const barSeconds  = beatSeconds * beatsPerBar;
-  const numBars     = Math.max(1, Math.round(buffer.duration / barSeconds));
-  const targetDur   = numBars * barSeconds;
-  const targetLen   = Math.round(targetDur * buffer.sampleRate);
-
-  const out = audioContext.createBuffer(
-    buffer.numberOfChannels,
-    targetLen,
-    buffer.sampleRate,
-  );
-  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
-    const src = buffer.getChannelData(ch);
-    const dst = out.getChannelData(ch);
-    dst.set(src.subarray(0, Math.min(src.length, targetLen)));
-    // Any extra samples in dst beyond src.length stay zero – acts as a tiny tail of silence.
-  }
-  return out;
+  return _quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext });
 }
 
 // ─── Loop management ──────────────────────────────────────────────────────────
@@ -366,10 +347,7 @@ function addLoop(audioBuffer) {
 
 /** Effective gain for a loop accounting for mute/solo/volume. */
 function effectiveGain(loop) {
-  if (loop.muted) return 0;
-  const anySolo = loops.some(l => l.soloed);
-  if (anySolo && !loop.soloed) return 0;
-  return loop.volume;
+  return computeEffectiveGain(loop, loops);
 }
 
 function refreshAllGains() {
@@ -391,19 +369,7 @@ function getPlaybackBuffer(loop) {
 }
 
 function reverseBuffer(buffer) {
-  const rev = audioContext.createBuffer(
-    buffer.numberOfChannels,
-    buffer.length,
-    buffer.sampleRate,
-  );
-  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
-    const src = buffer.getChannelData(ch);
-    const dst = rev.getChannelData(ch);
-    for (let i = 0, n = src.length; i < n; i++) {
-      dst[i] = src[n - 1 - i];
-    }
-  }
-  return rev;
+  return _reverseBuffer(buffer, audioContext);
 }
 
 function playLoop(loop) {
@@ -466,7 +432,7 @@ function stopLoop(loop) {
   }
   // Give the fade a few time-constants to decay before killing the source.
   const stopAt = audioContext.currentTime + FADE_TIME * 5;
-  try { node && node.stop(stopAt); } catch (_) { /* already stopped */ }
+  try { node && node.stop(stopAt); } catch { /* already stopped */ }
 
   loop.node = null;
   loop.gainNode = null;
@@ -731,7 +697,7 @@ async function exportMix() {
 
 function exportLoop(loop) {
   const wavBlob = audioBufferToWav(getPlaybackBuffer(loop));
-  const safeName = loop.name.replace(/[^a-z0-9_\-]+/gi, '_') || `loop-${loop.id}`;
+  const safeName = loop.name.replace(/[^a-z0-9_-]+/gi, '_') || `loop-${loop.id}`;
   downloadBlob(wavBlob, `${safeName}.wav`);
 }
 
@@ -744,52 +710,6 @@ function downloadBlob(blob, filename) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-/** Encode an AudioBuffer as a 16-bit PCM WAV Blob. */
-function audioBufferToWav(buffer) {
-  const numCh      = buffer.numberOfChannels;
-  const sampleRate = buffer.sampleRate;
-  const numFrames  = buffer.length;
-  const blockAlign = numCh * 2;
-  const byteRate   = sampleRate * blockAlign;
-  const dataSize   = numFrames * blockAlign;
-  const ab   = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(ab);
-
-  writeString(view, 0, 'RIFF');
-  view.setUint32(4, 36 + dataSize, true);
-  writeString(view, 8, 'WAVE');
-  writeString(view, 12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, numCh, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, 16, true);
-  writeString(view, 36, 'data');
-  view.setUint32(40, dataSize, true);
-
-  const channels = [];
-  for (let c = 0; c < numCh; c++) channels.push(buffer.getChannelData(c));
-
-  let offset = 44;
-  for (let i = 0; i < numFrames; i++) {
-    for (let c = 0; c < numCh; c++) {
-      let s = Math.max(-1, Math.min(1, channels[c][i]));
-      s = s < 0 ? s * 0x8000 : s * 0x7fff;
-      view.setInt16(offset, s, true);
-      offset += 2;
-    }
-  }
-  return new Blob([ab], { type: 'audio/wav' });
-}
-
-function writeString(view, offset, str) {
-  for (let i = 0; i < str.length; i++) {
-    view.setUint8(offset + i, str.charCodeAt(i));
-  }
 }
 
 // ─── Rendering ────────────────────────────────────────────────────────────────
@@ -932,11 +852,6 @@ function makeFader(label, min, max, step, value, formatValue, onInput) {
   return wrap;
 }
 
-function panText(v) {
-  if (Math.abs(v) < 0.02) return 'C';
-  return (v < 0 ? 'L' : 'R') + Math.round(Math.abs(v) * 100);
-}
-
 function drawWaveform(canvas, audioBuffer) {
   const data = audioBuffer.getChannelData(0);
   const dpr  = window.devicePixelRatio || 1;
@@ -1046,12 +961,6 @@ function openHelp()  { helpModal.classList.remove('hidden'); }
 function closeHelp() { helpModal.classList.add('hidden'); }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatDuration(secs) {
-  const m = Math.floor(secs / 60);
-  const s = Math.floor(secs % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
 
 function setStatus(msg) {
   statusText.textContent = msg;
