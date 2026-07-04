@@ -417,7 +417,7 @@ function reverseBuffer(buffer) {
   return _reverseBuffer(buffer, audioContext);
 }
 
-function playLoop(loop, startOffset = loop.playOffset) {
+function playLoop(loop, startOffset) {
   if (!audioContext || loop.playing) return;
   if (audioContext.state === 'suspended') audioContext.resume();
 
@@ -444,7 +444,7 @@ function playLoop(loop, startOffset = loop.playOffset) {
   }
   gainNode.connect(masterGainNode);
 
-  const offset = normalizeLoopOffset(loop, startOffset);
+  const offset = normalizeLoopOffset(loop, startOffset ?? loop.playOffset);
   sourceNode.start(audioContext.currentTime, offset);
 
   loop.node = sourceNode;
@@ -827,25 +827,29 @@ function renderLoop(loop) {
   };
 
   let isScrubbing = false;
-  waveformEl.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0) return;
-    isScrubbing = true;
-    waveformEl.setPointerCapture?.(event.pointerId);
-    scrubLoopFromPointer(event);
-  });
-  waveformEl.addEventListener('pointermove', (event) => {
+  const onScrubMove = (event) => {
     if (!isScrubbing) return;
     scrubLoopFromPointer(event);
-  });
+  };
   const endScrub = (event) => {
     if (!isScrubbing) return;
     isScrubbing = false;
+    window.removeEventListener('pointermove', onScrubMove);
+    window.removeEventListener('pointerup', endScrub);
+    window.removeEventListener('pointercancel', endScrub);
     if (waveformEl.hasPointerCapture?.(event.pointerId)) {
       waveformEl.releasePointerCapture(event.pointerId);
     }
   };
-  waveformEl.addEventListener('pointerup', endScrub);
-  waveformEl.addEventListener('pointercancel', endScrub);
+  waveformEl.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    isScrubbing = true;
+    window.addEventListener('pointermove', onScrubMove);
+    window.addEventListener('pointerup', endScrub);
+    window.addEventListener('pointercancel', endScrub);
+    waveformEl.setPointerCapture?.(event.pointerId);
+    scrubLoopFromPointer(event);
+  });
 
   const durationEl = document.createElement('span');
   durationEl.className = 'loop-duration';

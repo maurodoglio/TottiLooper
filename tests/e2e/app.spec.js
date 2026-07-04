@@ -209,7 +209,7 @@ test.describe('recording flow', () => {
 // ─── Loop controls ────────────────────────────────────────────────────────────
 
 test.describe('loop controls', () => {
-  async function playheadPercent(page) {
+  async function getPlayheadLeftPercent(page) {
     return page.locator('.loop-playhead').evaluate((el) => parseFloat(el.style.left || '0'));
   }
 
@@ -243,10 +243,13 @@ test.describe('loop controls', () => {
     await page.locator('.btn-play').click();
     await expect(playhead).toHaveClass(/active/);
 
-    const before = await playheadPercent(page);
+    const before = await getPlayheadLeftPercent(page);
     await expect
-      .poll(() => playheadPercent(page), { timeout: 1000 })
-      .toBeGreaterThan(before + 5);
+      .poll(async () => {
+        const after = await getPlayheadLeftPercent(page);
+        return after >= before ? after - before : after + 100 - before;
+      }, { timeout: 1000 })
+      .toBeGreaterThan(5);
   });
 
   test('clicking the waveform scrubs the loop position', async ({ page }) => {
@@ -256,13 +259,13 @@ test.describe('loop controls', () => {
 
     await waveform.click({ position: { x: box.width * 0.75, y: box.height / 2 } });
     await expect
-      .poll(() => playheadPercent(page), { timeout: 1000 })
+      .poll(() => getPlayheadLeftPercent(page), { timeout: 1000 })
       .toBeGreaterThan(65);
 
     await page.locator('.btn-play').click();
     await expect(page.locator('.loop-playhead')).toHaveClass(/active/);
     await expect
-      .poll(() => playheadPercent(page), { timeout: 1000 })
+      .poll(() => getPlayheadLeftPercent(page), { timeout: 1000 })
       .toBeGreaterThan(65);
   });
 
