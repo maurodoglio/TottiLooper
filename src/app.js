@@ -211,13 +211,13 @@ async function refreshInputDeviceOptions() {
   const audioInputs = devices.filter(device => device.kind === 'audioinput');
   inputDeviceSelect.textContent = '';
 
-  for (const device of audioInputs) {
-    const option = new Option(device.label || `Input ${inputDeviceSelect.length + 1}`, device.deviceId);
+  for (const [index, device] of audioInputs.entries()) {
+    const option = new Option(device.label || `Input ${index + 1}`, device.deviceId);
     inputDeviceSelect.appendChild(option);
   }
 
-  if (!inputDeviceSelect.length) {
-    inputDeviceSelect.appendChild(new Option('Current input', selectedInputDeviceId || 'default'));
+  if (audioInputs.length === 0) {
+    inputDeviceSelect.appendChild(new Option('Current input', selectedInputDeviceId));
   }
 
   if (selectedInputDeviceId && [...inputDeviceSelect.options].some(option => option.value === selectedInputDeviceId)) {
