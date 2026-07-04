@@ -9,6 +9,41 @@
 
 import { test, expect } from '@playwright/test';
 
+async function installGamepadStub(page) {
+  await page.addInitScript(() => {
+    const state = {
+      buttons: Array.from({ length: 4 }, () => ({ pressed: false, touched: false, value: 0 })),
+    };
+
+    Object.defineProperty(navigator, 'getGamepads', {
+      configurable: true,
+      value: () => [{
+        index: 0,
+        id: 'Test Foot Switch',
+        connected: true,
+        mapping: 'standard',
+        axes: [],
+        buttons: state.buttons.map((button) => ({ ...button })),
+      }],
+    });
+
+    globalThis.__setGamepadButton = (buttonIndex, pressed) => {
+      state.buttons[buttonIndex] = {
+        pressed,
+        touched: pressed,
+        value: pressed ? 1 : 0,
+      };
+    };
+  });
+}
+
+async function pressGamepadButton(page, buttonIndex) {
+  await page.evaluate((idx) => globalThis.__setGamepadButton(idx, true), buttonIndex);
+  await page.waitForTimeout(100);
+  await page.evaluate((idx) => globalThis.__setGamepadButton(idx, false), buttonIndex);
+  await page.waitForTimeout(100);
+}
+
 // ─── Initial page state ───────────────────────────────────────────────────────
 
 test.describe('initial state', () => {
@@ -250,6 +285,64 @@ test.describe('loop controls', () => {
     await page.locator('.btn-danger').click();
     await page.keyboard.press('Control+z');
     await expect(page.locator('.loop-card')).toBeVisible();
+  });
+});
+
+// ─── Gamepad controls ─────────────────────────────────────────────────────────
+
+test.describe('gamepad controls', () => {
+  test.beforeEach(async ({ page }) => {
+    await installGamepadStub(page);
+    await page.goto('/');
+    await page.click('#btn-request-mic');
+    await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('button 1 starts and stops recording', async ({ page }) => {
+    await pressGamepadButton(page, 0);
+    await expect(page.locator('#btn-record')).toContainText('STOP');
+
+    await page.waitForTimeout(600);
+    await pressGamepadButton(page, 0);
+
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+  });
+
+  test('buttons 2 and 3 play and stop all loops', async ({ page }) => {
+    await page.click('#btn-record');
+    await page.waitForTimeout(600);
+    await page.click('#btn-record');
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+
+    await pressGamepadButton(page, 1);
+    await expect(page.locator('.loop-card')).toHaveClass(/playing/);
+
+    await pressGamepadButton(page, 2);
+    await expect(page.locator('.loop-card')).not.toHaveClass(/playing/);
+  });
+
+  test('button 4 cycles through loops and toggles them in order', async ({ page }) => {
+    for (let i = 0; i < 2; i++) {
+      await page.click('#btn-record');
+      await page.waitForTimeout(600);
+      await page.click('#btn-record');
+      await expect(page.locator('.loop-card')).toHaveCount(i + 1, { timeout: 8000 });
+    }
+
+    const firstLoop = page.locator('#loop-card-1');
+    const secondLoop = page.locator('#loop-card-2');
+
+    await pressGamepadButton(page, 3);
+    await expect(firstLoop).toHaveClass(/playing/);
+    await expect(secondLoop).not.toHaveClass(/playing/);
+
+    await pressGamepadButton(page, 3);
+    await expect(firstLoop).toHaveClass(/playing/);
+    await expect(secondLoop).toHaveClass(/playing/);
+
+    await pressGamepadButton(page, 3);
+    await expect(firstLoop).not.toHaveClass(/playing/);
+    await expect(secondLoop).toHaveClass(/playing/);
   });
 });
 
