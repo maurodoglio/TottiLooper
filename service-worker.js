@@ -39,29 +39,47 @@ self.addEventListener('fetch', (event) => {
 
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(async () => {
-        const cache = await caches.open(CACHE_NAME);
-        return cache.match('/index.html') || cache.match('/');
-      }),
+      (async () => {
+        try {
+          return await fetch(request);
+        } catch {
+          const cache = await caches.open(CACHE_NAME);
+          const cachedIndex = await cache.match('/index.html');
+          return cachedIndex ?? await cache.match('/');
+        }
+      })(),
     );
     return;
   }
 
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
+    (async () => {
+      const cachedResponse = await caches.match(request);
       if (cachedResponse) {
         return cachedResponse;
       }
 
-      return fetch(request).then((networkResponse) => {
-        if (!networkResponse.ok) {
-          return networkResponse;
+      try {
+        const networkResponse = await fetch(request);
+        if (networkResponse.ok) {
+          const cache = await caches.open(CACHE_NAME);
+          await cache.put(request, networkResponse.clone());
         }
-
-        const responseCopy = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(request, responseCopy));
         return networkResponse;
-      });
-    }),
+      } catch {
+        const cache = await caches.open(CACHE_NAME);
+        const fallbackResponse = await cache.match(request);
+        if (fallbackResponse) {
+          return fallbackResponse;
+        }
+        if (request.destination === 'document') {
+          const cachedIndex = await cache.match('/index.html');
+          if (cachedIndex) {
+            return cachedIndex;
+          }
+        }
+        return Response.error();
+      }
+    })(),
   );
 });

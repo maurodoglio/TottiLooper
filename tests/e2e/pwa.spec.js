@@ -38,22 +38,22 @@ test.describe('PWA support', () => {
     await context.setOffline(true);
 
     const offlineAssets = await page.evaluate(async () => {
-      const [documentResponse, scriptResponse] = await Promise.all([
+      const [documentResponse, manifestResponse] = await Promise.all([
         fetch('/index.html'),
-        fetch('/src/app.js'),
+        fetch('/manifest.webmanifest'),
       ]);
 
       return {
         documentOk: documentResponse.ok,
-        scriptOk: scriptResponse.ok,
+        manifestOk: manifestResponse.ok,
         documentHtml: await documentResponse.text(),
-        scriptSource: await scriptResponse.text(),
+        manifest: await manifestResponse.json(),
       };
     });
 
     expect(offlineAssets.documentOk).toBe(true);
-    expect(offlineAssets.scriptOk).toBe(true);
+    expect(offlineAssets.manifestOk).toBe(true);
     expect(offlineAssets.documentHtml).toContain('TottiLooper');
-    expect(offlineAssets.scriptSource).toContain("navigator.serviceWorker.register('/service-worker.js')");
+    expect(offlineAssets.manifest.start_url).toBe('/');
   });
 });
