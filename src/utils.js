@@ -98,6 +98,8 @@ export function quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext }) {
 /**
  * Shift an AudioBuffer earlier or later without changing its total length.
  * Positive offsets add silence at the start; negative offsets trim the start.
+ * This is intended for corrective alignment, so callers can negate user-facing
+ * compensation values as needed before invoking it.
  *
  * @param {AudioBuffer} buffer
  * @param {number} offsetSeconds

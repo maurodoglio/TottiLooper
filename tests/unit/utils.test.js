@@ -338,7 +338,7 @@ describe('offsetBuffer', () => {
     expect(offsetBuffer(src, 0, ctx)).toBe(src);
   });
 
-  it('adds silence at the start for a positive offset', () => {
+  it('adds silence at the start for a positive delay shift', () => {
     const samples = new Float32Array([1, 2, 3, 4]);
     const src = {
       numberOfChannels: 1,
@@ -350,7 +350,7 @@ describe('offsetBuffer', () => {
     expect(Array.from(out.getChannelData(0))).toEqual([0, 0, 1, 2]);
   });
 
-  it('trims the start for a negative offset and pads the tail with silence', () => {
+  it('trims the start for a negative advance shift and pads the tail with silence', () => {
     const samples = new Float32Array([1, 2, 3, 4]);
     const src = {
       numberOfChannels: 1,
