@@ -302,6 +302,128 @@ export function reverseBuffer(buffer, audioContext) {
   return rev;
 }
 
+/**
+ * Estimate tempo (BPM) from an AudioBuffer using a simple onset envelope and
+ * autocorrelation over plausible beat intervals.
+ *
+ * @param {AudioBuffer} buffer
+ * @param {{ minBpm?: number, maxBpm?: number, frameSize?: number }} [opts]
+ * @returns {number|null}
+ */
+export function estimateTempo(buffer, opts = {}) {
+  if (!buffer || !buffer.length || !buffer.sampleRate || !buffer.numberOfChannels) return null;
+
+  const minBpm = Math.max(1, opts.minBpm ?? 40);
+  const maxBpm = Math.max(minBpm, opts.maxBpm ?? 240);
+  const frameSize = Math.max(128, opts.frameSize ?? 512);
+  const frameCount = Math.floor(buffer.length / frameSize);
+  if (frameCount < 8) return null;
+
+  const envelope = new Float32Array(frameCount);
+  for (let frame = 0; frame < frameCount; frame++) {
+    const start = frame * frameSize;
+    let energy = 0;
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const data = buffer.getChannelData(ch);
+      for (let i = 0; i < frameSize; i++) {
+        energy += Math.abs(data[start + i] || 0);
+      }
+    }
+    envelope[frame] = energy / (frameSize * buffer.numberOfChannels);
+  }
+
+  const novelty = new Float32Array(frameCount);
+  let noveltyTotal = 0;
+  let noveltyPeak = 0;
+  for (let i = 1; i < frameCount; i++) {
+    const rise = envelope[i] - envelope[i - 1];
+    if (rise > 0) {
+      novelty[i] = rise;
+      noveltyTotal += rise;
+      if (rise > noveltyPeak) noveltyPeak = rise;
+    }
+  }
+  if (noveltyPeak < 1e-4) return null;
+
+  const floor = (noveltyTotal / frameCount) * 0.5;
+  let filteredPeak = 0;
+  for (let i = 0; i < frameCount; i++) {
+    novelty[i] = Math.max(0, novelty[i] - floor);
+    if (novelty[i] > filteredPeak) filteredPeak = novelty[i];
+  }
+  if (filteredPeak < 1e-4) return null;
+
+  const framesPerSecond = buffer.sampleRate / frameSize;
+  const peakThreshold = filteredPeak * 0.35;
+  const minPeakDistance = Math.max(1, Math.floor(framesPerSecond * 0.18));
+  const peaks = [];
+  for (let i = 1; i < frameCount - 1; i++) {
+    if (novelty[i] < peakThreshold) continue;
+    if (novelty[i] < novelty[i - 1] || novelty[i] < novelty[i + 1]) continue;
+    const lastPeak = peaks[peaks.length - 1];
+    if (lastPeak !== undefined && i - lastPeak < minPeakDistance) {
+      if (novelty[i] > novelty[lastPeak]) peaks[peaks.length - 1] = i;
+      continue;
+    }
+    peaks.push(i);
+  }
+
+  if (peaks.length >= 2) {
+    const votes = new Map();
+    for (let i = 0; i < peaks.length - 1; i++) {
+      for (let j = i + 1; j < Math.min(peaks.length, i + 5); j++) {
+        const interval = peaks[j] - peaks[i];
+        if (interval <= 0) continue;
+        let candidateBpm = Math.round((60 * framesPerSecond * (j - i)) / interval);
+        while (candidateBpm < minBpm) candidateBpm *= 2;
+        while (candidateBpm > maxBpm) candidateBpm = Math.round(candidateBpm / 2);
+        const weight = 1 / (j - i);
+        votes.set(candidateBpm, (votes.get(candidateBpm) || 0) + weight);
+      }
+    }
+
+    let votedBpm = null;
+    let votedScore = 0;
+    for (const [candidateBpm, score] of votes.entries()) {
+      if (score > votedScore) {
+        votedBpm = candidateBpm;
+        votedScore = score;
+      }
+    }
+    if (votedBpm !== null) return votedBpm;
+  }
+
+  const minLag = Math.max(1, Math.floor((60 / maxBpm) * framesPerSecond));
+  const maxLag = Math.min(frameCount - 1, Math.ceil((60 / minBpm) * framesPerSecond));
+  if (maxLag <= minLag) return null;
+
+  const scores = new Float32Array(maxLag + 1);
+  let bestLag = 0;
+  let bestScore = 0;
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    let score = 0;
+    for (let i = lag; i < frameCount; i++) {
+      score += novelty[i] * novelty[i - lag];
+    }
+    scores[lag] = score;
+    if (score > bestScore) {
+      bestScore = score;
+      bestLag = lag;
+    }
+  }
+  if (!bestLag || bestScore <= 0) return null;
+
+  while (bestLag / 2 >= minLag) {
+    const halfLag = Math.round(bestLag / 2);
+    if (scores[halfLag] < bestScore * 0.9) break;
+    bestLag = halfLag;
+    bestScore = scores[halfLag];
+  }
+
+  const estimated = Math.round((60 * framesPerSecond) / bestLag);
+  return Math.max(minBpm, Math.min(maxBpm, estimated));
+}
+
 // ─── MIDI encoding ────────────────────────────────────────────────────────────
 
 /**

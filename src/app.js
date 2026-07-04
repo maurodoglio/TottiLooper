@@ -20,6 +20,7 @@ import {
   audioBufferToWav,
   clickTrackToMidi,
   getSupportedMimeType,
+  estimateTempo,
   packSharedSession,
   effectiveGain as computeEffectiveGain,
   quantizeBuffer as _quantizeBuffer,
@@ -96,6 +97,8 @@ let countInEnabled   = false;
 let quantizeEnabled  = false;
 let metronomeInterval = null;
 let metronomeBeatIdx  = 0;
+let firstLoopTempoHandled = false;
+let pendingDetectedBpm = null;
 let drumSampleBytes = null;
 let generatingDrums = false;
 
@@ -159,6 +162,10 @@ const btnGenerateDrums   = $('btn-generate-drums');
 const metronomeToggle    = $('metronome-toggle');
 const countInToggle      = $('count-in-toggle');
 const quantizeToggle     = $('quantize-toggle');
+const tempoSuggestion    = $('tempo-suggestion');
+const tempoSuggestionText = $('tempo-suggestion-text');
+const btnApplyDetectedTempo = $('btn-apply-detected-tempo');
+const btnDismissDetectedTempo = $('btn-dismiss-detected-tempo');
 const recordControls     = $('record-controls');
 const btnRecord          = $('btn-record');
 const btnStopRecord      = $('btn-stop-record');
@@ -270,6 +277,8 @@ function init() {
   metronomeToggle.addEventListener('change', onMetronomeToggle);
   countInToggle.addEventListener('change', (e) => { countInEnabled = e.target.checked; });
   quantizeToggle.addEventListener('change', (e) => { quantizeEnabled = e.target.checked; });
+  btnApplyDetectedTempo.addEventListener('click', acceptDetectedTempo);
+  btnDismissDetectedTempo.addEventListener('click', dismissDetectedTempo);
   monitoringToggle.addEventListener('change', onMonitoringToggle);
   monitorLatencyInput.addEventListener('change', onMonitorLatencyChange);
 
@@ -723,13 +732,19 @@ async function onRecordingStop() {
       // A positive user-facing compensation value should pull the recorded take earlier.
       audioBuffer = _offsetBuffer(audioBuffer, -monitorLatencyOffsetMs / 1000, audioContext);
     }
+    let suggestedTempo = false;
+    if (loops.length === 0 && !firstLoopTempoHandled) {
+      suggestedTempo = maybeSuggestTempo(audioBuffer);
+    }
     if (quantizeEnabled) {
       audioBuffer = quantizeBuffer(audioBuffer);
     }
     addLoop(audioBuffer, {
       sourceBlob: quantizeEnabled ? audioBufferToWav(audioBuffer) : blob,
     });
-    setStatus('Loop added! Press ● REC to record another.');
+    if (!suggestedTempo) {
+      setStatus('Loop added! Press ● REC to record another.');
+    }
   } catch (err) {
     showError('Could not decode audio: ' + err.message);
     console.error('decodeAudioData error:', err);
@@ -783,6 +798,21 @@ function addLoop(audioBuffer, options = {}) {
 /** Effective gain for a loop accounting for mute/solo/volume. */
 function effectiveGain(loop) {
   return computeEffectiveGain(loop, loops);
+}
+
+function maybeSuggestTempo(audioBuffer) {
+  firstLoopTempoHandled = true;
+  const detectedBpm = estimateTempo(audioBuffer, { minBpm: MIN_BPM, maxBpm: MAX_BPM });
+  if (!detectedBpm) return false;
+  if (detectedBpm === bpm) {
+    return false;
+  }
+
+  pendingDetectedBpm = detectedBpm;
+  tempoSuggestionText.textContent = `Detected ${detectedBpm} BPM from your first loop. Use it for this session?`;
+  tempoSuggestion.classList.remove('hidden');
+  setStatus('Review the suggested BPM for your first loop.');
+  return true;
 }
 
 function refreshAllGains() {
@@ -1404,16 +1434,8 @@ function updateMidiStatus(msg) {
 // ─── Metronome ────────────────────────────────────────────────────────────────
 
 function onBpmChange() {
-  let v = parseInt(bpmInput.value, 10);
-  if (isNaN(v)) v = DEFAULT_BPM;
-  v = Math.max(MIN_BPM, Math.min(MAX_BPM, v));
-  bpm = v;
-  bpmInput.value = String(v);
-  updatePlaybackPosition();
-  if (metronomeEnabled) {
-    stopMetronome();
-    startMetronome();
-  }
+  hideTempoSuggestion();
+  applyBpmValue(bpmInput.value);
 }
 
 function onBeatsPerBarChange() {
@@ -1448,6 +1470,39 @@ function stopMetronome() {
     clearInterval(metronomeInterval);
     metronomeInterval = null;
   }
+}
+
+function applyBpmValue(value) {
+  let v = parseInt(value, 10);
+  if (isNaN(v)) v = DEFAULT_BPM;
+  v = Math.max(MIN_BPM, Math.min(MAX_BPM, v));
+  bpm = v;
+  bpmInput.value = String(v);
+  updatePlaybackPosition();
+  if (metronomeEnabled) {
+    stopMetronome();
+    startMetronome();
+  }
+}
+
+function acceptDetectedTempo() {
+  if (pendingDetectedBpm === null) return;
+  const detectedBpm = pendingDetectedBpm;
+  applyBpmValue(String(detectedBpm));
+  hideTempoSuggestion();
+  setStatus(`Session tempo set to ${detectedBpm} BPM from your first loop.`);
+}
+
+function dismissDetectedTempo() {
+  if (pendingDetectedBpm === null) return;
+  const keptBpm = bpm;
+  hideTempoSuggestion();
+  setStatus(`Keeping the current ${keptBpm} BPM.`);
+}
+
+function hideTempoSuggestion() {
+  pendingDetectedBpm = null;
+  tempoSuggestion.classList.add('hidden');
 }
 
 async function loadDrumSampleLibrary() {

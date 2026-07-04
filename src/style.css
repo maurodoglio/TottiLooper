@@ -221,6 +221,21 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
+#tempo-suggestion {
+  justify-content: space-between;
+}
+
+#tempo-suggestion-text {
+  color: var(--text-muted);
+}
+
+.tempo-suggestion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
 #drum-controls select {
   width: auto;
 }

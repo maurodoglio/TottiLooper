@@ -9,6 +9,50 @@
 
 import { test, expect } from '@playwright/test';
 
+async function mockDetectedTempo(page, bpm = 120) {
+  await page.addInitScript((detectedBpm) => {
+    const makeTempoBuffer = () => {
+      const sampleRate = 44100;
+      const secondsPerBeat = 60 / detectedBpm;
+      const beats = 8;
+      const length = Math.round((beats * secondsPerBeat + 0.25) * sampleRate);
+      const data = new Float32Array(length);
+
+      for (let beat = 0; beat < beats; beat++) {
+        const start = Math.round(beat * secondsPerBeat * sampleRate);
+        const pulseLength = Math.round(sampleRate * 0.02);
+        for (let i = 0; i < pulseLength; i++) {
+          const idx = start + i;
+          if (idx >= length) break;
+          data[idx] = 0.9 * (1 - i / pulseLength);
+        }
+      }
+
+      return {
+        numberOfChannels: 1,
+        length,
+        sampleRate,
+        duration: length / sampleRate,
+        getChannelData: () => data,
+      };
+    };
+
+    const patchDecodeAudioData = (Ctor) => {
+      if (!Ctor || !Ctor.prototype) return;
+      Ctor.prototype.decodeAudioData = async () => makeTempoBuffer();
+    };
+
+    patchDecodeAudioData(globalThis.AudioContext);
+    patchDecodeAudioData(globalThis.webkitAudioContext);
+  }, bpm);
+}
+
+async function recordFirstLoop(page) {
+  await page.click('#btn-record');
+  await expect(page.locator('#record-timer')).toHaveText('0:01', { timeout: 3000 });
+  await page.click('#btn-record');
+}
+
 async function setRangeValue(locator, value) {
   await locator.evaluate((el, nextValue) => {
     el.value = String(nextValue);
@@ -826,6 +870,40 @@ test.describe('tempo controls', () => {
     await page.locator('#quantize-toggle').check();
     await expect(page.locator('#quantize-toggle')).toBeChecked();
   });
+
+});
+
+test('detected BPM from the first loop can be accepted', async ({ page }) => {
+  await mockDetectedTempo(page, 120);
+
+  await page.goto('/');
+  await page.click('#btn-request-mic');
+  await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+
+  await recordFirstLoop(page);
+
+  await expect(page.locator('#tempo-suggestion')).toBeVisible({ timeout: 8000 });
+  await expect(page.locator('#tempo-suggestion-text')).toContainText('120 BPM');
+
+  await page.click('#btn-apply-detected-tempo');
+  await expect(page.locator('#bpm-input')).toHaveValue('120');
+  await expect(page.locator('#tempo-suggestion')).toBeHidden();
+});
+
+test('detected BPM from the first loop can be dismissed', async ({ page }) => {
+  await mockDetectedTempo(page, 120);
+
+  await page.goto('/');
+  await page.click('#btn-request-mic');
+  await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+
+  await recordFirstLoop(page);
+
+  await expect(page.locator('#tempo-suggestion')).toBeVisible({ timeout: 8000 });
+  await page.click('#btn-dismiss-detected-tempo');
+
+  await expect(page.locator('#bpm-input')).toHaveValue('100');
+  await expect(page.locator('#tempo-suggestion')).toBeHidden();
 });
 
 // ─── Share via URL ────────────────────────────────────────────────────────────
