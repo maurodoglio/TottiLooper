@@ -60,6 +60,7 @@ time to open the in-app tutorial.
 | <kbd>Esc</kbd> | Stop all loops |
 | <kbd>1</kbd> … <kbd>9</kbd> | Toggle loops 1 through 9 |
 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>⌘</kbd>+<kbd>Z</kbd> | Undo the last delete |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> | Redo the last undo |
 | <kbd>?</kbd> | Open the Help modal |
 
 ### Tip: use headphones

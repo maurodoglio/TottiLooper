@@ -51,8 +51,9 @@ let quantizeEnabled  = false;
 let metronomeInterval = null;
 let metronomeBeatIdx  = 0;
 
-// Undo stack for deleted loops
-const deletedStack = [];
+// Undo / redo history for delete-style actions
+const undoStack = [];
+const redoStack = [];
 
 /**
  * @typedef {Object} Loop
@@ -100,6 +101,8 @@ const btnPlayAll         = $('btn-play-all');
 const btnStopAll         = $('btn-stop-all');
 const btnExportMix       = $('btn-export-mix');
 const btnUndo            = $('btn-undo');
+const btnRedo            = $('btn-redo');
+const btnClearAll        = $('btn-clear-all');
 const masterVolumeInput  = $('master-volume');
 const loopsSection       = $('loops-section');
 const loopsList          = $('loops-list');
@@ -123,6 +126,8 @@ function init() {
   btnStopAll.addEventListener('click', stopAllLoops);
   btnExportMix.addEventListener('click', exportMix);
   btnUndo.addEventListener('click', undoDelete);
+  btnRedo.addEventListener('click', redoDelete);
+  btnClearAll.addEventListener('click', clearAllLoops);
 
   masterVolumeInput.addEventListener('input', onMasterVolumeChange);
 
@@ -138,7 +143,7 @@ function init() {
 
   document.addEventListener('keydown', onGlobalKeydown);
 
-  updateUndoButton();
+  updateHistoryButtons();
 }
 
 // ─── Microphone access ────────────────────────────────────────────────────────
@@ -343,6 +348,7 @@ function addLoop(audioBuffer) {
   loops.push(loop);
   renderLoop(loop);
   updateEmptyState();
+  updateHistoryButtons();
 }
 
 /** Effective gain for a loop accounting for mute/solo/volume. */
@@ -456,38 +462,102 @@ function deleteLoop(loopId) {
   const idx = loops.findIndex(l => l.id === loopId);
   if (idx === -1) return;
   const loop = loops[idx];
-  stopLoop(loop);
-  loops.splice(idx, 1);
-
-  deletedStack.push(loop);
-  if (deletedStack.length > MAX_UNDO) deletedStack.shift();
-
-  const card = document.getElementById(`loop-card-${loopId}`);
-  if (card) card.remove();
-
-  updateEmptyState();
-  updateUndoButton();
-  refreshAllGains();
+  const action = {
+    kind: 'delete',
+    loops: [{ loop, index: idx }],
+  };
+  applyDeleteAction(action);
+  rememberUndoAction(action);
   showInfo(`Deleted "${loop.name}" – press ↶ Undo (or Ctrl+Z) to restore.`);
 }
 
 function undoDelete() {
-  const loop = deletedStack.pop();
-  if (!loop) return;
+  const action = undoStack.pop();
+  if (!action) return;
+  restoreDeleteAction(action);
+  redoStack.push(action);
+  if (redoStack.length > MAX_UNDO) redoStack.shift();
+  updateHistoryButtons();
+  refreshAllGains();
+  setStatus(`Restored ${describeAction(action)}.`);
+}
+
+function redoDelete() {
+  const action = redoStack.pop();
+  if (!action) return;
+  applyDeleteAction(action);
+  undoStack.push(action);
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  updateHistoryButtons();
+  refreshAllGains();
+  setStatus(`Redid deletion of ${describeAction(action)}.`);
+}
+
+function clearAllLoops() {
+  if (loops.length === 0) return;
+  const confirmed = window.confirm(`Clear all ${loops.length} loops? This will remove the current session.`);
+  if (!confirmed) return;
+
+  const action = {
+    kind: 'clear-all',
+    loops: loops.map((loop, index) => ({ loop, index })),
+  };
+  applyDeleteAction(action);
+  rememberUndoAction(action);
+  showInfo(`Cleared all loops – press ↶ Undo (or Ctrl+Z) to restore ${describeAction(action)}.`);
+}
+
+function rememberUndoAction(action) {
+  undoStack.push(action);
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack.length = 0;
+  updateHistoryButtons();
+}
+
+function applyDeleteAction(action) {
+  const ids = new Set(action.loops.map(({ loop }) => loop.id));
+  for (const loop of loops) {
+    if (ids.has(loop.id)) stopLoop(loop);
+  }
+  for (let i = loops.length - 1; i >= 0; i--) {
+    if (ids.has(loops[i].id)) loops.splice(i, 1);
+  }
+  renderAllLoops();
+}
+
+function restoreDeleteAction(action) {
+  const entries = [...action.loops].sort((a, b) => a.index - b.index);
+  for (const { loop, index } of entries) {
+    resetLoopPlaybackState(loop);
+    if (loops.some(existing => existing.id === loop.id)) continue;
+    loops.splice(Math.min(index, loops.length), 0, loop);
+  }
+  renderAllLoops();
+}
+
+function resetLoopPlaybackState(loop) {
   loop.node = null;
   loop.gainNode = null;
   loop.pannerNode = null;
   loop.playing = false;
-  loops.push(loop);
-  renderLoop(loop);
-  updateEmptyState();
-  updateUndoButton();
-  refreshAllGains();
-  setStatus(`Restored "${loop.name}".`);
 }
 
-function updateUndoButton() {
-  btnUndo.disabled = deletedStack.length === 0;
+function renderAllLoops() {
+  loopsList.querySelectorAll('.loop-card').forEach(card => card.remove());
+  loops.forEach(renderLoop);
+  updateEmptyState();
+  updateHistoryButtons();
+}
+
+function describeAction(action) {
+  if (action.loops.length === 1) return `"${action.loops[0].loop.name}"`;
+  return `${action.loops.length} loops`;
+}
+
+function updateHistoryButtons() {
+  btnUndo.disabled = undoStack.length === 0;
+  btnRedo.disabled = redoStack.length === 0;
+  btnClearAll.disabled = loops.length === 0;
 }
 
 function toggleMute(loop) {
@@ -925,6 +995,18 @@ function onGlobalKeydown(e) {
   }
 
   if (!audioContext) return;
+
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+    e.preventDefault();
+    redoDelete();
+    return;
+  }
+
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+    e.preventDefault();
+    redoDelete();
+    return;
+  }
 
   if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
     e.preventDefault();
