@@ -27,7 +27,7 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
-const MAX_SHARE_FRAGMENT_LENGTH = 12000;
+const MAX_SHARE_FRAGMENT_LENGTH = 12000; // Keeps shared URLs comfortably below common browser limits.
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -805,7 +805,7 @@ async function restoreSharedSessionFromUrl() {
     applySharedSessionSettings(sharedSession);
 
     for (const sharedLoop of sharedSession.loops) {
-      const sourceBlob = new Blob([sharedLoop.audioBytes], { type: sharedLoop.mimeType || 'audio/webm' });
+      const sourceBlob = new Blob([sharedLoop.audioBytes], { type: sharedLoop.mimeType || 'audio/wav' });
       const arrayBuffer = await sourceBlob.arrayBuffer();
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
       addLoop(audioBuffer, {

@@ -205,6 +205,7 @@ function toBase64Url(bytes) {
 
 function fromBase64Url(base64Url) {
   const padded = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+  // Base64 decoding requires a length that's divisible by 4.
   const base64 = padded + '='.repeat((4 - (padded.length % 4 || 4)) % 4);
   return fromBase64(base64);
 }
