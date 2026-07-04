@@ -15,7 +15,7 @@ them on top of each other – your one-man band for busking starts here.
 
 ### Mixer
 - 🎵 **Layer** as many loops as you like, playing simultaneously
-- 🎚️ **Per-loop volume, pan and playback-speed (pitch)** sliders
+- 🎚️ **Per-loop volume, pan, 3-band EQ, and playback-speed (pitch)** sliders
 - 🎚️ **Master volume** for overall level
 - 🔇 **Mute**, **S** Solo, and **⇄ Reverse** toggles on every loop
 - ▶ **Play / Stop** each loop independently or **Play All / Stop All** together
@@ -43,7 +43,7 @@ them on top of each other – your one-man band for busking starts here.
 5. Click **■ STOP** (or press <kbd>Space</kbd> again) when you're done – the
    loop is saved automatically and appears in the list.
 6. Click **▶** on a loop card to start it playing (it will loop continuously).
-7. Drag **Vol / Pan / Speed** sliders to mix, **S** to solo, **⇄** to reverse.
+7. Drag **Vol / Pan / Low / Mid / High / Speed** sliders to mix, shape tone, **S** to solo, **⇄** to reverse.
 8. Record more riffs and stack them up to build your sound.
 9. Use **▶ Play All / ■ Stop All** to control everything at once.
 10. Click **⬇ Export** to save the current mix as a WAV file.

@@ -25,6 +25,11 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
+const EQ_TRANSITION    = 0.01;
+const LOW_EQ_FREQUENCY = 200;
+const MID_EQ_FREQUENCY = 1200;
+const MID_EQ_Q         = 0.8;
+const HIGH_EQ_FREQUENCY = 3200;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -64,11 +69,15 @@ const deletedStack = [];
  * @property {AudioBufferSourceNode|null} node
  * @property {GainNode|null} gainNode
  * @property {StereoPannerNode|null} pannerNode
+ * @property {{ lowShelf: BiquadFilterNode, midPeak: BiquadFilterNode, highShelf: BiquadFilterNode }|null} eqNodes
  * @property {boolean} playing
  * @property {boolean} muted
  * @property {boolean} soloed
  * @property {number} volume
  * @property {number} pan
+ * @property {number} lowEq
+ * @property {number} midEq
+ * @property {number} highEq
  * @property {number} playbackRate
  * @property {boolean} reversed
  */
@@ -332,11 +341,15 @@ function addLoop(audioBuffer) {
     node: null,
     gainNode: null,
     pannerNode: null,
+    eqNodes: null,
     playing: false,
     muted: false,
     soloed: false,
     volume: 1,
     pan: 0,
+    lowEq: 0,
+    midEq: 0,
+    highEq: 0,
     playbackRate: 1,
     reversed: false,
   };
@@ -348,6 +361,29 @@ function addLoop(audioBuffer) {
 /** Effective gain for a loop accounting for mute/solo/volume. */
 function effectiveGain(loop) {
   return computeEffectiveGain(loop, loops);
+}
+
+function createEqNodes(context, loop) {
+  const lowShelf = context.createBiquadFilter();
+  lowShelf.type = 'lowshelf';
+  lowShelf.frequency.value = LOW_EQ_FREQUENCY;
+  lowShelf.gain.value = loop.lowEq;
+
+  const midPeak = context.createBiquadFilter();
+  midPeak.type = 'peaking';
+  midPeak.frequency.value = MID_EQ_FREQUENCY;
+  midPeak.Q.value = MID_EQ_Q;
+  midPeak.gain.value = loop.midEq;
+
+  const highShelf = context.createBiquadFilter();
+  highShelf.type = 'highshelf';
+  highShelf.frequency.value = HIGH_EQ_FREQUENCY;
+  highShelf.gain.value = loop.highEq;
+
+  lowShelf.connect(midPeak);
+  midPeak.connect(highShelf);
+
+  return { lowShelf, midPeak, highShelf };
 }
 
 function refreshAllGains() {
@@ -390,12 +426,15 @@ function playLoop(loop) {
   sourceNode.buffer = getPlaybackBuffer(loop);
   sourceNode.loop = true;
   sourceNode.playbackRate.value = loop.playbackRate;
+  const eqNodes = createEqNodes(audioContext, loop);
 
   if (pannerNode) {
-    sourceNode.connect(pannerNode);
+    sourceNode.connect(eqNodes.lowShelf);
+    eqNodes.highShelf.connect(pannerNode);
     pannerNode.connect(gainNode);
   } else {
-    sourceNode.connect(gainNode);
+    sourceNode.connect(eqNodes.lowShelf);
+    eqNodes.highShelf.connect(gainNode);
   }
   gainNode.connect(masterGainNode);
 
@@ -404,6 +443,7 @@ function playLoop(loop) {
   loop.node = sourceNode;
   loop.gainNode = gainNode;
   loop.pannerNode = pannerNode;
+  loop.eqNodes = eqNodes;
   loop.playing = true;
 
   const card = document.getElementById(`loop-card-${loop.id}`);
@@ -437,6 +477,7 @@ function stopLoop(loop) {
   loop.node = null;
   loop.gainNode = null;
   loop.pannerNode = null;
+  loop.eqNodes = null;
   loop.playing = false;
 
   const card = document.getElementById(`loop-card-${loop.id}`);
@@ -477,6 +518,7 @@ function undoDelete() {
   loop.node = null;
   loop.gainNode = null;
   loop.pannerNode = null;
+  loop.eqNodes = null;
   loop.playing = false;
   loops.push(loop);
   renderLoop(loop);
@@ -529,14 +571,28 @@ function setLoopVolume(loop, value) {
 function setLoopPan(loop, value) {
   loop.pan = value;
   if (loop.pannerNode) {
-    loop.pannerNode.pan.setTargetAtTime(value, audioContext.currentTime, 0.01);
+    loop.pannerNode.pan.setTargetAtTime(value, audioContext.currentTime, EQ_TRANSITION);
+  }
+}
+
+function setLoopEq(loop, band, value) {
+  loop[band] = value;
+  if (!loop.eqNodes) return;
+
+  let filterNode = null;
+  if (band === 'lowEq') filterNode = loop.eqNodes.lowShelf;
+  else if (band === 'midEq') filterNode = loop.eqNodes.midPeak;
+  else if (band === 'highEq') filterNode = loop.eqNodes.highShelf;
+
+  if (filterNode) {
+    filterNode.gain.setTargetAtTime(value, audioContext.currentTime, EQ_TRANSITION);
   }
 }
 
 function setLoopPlaybackRate(loop, value) {
   loop.playbackRate = value;
   if (loop.node) {
-    loop.node.playbackRate.setTargetAtTime(value, audioContext.currentTime, 0.01);
+    loop.node.playbackRate.setTargetAtTime(value, audioContext.currentTime, EQ_TRANSITION);
   }
 }
 
@@ -669,16 +725,19 @@ async function exportMix() {
     src.loop = true;
     src.playbackRate.value = l.playbackRate;
 
+    const eqNodes = createEqNodes(offline, l);
     const gNode = offline.createGain();
     gNode.gain.value = g;
 
     if (offline.createStereoPanner) {
       const p = offline.createStereoPanner();
       p.pan.value = l.pan;
-      src.connect(p);
+      src.connect(eqNodes.lowShelf);
+      eqNodes.highShelf.connect(p);
       p.connect(gNode);
     } else {
-      src.connect(gNode);
+      src.connect(eqNodes.lowShelf);
+      eqNodes.highShelf.connect(gNode);
     }
     gNode.connect(offlineMaster);
     src.start(0);
@@ -799,6 +858,15 @@ function renderLoop(loop) {
     makeFader('Pan',  -1,    1,   0.01, loop.pan,
       panText,
       (v) => setLoopPan(loop, v)),
+    makeFader('Low',  -18,   18,  0.5, loop.lowEq,
+      formatEqGain,
+      (v) => setLoopEq(loop, 'lowEq', v)),
+    makeFader('Mid',  -18,   18,  0.5, loop.midEq,
+      formatEqGain,
+      (v) => setLoopEq(loop, 'midEq', v)),
+    makeFader('High', -18,   18,  0.5, loop.highEq,
+      formatEqGain,
+      (v) => setLoopEq(loop, 'highEq', v)),
     makeFader('Speed', 0.5,  2,   0.01, loop.playbackRate,
       (v) => `${v.toFixed(2)}×`,
       (v) => setLoopPlaybackRate(loop, v)),
@@ -820,6 +888,12 @@ function iconButton(cls, text, title, onClick) {
   b.setAttribute('aria-label', title);
   b.addEventListener('click', onClick);
   return b;
+}
+
+function formatEqGain(value) {
+  const n = Number(value);
+  const text = Number.isInteger(n) ? n.toFixed(0) : n.toFixed(1);
+  return `${n > 0 ? '+' : ''}${text}dB`;
 }
 
 function makeFader(label, min, max, step, value, formatValue, onInput) {

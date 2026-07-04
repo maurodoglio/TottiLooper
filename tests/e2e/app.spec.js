@@ -234,6 +234,26 @@ test.describe('loop controls', () => {
     await expect(page.locator('.loop-duration')).toBeVisible();
   });
 
+  test('loop card exposes 3-band EQ controls with neutral defaults', async ({ page }) => {
+    await expect(page.getByLabel('Low')).toHaveValue('0');
+    await expect(page.getByLabel('Mid')).toHaveValue('0');
+    await expect(page.getByLabel('High')).toHaveValue('0');
+
+    const eqValues = page.locator('.fader').filter({ hasText: /^(Low|Mid|High)/ }).locator('.fader-value');
+    await expect(eqValues).toHaveText(['0dB', '0dB', '0dB']);
+  });
+
+  test('EQ slider updates its displayed gain', async ({ page }) => {
+    await page.getByLabel('Mid').evaluate((input) => {
+      input.value = '6';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    await expect(
+      page.locator('.fader').filter({ hasText: /^Mid/ }).locator('.fader-value'),
+    ).toHaveText('+6dB');
+  });
+
   test('undo button becomes enabled after a loop is deleted', async ({ page }) => {
     await page.locator('.btn-danger').click();
     await expect(page.locator('#btn-undo')).toBeEnabled();
