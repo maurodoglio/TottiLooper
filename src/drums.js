@@ -55,18 +55,24 @@ export function buildDrumLoopPlan({ style, bpm, beatsPerBar }) {
         addHit(hits, 'hat', beat, 0.65, safeBeatsPerBar);
       }
       addHit(hits, 'kick', Math.min(2, safeBeatsPerBar - 1), 0.95, safeBeatsPerBar);
-      addHit(hits, 'snare', Math.min(2, safeBeatsPerBar - 1), 0.85, safeBeatsPerBar);
+      if (safeBeatsPerBar > 2) {
+        addHit(hits, 'snare', 2, 0.85, safeBeatsPerBar);
+      }
       break;
 
     case 'rock':
-    default:
+    default: {
       for (let beat = 0; beat < safeBeatsPerBar; beat += 0.5) {
         addHit(hits, 'hat', beat, beat % 1 === 0 ? 0.6 : 0.45, safeBeatsPerBar);
       }
       addHit(hits, 'kick', 0, 1, safeBeatsPerBar);
-      addHit(hits, 'kick', safeBeatsPerBar / 2, 0.9, safeBeatsPerBar);
+      const midpointBeat = Math.floor(safeBeatsPerBar / 2);
+      if (midpointBeat > 0) {
+        addHit(hits, 'kick', midpointBeat, 0.9, safeBeatsPerBar);
+      }
       [1, 3].forEach((beat) => addHit(hits, 'snare', beat, 0.95, safeBeatsPerBar));
       break;
+    }
   }
 
   return {

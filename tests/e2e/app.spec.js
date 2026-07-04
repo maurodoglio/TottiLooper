@@ -149,7 +149,7 @@ test.describe('after microphone access', () => {
     await page.selectOption('#drum-style', 'funk');
     await page.click('#btn-generate-drums');
     await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
-    await expect(page.locator('.loop-name')).toHaveValue(/Funk Drums/);
+    await expect(page.locator('.loop-name')).toHaveValue('Funk Drums · 100 BPM');
   });
 });
 
