@@ -268,6 +268,10 @@ test.describe('tempo controls', () => {
     await expect(page.locator('#bpm-input')).toHaveValue('140');
   });
 
+  test('tap tempo button is visible', async ({ page }) => {
+    await expect(page.locator('#btn-tap-tempo')).toBeVisible();
+  });
+
   test('BPM is clamped to the minimum (40)', async ({ page }) => {
     await page.locator('#bpm-input').fill('10');
     await page.locator('#bpm-input').press('Tab');
@@ -278,6 +282,17 @@ test.describe('tempo controls', () => {
     await page.locator('#bpm-input').fill('999');
     await page.locator('#bpm-input').press('Tab');
     await expect(page.locator('#bpm-input')).toHaveValue('240');
+  });
+
+  test('tap tempo updates BPM from inter-tap timing', async ({ page }) => {
+    await page.locator('#btn-tap-tempo').click();
+    await page.waitForTimeout(300);
+    await page.locator('#btn-tap-tempo').click();
+    await page.waitForTimeout(300);
+    await page.locator('#btn-tap-tempo').click();
+    const tappedBpm = Number(await page.locator('#bpm-input').inputValue());
+    expect(tappedBpm).toBeGreaterThanOrEqual(170);
+    expect(tappedBpm).toBeLessThanOrEqual(230);
   });
 
   test('metronome toggle can be enabled', async ({ page }) => {

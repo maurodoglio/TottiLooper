@@ -24,6 +24,8 @@ const METRONOME_VOLUME = 0.3;
 const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
+const TAP_TEMPO_TIMEOUT_MS = 2000;
+const TAP_TEMPO_MAX_TAPS   = 8;
 const MAX_UNDO         = 20;
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -50,6 +52,7 @@ let countInEnabled   = false;
 let quantizeEnabled  = false;
 let metronomeInterval = null;
 let metronomeBeatIdx  = 0;
+let tapTempoTimes     = [];
 
 // Undo stack for deleted loops
 const deletedStack = [];
@@ -84,6 +87,7 @@ const permissionBanner   = $('permission-banner');
 const btnRequestMic      = $('btn-request-mic');
 const tempoControls      = $('tempo-controls');
 const bpmInput           = $('bpm-input');
+const btnTapTempo        = $('btn-tap-tempo');
 const beatsPerBarInput   = $('beats-per-bar-input');
 const metronomeToggle    = $('metronome-toggle');
 const countInToggle      = $('count-in-toggle');
@@ -127,6 +131,7 @@ function init() {
   masterVolumeInput.addEventListener('input', onMasterVolumeChange);
 
   bpmInput.addEventListener('change', onBpmChange);
+  btnTapTempo.addEventListener('click', onTapTempo);
   beatsPerBarInput.addEventListener('change', onBeatsPerBarChange);
   metronomeToggle.addEventListener('change', onMetronomeToggle);
   countInToggle.addEventListener('change', (e) => { countInEnabled = e.target.checked; });
@@ -582,13 +587,38 @@ function onMasterVolumeChange(e) {
 function onBpmChange() {
   let v = parseInt(bpmInput.value, 10);
   if (isNaN(v)) v = DEFAULT_BPM;
-  v = Math.max(MIN_BPM, Math.min(MAX_BPM, v));
-  bpm = v;
-  bpmInput.value = String(v);
+  setBpm(v);
+}
+
+function setBpm(v) {
+  const clampedBpm = Math.max(MIN_BPM, Math.min(MAX_BPM, v));
+  bpm = clampedBpm;
+  bpmInput.value = String(clampedBpm);
   if (metronomeEnabled) {
     stopMetronome();
     startMetronome();
   }
+}
+
+function onTapTempo() {
+  const now = performance.now();
+  const lastTap = tapTempoTimes[tapTempoTimes.length - 1];
+  if (lastTap && now - lastTap > TAP_TEMPO_TIMEOUT_MS) {
+    tapTempoTimes = [];
+  }
+  tapTempoTimes.push(now);
+  if (tapTempoTimes.length > TAP_TEMPO_MAX_TAPS) {
+    tapTempoTimes = tapTempoTimes.slice(-TAP_TEMPO_MAX_TAPS);
+  }
+  if (tapTempoTimes.length < 2) return;
+
+  let totalInterval = 0;
+  for (let i = 1; i < tapTempoTimes.length; i++) {
+    totalInterval += tapTempoTimes[i] - tapTempoTimes[i - 1];
+  }
+  const averageInterval = totalInterval / (tapTempoTimes.length - 1);
+  if (averageInterval <= 0) return;
+  setBpm(Math.round(60000 / averageInterval));
 }
 
 function onBeatsPerBarChange() {
