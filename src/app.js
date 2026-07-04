@@ -28,6 +28,7 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const FADE_TIME        = 0.015; // seconds – short fades to avoid clicks on start/stop
+const LOOP_RESTART_DELAY_MS = Math.ceil(FADE_TIME * 1000 * 6);
 const METRONOME_VOLUME = 0.3;
 const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
@@ -631,7 +632,7 @@ function toggleReverse(loop) {
   const wasPlaying = loop.playing;
   if (wasPlaying) {
     stopLoop(loop);
-    setTimeout(() => playLoop(loop), Math.ceil(FADE_TIME * 1000 * 6));
+    setTimeout(() => playLoop(loop), LOOP_RESTART_DELAY_MS);
   }
   const card = document.getElementById(`loop-card-${loop.id}`);
   if (card) {
@@ -641,6 +642,29 @@ function toggleReverse(loop) {
       btn.setAttribute('aria-pressed', loop.reversed ? 'true' : 'false');
     }
   }
+}
+
+function requantizeLoop(loop) {
+  const wasPlaying = loop.playing;
+  loop.audioBuffer = quantizeBuffer(loop.audioBuffer);
+  loop.reversedBuffer = null;
+  loop.duration = loop.audioBuffer.duration;
+
+  const card = document.getElementById(`loop-card-${loop.id}`);
+  if (card) {
+    const durationEl = card.querySelector('.loop-duration');
+    if (durationEl) durationEl.textContent = formatDuration(loop.duration);
+
+    const canvas = card.querySelector('canvas');
+    if (canvas) drawWaveform(canvas, loop.audioBuffer);
+  }
+
+  if (wasPlaying) {
+    stopLoop(loop);
+    setTimeout(() => playLoop(loop), LOOP_RESTART_DELAY_MS);
+  }
+
+  setStatus(`Re-quantized "${loop.name}".`);
 }
 
 function renameLoop(loop, newName) {
@@ -863,6 +887,13 @@ function renderLoop(loop) {
   btnSolo.setAttribute('aria-pressed', loop.soloed ? 'true' : 'false');
   if (loop.soloed) btnSolo.classList.add('active');
 
+  const btnQuantize = iconButton(
+    'btn-quantize',
+    'Q',
+    'Snap loop to current BPM grid',
+    () => requantizeLoop(loop),
+  );
+
   const btnReverse = iconButton('btn-reverse', '⇄', 'Reverse', () => toggleReverse(loop));
   btnReverse.setAttribute('aria-pressed', loop.reversed ? 'true' : 'false');
   if (loop.reversed) btnReverse.classList.add('active');
@@ -876,7 +907,7 @@ function renderLoop(loop) {
   btnDelete.setAttribute('aria-label', 'Delete loop');
   btnDelete.addEventListener('click', () => deleteLoop(loop.id));
 
-  actions.append(btnPlay, btnMute, btnSolo, btnReverse, btnExport, btnDelete);
+  actions.append(btnPlay, btnMute, btnSolo, btnQuantize, btnReverse, btnExport, btnDelete);
   topRow.append(nameInput, waveformEl, durationEl, actions);
 
   // Bottom row: faders
