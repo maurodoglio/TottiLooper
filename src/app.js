@@ -30,6 +30,7 @@ const MAX_UNDO         = 20;
 
 let audioContext   = null;
 let mediaStream    = null;
+let captureStream  = null;
 let mediaRecorder  = null;
 let recordedChunks = [];
 let isRecording    = false;
@@ -41,6 +42,12 @@ let masterGainNode = null;
 let masterVolume   = 1;
 
 let inputAnalyser  = null;
+let inputMeterFrameId = 0;
+let inputSourceNode = null;
+let inputChannelSplitter = null;
+let inputChannelGainNode = null;
+let selectedInputDeviceId = '';
+let selectedInputChannel = 'all';
 
 // Tempo / metronome
 let bpm              = DEFAULT_BPM;
@@ -82,6 +89,9 @@ const $ = (id) => document.getElementById(id);
 
 const permissionBanner   = $('permission-banner');
 const btnRequestMic      = $('btn-request-mic');
+const inputControls      = $('input-controls');
+const inputDeviceSelect  = $('input-device-select');
+const inputChannelSelect = $('input-channel-select');
 const tempoControls      = $('tempo-controls');
 const bpmInput           = $('bpm-input');
 const beatsPerBarInput   = $('beats-per-bar-input');
@@ -111,12 +121,15 @@ const helpCloseButton    = $('help-close');
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 function init() {
+  inputControls.classList.add('hidden');
   recordControls.classList.add('hidden');
   masterControls.classList.add('hidden');
   loopsSection.classList.add('hidden');
   tempoControls.classList.add('hidden');
 
   btnRequestMic.addEventListener('click', requestMicrophoneAccess);
+  inputDeviceSelect.addEventListener('change', onInputDeviceChange);
+  inputChannelSelect.addEventListener('change', onInputChannelChange);
   btnRecord.addEventListener('click', handleRecordButton);
   btnStopRecord.addEventListener('click', discardRecording);
   btnPlayAll.addEventListener('click', playAllLoops);
@@ -145,28 +158,19 @@ function init() {
 
 async function requestMicrophoneAccess() {
   try {
-    mediaStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl:  false,
-      },
-      video: false,
-    });
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    await refreshInputStream();
+    await refreshInputDeviceOptions();
 
     masterGainNode = audioContext.createGain();
     masterGainNode.gain.value = masterVolume;
     masterGainNode.connect(audioContext.destination);
 
-    // Input analyser for level meter
-    const inputSource = audioContext.createMediaStreamSource(mediaStream);
-    inputAnalyser = audioContext.createAnalyser();
-    inputAnalyser.fftSize = 512;
-    inputSource.connect(inputAnalyser);
-    startInputMeter();
-
     permissionBanner.classList.add('hidden');
+    inputControls.classList.remove('hidden');
     tempoControls.classList.remove('hidden');
     recordControls.classList.remove('hidden');
     masterControls.classList.remove('hidden');
@@ -178,12 +182,175 @@ async function requestMicrophoneAccess() {
   }
 }
 
+async function refreshInputStream() {
+  const nextCaptureStream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl:  false,
+      ...(selectedInputDeviceId ? { deviceId: { exact: selectedInputDeviceId } } : {}),
+    },
+    video: false,
+  });
+
+  const track = nextCaptureStream.getAudioTracks()[0];
+  if (track && !selectedInputDeviceId) {
+    const settings = track.getSettings ? track.getSettings() : {};
+    if (settings.deviceId) selectedInputDeviceId = settings.deviceId;
+  }
+
+  stopStream(captureStream);
+  captureStream = nextCaptureStream;
+  const channelCount = getInputChannelCount(captureStream);
+  updateInputChannelOptions(channelCount);
+  mediaStream = buildRecordingStream(captureStream, channelCount);
+}
+
+async function refreshInputDeviceOptions() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const audioInputs = devices.filter(device => device.kind === 'audioinput');
+  inputDeviceSelect.textContent = '';
+
+  for (const device of audioInputs) {
+    const option = new Option(device.label || `Input ${inputDeviceSelect.length + 1}`, device.deviceId);
+    inputDeviceSelect.appendChild(option);
+  }
+
+  if (!inputDeviceSelect.length) {
+    inputDeviceSelect.appendChild(new Option('Current input', selectedInputDeviceId || 'default'));
+  }
+
+  if (selectedInputDeviceId && [...inputDeviceSelect.options].some(option => option.value === selectedInputDeviceId)) {
+    inputDeviceSelect.value = selectedInputDeviceId;
+  } else {
+    inputDeviceSelect.selectedIndex = 0;
+    selectedInputDeviceId = inputDeviceSelect.value;
+  }
+}
+
+function getInputChannelCount(stream) {
+  const track = stream && stream.getAudioTracks ? stream.getAudioTracks()[0] : null;
+  if (!track) return 1;
+
+  const settings = track.getSettings ? track.getSettings() : {};
+  const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+
+  const settingCount = typeof settings.channelCount === 'number'
+    ? settings.channelCount
+    : 0;
+  const capabilityCount = typeof capabilities.channelCount === 'number'
+    ? capabilities.channelCount
+    : (capabilities.channelCount && typeof capabilities.channelCount.max === 'number'
+      ? capabilities.channelCount.max
+      : 0);
+
+  return Math.max(1, settingCount, capabilityCount);
+}
+
+function updateInputChannelOptions(channelCount) {
+  if (selectedInputChannel !== 'all') {
+    const selectedChannelNumber = parseInt(selectedInputChannel, 10);
+    if (isNaN(selectedChannelNumber) || selectedChannelNumber > channelCount) {
+      selectedInputChannel = 'all';
+    }
+  }
+
+  inputChannelSelect.textContent = '';
+  inputChannelSelect.appendChild(new Option('All channels', 'all'));
+  for (let channel = 1; channel <= channelCount; channel++) {
+    inputChannelSelect.appendChild(new Option(`Channel ${channel}`, String(channel)));
+  }
+  inputChannelSelect.value = selectedInputChannel;
+}
+
+function buildRecordingStream(stream, channelCount) {
+  teardownInputRouting();
+
+  inputSourceNode = audioContext.createMediaStreamSource(stream);
+  if (selectedInputChannel === 'all' || channelCount <= 1) {
+    setInputAnalyserSource(inputSourceNode);
+    return stream;
+  }
+
+  inputChannelSplitter = audioContext.createChannelSplitter(channelCount);
+  inputChannelGainNode = audioContext.createGain();
+  inputSourceNode.connect(inputChannelSplitter);
+  inputChannelSplitter.connect(inputChannelGainNode, parseInt(selectedInputChannel, 10) - 1);
+
+  const destination = audioContext.createMediaStreamDestination();
+  inputChannelGainNode.connect(destination);
+  setInputAnalyserSource(inputChannelGainNode);
+  return destination.stream;
+}
+
+function teardownInputRouting() {
+  try { inputSourceNode && inputSourceNode.disconnect(); } catch { /* ignore */ }
+  try { inputChannelSplitter && inputChannelSplitter.disconnect(); } catch { /* ignore */ }
+  try { inputChannelGainNode && inputChannelGainNode.disconnect(); } catch { /* ignore */ }
+  try { inputAnalyser && inputAnalyser.disconnect(); } catch { /* ignore */ }
+  inputSourceNode = null;
+  inputChannelSplitter = null;
+  inputChannelGainNode = null;
+  inputAnalyser = null;
+}
+
+function setInputAnalyserSource(sourceNode) {
+  inputAnalyser = audioContext.createAnalyser();
+  inputAnalyser.fftSize = 512;
+  sourceNode.connect(inputAnalyser);
+  startInputMeter();
+}
+
+function stopStream(stream) {
+  if (!stream) return;
+  for (const track of stream.getTracks()) {
+    track.stop();
+  }
+}
+
+async function onInputDeviceChange(e) {
+  if (isRecording) {
+    inputDeviceSelect.value = selectedInputDeviceId;
+    showInfo('Stop recording before switching inputs.');
+    return;
+  }
+
+  const previousDeviceId = selectedInputDeviceId;
+  selectedInputDeviceId = e.target.value;
+
+  try {
+    await refreshInputStream();
+    await refreshInputDeviceOptions();
+    setStatus('Input updated. Press ● REC to start recording.');
+  } catch (err) {
+    selectedInputDeviceId = previousDeviceId;
+    inputDeviceSelect.value = previousDeviceId;
+    showError('Could not switch input: ' + err.message);
+    console.error('input device error:', err);
+  }
+}
+
+function onInputChannelChange(e) {
+  if (isRecording) {
+    inputChannelSelect.value = selectedInputChannel;
+    showInfo('Stop recording before switching channels.');
+    return;
+  }
+
+  selectedInputChannel = e.target.value;
+  mediaStream = buildRecordingStream(captureStream, getInputChannelCount(captureStream));
+  setStatus('Input updated. Press ● REC to start recording.');
+}
+
 // ─── Input level meter ────────────────────────────────────────────────────────
 
 function startInputMeter() {
-  const buf = new Uint8Array(inputAnalyser.fftSize);
+  if (!inputAnalyser) return;
+  if (inputMeterFrameId) cancelAnimationFrame(inputMeterFrameId);
+  const analyser = inputAnalyser;
+  const buf = new Uint8Array(analyser.fftSize);
   const tick = () => {
-    inputAnalyser.getByteTimeDomainData(buf);
+    analyser.getByteTimeDomainData(buf);
     let peak = 0;
     for (let i = 0; i < buf.length; i++) {
       const v = Math.abs(buf[i] - 128);
@@ -191,7 +358,7 @@ function startInputMeter() {
     }
     const pct = Math.min(100, (peak / 128) * 100 * 1.4);
     if (inputMeterFill) inputMeterFill.style.width = pct.toFixed(1) + '%';
-    requestAnimationFrame(tick);
+    inputMeterFrameId = requestAnimationFrame(tick);
   };
   tick();
 }

@@ -111,6 +111,28 @@ main {
   flex-wrap: wrap;
 }
 
+/* ── Input controls ── */
+#input-controls .field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 180px;
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+#input-controls select {
+  width: 100%;
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+}
+
 /* ── Tempo controls ── */
 #tempo-controls .field,
 #tempo-controls .toggle {

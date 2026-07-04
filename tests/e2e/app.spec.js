@@ -32,6 +32,10 @@ test.describe('initial state', () => {
     await expect(page.locator('#tempo-controls')).not.toBeVisible();
   });
 
+  test('hides input controls before mic is granted', async ({ page }) => {
+    await expect(page.locator('#input-controls')).not.toBeVisible();
+  });
+
   test('hides master controls before mic is granted', async ({ page }) => {
     await expect(page.locator('#master-controls')).not.toBeVisible();
   });
@@ -116,6 +120,10 @@ test.describe('after microphone access', () => {
     await expect(page.locator('#tempo-controls')).toBeVisible();
   });
 
+  test('shows the input controls', async ({ page }) => {
+    await expect(page.locator('#input-controls')).toBeVisible();
+  });
+
   test('shows the master controls', async ({ page }) => {
     await expect(page.locator('#master-controls')).toBeVisible();
   });
@@ -138,6 +146,14 @@ test.describe('after microphone access', () => {
 
   test('status text shows ready message', async ({ page }) => {
     await expect(page.locator('#status-text')).toContainText('Ready');
+  });
+
+  test('populates the input device and channel selectors', async ({ page }) => {
+    await expect(page.locator('#input-device-select')).toHaveValue(/.+/);
+    await expect(page.locator('#input-channel-select')).toHaveValue('all');
+    await expect.poll(async () => {
+      return page.locator('#input-channel-select option').count();
+    }).toBeGreaterThanOrEqual(2);
   });
 });
 
