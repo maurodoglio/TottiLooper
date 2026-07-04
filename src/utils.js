@@ -118,6 +118,62 @@ export function reverseBuffer(buffer, audioContext) {
   return rev;
 }
 
+// ─── MIDI encoding ────────────────────────────────────────────────────────────
+
+/**
+ * Encode the current session tempo as a simple MIDI click track.
+ *
+ * @param {{ bpm: number, beatsPerBar: number, durationSeconds: number }} opts
+ * @returns {Blob}
+ */
+export function clickTrackToMidi({ bpm, beatsPerBar, durationSeconds }) {
+  const ticksPerBeat = 480;
+  const totalTicks = Math.max(1, Math.ceil((durationSeconds * bpm * ticksPerBeat) / 60));
+  const beatCount = Math.floor((totalTicks - 1) / ticksPerBeat) + 1;
+  const noteLength = Math.min(60, ticksPerBeat);
+  const tempoMicros = Math.round(60000000 / bpm);
+  const track = [];
+
+  appendMetaEvent(track, 0, 0x03, textBytes('Click Track'));
+  appendMetaEvent(track, 0, 0x51, [
+    (tempoMicros >> 16) & 0xff,
+    (tempoMicros >> 8) & 0xff,
+    tempoMicros & 0xff,
+  ]);
+  appendMetaEvent(track, 0, 0x58, [beatsPerBar, 2, 24, 8]);
+
+  let lastTick = 0;
+  for (let beat = 0; beat < beatCount; beat++) {
+    const startTick = beat * ticksPerBeat;
+    const note = beat % beatsPerBar === 0 ? 76 : 77;
+    const velocity = beat % beatsPerBar === 0 ? 110 : 84;
+    appendMidiEvent(track, startTick - lastTick, [0x99, note, velocity]);
+    lastTick = startTick;
+
+    const endTick = Math.min(startTick + noteLength, totalTicks);
+    appendMidiEvent(track, endTick - lastTick, [0x89, note, 0]);
+    lastTick = endTick;
+  }
+
+  appendMetaEvent(track, totalTicks - lastTick, 0x2f, []);
+
+  const bytes = [
+    ...textBytes('MThd'),
+    0x00, 0x00, 0x00, 0x06,
+    0x00, 0x00,
+    0x00, 0x01,
+    (ticksPerBeat >> 8) & 0xff, ticksPerBeat & 0xff,
+    ...textBytes('MTrk'),
+    (track.length >>> 24) & 0xff,
+    (track.length >>> 16) & 0xff,
+    (track.length >>> 8) & 0xff,
+    track.length & 0xff,
+    ...track,
+  ];
+
+  return new Blob([new Uint8Array(bytes)], { type: 'audio/midi' });
+}
+
 // ─── WAV encoding ─────────────────────────────────────────────────────────────
 
 /**
@@ -176,4 +232,30 @@ export function audioBufferToWav(buffer) {
     }
   }
   return new Blob([ab], { type: 'audio/wav' });
+}
+
+function appendMetaEvent(track, delta, type, data) {
+  appendMidiEvent(track, delta, [0xff, type, data.length, ...data]);
+}
+
+function appendMidiEvent(track, delta, bytes) {
+  track.push(...encodeVarLen(delta), ...bytes);
+}
+
+function encodeVarLen(value) {
+  let buffer = value & 0x7f;
+  const bytes = [];
+  while ((value >>= 7)) {
+    buffer <<= 8;
+    buffer |= 0x80 | (value & 0x7f);
+  }
+  while (true) {
+    bytes.push(buffer & 0xff);
+    if (buffer & 0x80) buffer >>= 8;
+    else return bytes;
+  }
+}
+
+function textBytes(text) {
+  return Array.from(text, (ch) => ch.charCodeAt(0));
 }

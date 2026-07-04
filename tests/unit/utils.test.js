@@ -11,6 +11,7 @@ import {
   panText,
   writeString,
   audioBufferToWav,
+  clickTrackToMidi,
   getSupportedMimeType,
   effectiveGain,
   quantizeBuffer,
@@ -228,6 +229,43 @@ describe('audioBufferToWav', () => {
     const view = new DataView(ab);
     const sample = view.getInt16(44, true);
     expect(sample).toBe(0x7fff);
+  });
+});
+
+// ─── clickTrackToMidi ──────────────────────────────────────────────────────────
+
+describe('clickTrackToMidi', () => {
+  async function midiBytes(opts) {
+    return new Uint8Array(await clickTrackToMidi(opts).arrayBuffer());
+  }
+
+  it('returns a Blob with the audio/midi MIME type', () => {
+    const blob = clickTrackToMidi({ bpm: 120, beatsPerBar: 4, durationSeconds: 4 });
+    expect(blob.type).toBe('audio/midi');
+  });
+
+  it('writes a standard MIDI header with one track', async () => {
+    const bytes = await midiBytes({ bpm: 120, beatsPerBar: 4, durationSeconds: 4 });
+    expect(String.fromCharCode(...bytes.slice(0, 4))).toBe('MThd');
+    expect(String.fromCharCode(...bytes.slice(14, 18))).toBe('MTrk');
+    expect(bytes[11]).toBe(1);
+    expect(bytes[12]).toBe(0x01);
+    expect(bytes[13]).toBe(0xe0);
+  });
+
+  it('stores tempo and time-signature metadata for the session settings', async () => {
+    const bytes = await midiBytes({ bpm: 100, beatsPerBar: 3, durationSeconds: 4 });
+    const data = Array.from(bytes);
+    expect(data).toEqual(expect.arrayContaining([0xff, 0x51, 0x03, 0x09, 0x27, 0xc0]));
+    expect(data).toEqual(expect.arrayContaining([0xff, 0x58, 0x04, 0x03, 0x02, 0x18, 0x08]));
+  });
+
+  it('creates one click note per beat across the exported duration', async () => {
+    const bytes = await midiBytes({ bpm: 120, beatsPerBar: 4, durationSeconds: 4 });
+    const data = Array.from(bytes);
+    expect(data.filter((byte) => byte === 0x99)).toHaveLength(8);
+    expect(data.filter((byte, idx) => byte === 76 && data[idx - 1] === 0x99)).toHaveLength(2);
+    expect(data.filter((byte, idx) => byte === 77 && data[idx - 1] === 0x99)).toHaveLength(6);
   });
 });
 

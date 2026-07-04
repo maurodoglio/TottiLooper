@@ -136,6 +136,10 @@ test.describe('after microphone access', () => {
     await expect(page.locator('#master-volume')).toHaveValue('1');
   });
 
+  test('MIDI click export toggle is available', async ({ page }) => {
+    await expect(page.locator('#export-midi-toggle')).toBeVisible();
+  });
+
   test('status text shows ready message', async ({ page }) => {
     await expect(page.locator('#status-text')).toContainText('Ready');
   });
