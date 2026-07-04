@@ -37,6 +37,79 @@ async function expectContrastRatioAtLeast(locator, minimumRatio) {
     .toBeGreaterThanOrEqual(minimumRatio);
 }
 
+async function recordShortLoop(page) {
+  await page.click('#btn-record');
+  await page.waitForTimeout(600);
+  await page.click('#btn-record');
+}
+
+function deleteLoopButton(page) {
+  return page.getByRole('button', { name: 'Delete loop' });
+}
+
+async function installGamepadStub(page) {
+  await page.addInitScript(() => {
+    const state = {
+      buttons: Array.from({ length: 4 }, () => ({ pressed: false, touched: false, value: 0 })),
+    };
+
+    Object.defineProperty(navigator, 'getGamepads', {
+      configurable: true,
+      value: () => [{
+        index: 0,
+        id: 'Test Foot Switch',
+        connected: true,
+        mapping: 'standard',
+        axes: [],
+        buttons: state.buttons.map((button) => ({ ...button })),
+      }],
+    });
+
+    globalThis.__setGamepadButton = (buttonIndex, pressed) => {
+      state.buttons[buttonIndex] = {
+        pressed,
+        touched: pressed,
+        value: pressed ? 1 : 0,
+      };
+    };
+  });
+}
+
+async function installFakeMidi(page) {
+  await page.addInitScript(() => {
+    const input = {
+      id: 'fake-midi-1',
+      name: 'Fake MIDI Controller',
+      manufacturer: 'Playwright',
+      onmidimessage: null,
+    };
+    const access = {
+      inputs: new Map([[input.id, input]]),
+      outputs: new Map(),
+      onstatechange: null,
+      addEventListener(type, handler) {
+        if (type === 'statechange') this.onstatechange = handler;
+      },
+    };
+
+    Object.defineProperty(navigator, 'requestMIDIAccess', {
+      configurable: true,
+      value: async () => access,
+    });
+
+    globalThis.__dispatchMidi = (data) => {
+      input.onmidimessage?.({ data: new Uint8Array(data), target: input });
+    };
+  });
+}
+
+async function pressGamepadButton(page, buttonIndex) {
+  await page.evaluate((idx) => globalThis.__setGamepadButton(idx, true), buttonIndex);
+  await page.waitForTimeout(100);
+  await page.evaluate((idx) => globalThis.__setGamepadButton(idx, false), buttonIndex);
+  await page.waitForTimeout(100);
+}
+
 // ─── Initial page state ───────────────────────────────────────────────────────
 
 test.describe('initial state', () => {
@@ -60,6 +133,10 @@ test.describe('initial state', () => {
     await expect(page.locator('#tempo-controls')).not.toBeVisible();
   });
 
+  test('hides input controls before mic is granted', async ({ page }) => {
+    await expect(page.locator('#input-controls')).not.toBeVisible();
+  });
+
   test('hides master controls before mic is granted', async ({ page }) => {
     await expect(page.locator('#master-controls')).not.toBeVisible();
   });
@@ -73,11 +150,47 @@ test.describe('initial state', () => {
   });
 });
 
+// ─── Theme toggle ──────────────────────────────────────────────────────────────
+
+test.describe('theme toggle', () => {
+  test('defaults to light theme when the system prefers light', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto('/');
+
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect(page.locator('#btn-theme-toggle')).toHaveAttribute('aria-label', 'Switch to dark theme');
+  });
+
+  test('defaults to dark theme when the system prefers dark', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.goto('/');
+
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(page.locator('#btn-theme-toggle')).toHaveAttribute('aria-label', 'Switch to light theme');
+  });
+
+  test('persists the selected theme across reloads', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto('/');
+
+    await page.click('#btn-theme-toggle');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect.poll(async () => page.evaluate(() => localStorage.getItem('tottilooper-theme'))).toBe('dark');
+
+    await page.reload();
+
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(page.locator('#btn-theme-toggle')).toHaveAttribute('aria-label', 'Switch to light theme');
+  });
+});
+
 // ─── Help modal ───────────────────────────────────────────────────────────────
 
 test.describe('help modal', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
   });
 
   test('is hidden on page load', async ({ page }) => {
@@ -120,6 +233,25 @@ test.describe('help modal', () => {
     await expect(page.locator('#help-modal')).toContainText('Getting started');
     await expect(page.locator('#help-modal')).toContainText('Keyboard shortcuts');
   });
+
+  test('persists remapped help shortcut in localStorage', async ({ page }) => {
+    await page.click('#btn-help');
+    await page.locator('input[aria-label="Open help shortcut"]').click();
+    await page.keyboard.press('h');
+    await expect(page.locator('input[aria-label="Open help shortcut"]')).toHaveValue('H');
+    await page.click('#help-close');
+
+    await page.keyboard.press('?');
+    await expect(page.locator('#help-modal')).toBeHidden();
+
+    await page.keyboard.press('h');
+    await expect(page.locator('#help-modal')).toBeVisible();
+
+    await page.reload();
+    await expect(page.locator('#help-modal')).toBeHidden();
+    await page.keyboard.press('h');
+    await expect(page.locator('#help-modal')).toBeVisible();
+  });
 });
 
 // ─── After microphone access ──────────────────────────────────────────────────
@@ -144,6 +276,10 @@ test.describe('after microphone access', () => {
     await expect(page.locator('#tempo-controls')).toBeVisible();
   });
 
+  test('shows the input controls', async ({ page }) => {
+    await expect(page.locator('#input-controls')).toBeVisible();
+  });
+
   test('shows the master controls', async ({ page }) => {
     await expect(page.locator('#master-controls')).toBeVisible();
   });
@@ -160,6 +296,11 @@ test.describe('after microphone access', () => {
     await expect(page.locator('#btn-undo')).toBeDisabled();
   });
 
+  test('redo and clear-all buttons are disabled with no loops', async ({ page }) => {
+    await expect(page.locator('#btn-redo')).toBeDisabled();
+    await expect(page.locator('#btn-clear-all')).toBeDisabled();
+  });
+
   test('master volume slider defaults to 1', async ({ page }) => {
     await expect(page.locator('#master-volume')).toHaveValue('1');
   });
@@ -174,6 +315,14 @@ test.describe('after microphone access', () => {
     await expect(slider).toHaveAttribute('aria-valuetext', '125 percent');
   });
 
+  test('now-playing indicator starts idle', async ({ page }) => {
+    await expect(page.locator('#playback-position')).toHaveText('Now playing: —');
+  });
+
+  test('MIDI click export toggle is available', async ({ page }) => {
+    await expect(page.locator('#export-midi-toggle')).toBeVisible();
+  });
+
   test('status text shows ready message', async ({ page }) => {
     await expect(page.locator('#status-text')).toContainText('Ready');
   });
@@ -185,6 +334,32 @@ test.describe('after microphone access', () => {
     await page.click('#btn-record');
     await expectContrastRatioAtLeast(page.locator('#btn-record'), 4.5);
   });
+
+  test('populates the input device and channel selectors', async ({ page }) => {
+    await expect(page.locator('#input-device-select')).toHaveValue(/.+/);
+    await expect(page.locator('#input-channel-select')).toHaveValue('all');
+    await expect.poll(async () => {
+      return page.locator('#input-channel-select option').count();
+    }).toBeGreaterThanOrEqual(2);
+  });
+
+  test('input monitoring defaults to off with latency offset disabled', async ({ page }) => {
+    await expect(page.locator('#monitoring-toggle')).not.toBeChecked();
+    await expect(page.locator('#monitor-latency-offset')).toHaveValue('0');
+    await expect(page.locator('#monitor-latency-offset')).toBeDisabled();
+  });
+
+  test('enabling input monitoring enables the latency offset control', async ({ page }) => {
+    await page.locator('#monitoring-toggle').check();
+    await expect(page.locator('#monitoring-toggle')).toBeChecked();
+    await expect(page.locator('#monitor-latency-offset')).toBeEnabled();
+  });
+
+  test('latency offset can be adjusted while monitoring is enabled', async ({ page }) => {
+    await page.locator('#monitoring-toggle').check();
+    await page.locator('#monitor-latency-offset').fill('-25');
+    await expect(page.locator('#monitor-latency-offset')).toHaveValue('-25');
+  });
 });
 
 // ─── Recording flow ───────────────────────────────────────────────────────────
@@ -192,6 +367,8 @@ test.describe('after microphone access', () => {
 test.describe('recording flow', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
     await page.click('#btn-request-mic');
     await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
   });
@@ -250,19 +427,34 @@ test.describe('recording flow', () => {
     await page.keyboard.press('Space');
     await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
   });
+
+  test('uses a remapped record shortcut', async ({ page }) => {
+    await page.click('#btn-help');
+    await page.locator('input[aria-label="Start / stop recording shortcut"]').click();
+    await page.keyboard.press('r');
+    await page.click('#help-close');
+
+    await page.keyboard.press('Space');
+    await expect(page.locator('#btn-record')).toContainText('REC');
+
+    await page.keyboard.press('r');
+    await expect(page.locator('#btn-record')).toContainText('STOP');
+  });
 });
 
 // ─── Loop controls ────────────────────────────────────────────────────────────
 
 test.describe('loop controls', () => {
+  async function getPlayheadLeftPercent(page) {
+    return page.locator('.loop-playhead').evaluate((el) => parseFloat(el.style.left || '0'));
+  }
+
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.click('#btn-request-mic');
     await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
     // Record one short loop.
-    await page.click('#btn-record');
-    await page.waitForTimeout(600);
-    await page.click('#btn-record');
+    await recordShortLoop(page);
     await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
   });
 
@@ -315,27 +507,269 @@ test.describe('loop controls', () => {
     await page.locator('.btn-mute').click();
     await page.locator('.btn-reverse').click();
 
-    await expectContrastRatioAtLeast(page.locator('.btn-danger'), 4.5);
+    await expectContrastRatioAtLeast(page.locator('.loop-actions .btn-danger'), 4.5);
     await expectContrastRatioAtLeast(page.locator('.btn-mute'), 4.5);
     await expectContrastRatioAtLeast(page.locator('.btn-reverse'), 4.5);
   });
 
+  test('waveform shows an animated playhead during playback', async ({ page }) => {
+    const playhead = page.locator('.loop-playhead');
+    await page.locator('.btn-play').click();
+    await expect(playhead).toHaveClass(/active/);
+
+    const before = await getPlayheadLeftPercent(page);
+    await expect
+      .poll(async () => {
+        const after = await getPlayheadLeftPercent(page);
+        return after >= before ? after - before : after + 100 - before;
+      }, { timeout: 1000 })
+      .toBeGreaterThan(5);
+  });
+
+  test('clicking the waveform scrubs the loop position', async ({ page }) => {
+    const waveform = page.locator('.loop-waveform');
+    const box = await waveform.boundingBox();
+    if (!box) throw new Error('Waveform was not rendered');
+
+    await waveform.click({ position: { x: box.width * 0.75, y: box.height / 2 } });
+    await expect
+      .poll(() => getPlayheadLeftPercent(page), { timeout: 1000 })
+      .toBeGreaterThan(65);
+
+    await page.locator('.btn-play').click();
+    await expect(page.locator('.loop-playhead')).toHaveClass(/active/);
+    await expect
+      .poll(() => getPlayheadLeftPercent(page), { timeout: 1000 })
+      .toBeGreaterThan(65);
+  });
+
+  test('existing loop can be re-quantized to the current BPM grid', async ({ page }) => {
+    await expect(page.locator('.loop-card')).toBeVisible();
+    await expect(page.locator('.loop-duration')).toHaveText('0:00');
+    await page.locator('#bpm-input').fill('240');
+    await page.locator('#bpm-input').press('Tab');
+    await expect(page.locator('#bpm-input')).toHaveValue('240');
+    await page.locator('.btn-quantize').click();
+    await expect(page.locator('.loop-duration')).toHaveText('0:01');
+    await expect(page.locator('#status-text')).toContainText('Re-quantized');
+  });
+
   test('undo button becomes enabled after a loop is deleted', async ({ page }) => {
-    await page.locator('.btn-danger').click();
+    await deleteLoopButton(page).click();
     await expect(page.locator('#btn-undo')).toBeEnabled();
   });
 
   test('deleted loop can be restored via undo button', async ({ page }) => {
-    await page.locator('.btn-danger').click();
+    await deleteLoopButton(page).click();
     await expect(page.locator('.loop-card')).not.toBeVisible();
     await page.click('#btn-undo');
     await expect(page.locator('.loop-card')).toBeVisible();
   });
 
   test('Ctrl+Z restores the last deleted loop', async ({ page }) => {
-    await page.locator('.btn-danger').click();
+    await deleteLoopButton(page).click();
     await page.keyboard.press('Control+z');
     await expect(page.locator('.loop-card')).toBeVisible();
+  });
+
+  test('redo button re-applies the last undone delete', async ({ page }) => {
+    await deleteLoopButton(page).click();
+    await page.click('#btn-undo');
+    await expect(page.locator('#btn-redo')).toBeEnabled();
+    await page.click('#btn-redo');
+    await expect(page.locator('.loop-card')).toHaveCount(0);
+  });
+
+  test('Ctrl+Shift+Z re-applies the last undone delete', async ({ page }) => {
+    await deleteLoopButton(page).click();
+    await page.keyboard.press('Control+z');
+    await page.keyboard.press('Control+Shift+z');
+    await expect(page.locator('.loop-card')).toHaveCount(0);
+  });
+
+  test('clear all asks for confirmation and leaves loops untouched when cancelled', async ({ page }) => {
+    await recordShortLoop(page);
+    await expect(page.locator('.loop-card')).toHaveCount(2, { timeout: 8000 });
+
+    let dialogMessage = '';
+    page.once('dialog', async (dialog) => {
+      dialogMessage = dialog.message();
+      await dialog.dismiss();
+    });
+
+    await page.click('#btn-clear-all');
+
+    await expect(page.locator('.loop-card')).toHaveCount(2);
+    expect(dialogMessage).toBe('Clear all 2 loops? This will remove them from your current session.');
+  });
+
+  test('clear all removes every loop and can be undone', async ({ page }) => {
+    await recordShortLoop(page);
+    await expect(page.locator('.loop-card')).toHaveCount(2, { timeout: 8000 });
+
+    page.once('dialog', dialog => dialog.accept());
+    await page.click('#btn-clear-all');
+
+    await expect(page.locator('.loop-card')).toHaveCount(0);
+    await expect(page.locator('#empty-state')).toBeVisible();
+    await page.click('#btn-undo');
+    await expect(page.locator('.loop-card')).toHaveCount(2);
+  });
+
+  test('now-playing indicator updates while a loop is playing', async ({ page }) => {
+    const position = page.locator('#playback-position');
+    await expect(position).toHaveText('Now playing: —');
+    await page.locator('#bpm-input').fill('240');
+    await page.locator('#bpm-input').press('Tab');
+    await page.locator('.btn-play').click();
+    await expect(position).toContainText('Bar 1');
+    await expect.poll(async () => await position.textContent()).toMatch(/Beat [2-4]/);
+  });
+});
+
+// ─── Mobile layout ────────────────────────────────────────────────────────────
+
+test.describe('mobile layout', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await page.click('#btn-request-mic');
+    await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+    await page.click('#btn-record');
+    await page.waitForTimeout(600);
+    await page.click('#btn-record');
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+  });
+
+  test('uses touch-friendly controls on portrait phone screens', async ({ page }) => {
+    const sizes = await page.locator('#btn-record, .loop-actions button').evaluateAll((buttons) => {
+      return buttons.map((button) => {
+        const rect = button.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      });
+    });
+
+    for (const size of sizes) {
+      expect(size.width).toBeGreaterThanOrEqual(44);
+      expect(size.height).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  test('stacks the mixer without horizontal overflow on portrait phone screens', async ({ page }) => {
+    const mobileLayout = await page.locator('.loop-faders').evaluate((el) => {
+      const view = el.ownerDocument.defaultView;
+      return {
+        flexDirection: view.getComputedStyle(el).flexDirection,
+        scrollWidth: el.ownerDocument.documentElement.scrollWidth,
+        innerWidth: view.innerWidth,
+      };
+    });
+
+    expect(mobileLayout.flexDirection).toBe('column');
+    expect(mobileLayout.scrollWidth).toBeLessThanOrEqual(mobileLayout.innerWidth + 1);
+  });
+});
+
+// ─── Gamepad controls ─────────────────────────────────────────────────────────
+
+test.describe('gamepad controls', () => {
+  test.beforeEach(async ({ page }) => {
+    await installGamepadStub(page);
+    await page.goto('/');
+    await page.click('#btn-request-mic');
+    await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('button 1 starts and stops recording', async ({ page }) => {
+    await pressGamepadButton(page, 0);
+    await expect(page.locator('#btn-record')).toContainText('STOP');
+
+    await page.waitForTimeout(600);
+    await pressGamepadButton(page, 0);
+
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+  });
+
+  test('buttons 2 and 3 play and stop all loops', async ({ page }) => {
+    await page.click('#btn-record');
+    await page.waitForTimeout(600);
+    await page.click('#btn-record');
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+
+    await pressGamepadButton(page, 1);
+    await expect(page.locator('.loop-card')).toHaveClass(/playing/);
+
+    await pressGamepadButton(page, 2);
+    await expect(page.locator('.loop-card')).not.toHaveClass(/playing/);
+  });
+
+  test('the fourth gamepad button cycles through loops and toggles them in order', async ({ page }) => {
+    for (let i = 0; i < 2; i++) {
+      await page.click('#btn-record');
+      await page.waitForTimeout(600);
+      await page.click('#btn-record');
+      await expect(page.locator('.loop-card')).toHaveCount(i + 1, { timeout: 8000 });
+    }
+
+    const firstLoop = page.locator('#loop-card-1');
+    const secondLoop = page.locator('#loop-card-2');
+
+    await pressGamepadButton(page, 3);
+    await expect(firstLoop).toHaveClass(/playing/);
+    await expect(secondLoop).not.toHaveClass(/playing/);
+
+    await pressGamepadButton(page, 3);
+    await expect(firstLoop).toHaveClass(/playing/);
+    await expect(secondLoop).toHaveClass(/playing/);
+
+    await pressGamepadButton(page, 3);
+    await expect(firstLoop).not.toHaveClass(/playing/);
+    await expect(secondLoop).toHaveClass(/playing/);
+  });
+});
+
+// ─── MIDI controls ────────────────────────────────────────────────────────────
+
+test.describe('MIDI controls', () => {
+  test.beforeEach(async ({ page }) => {
+    await installFakeMidi(page);
+    await page.goto('/');
+    await page.click('#btn-request-mic');
+    await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+    await page.click('#btn-enable-midi');
+    await expect(page.locator('#midi-status')).toContainText('Listening to 1 MIDI input');
+  });
+
+  test('can learn a MIDI button for recording', async ({ page }) => {
+    await page.locator('[data-midi-action="record"] .btn-midi-learn').click();
+    await page.evaluate(() => globalThis.__dispatchMidi([0x90, 36, 127]));
+    await expect(page.locator('[data-midi-action="record"] .midi-binding-value')).toHaveText('Note 36 · Ch 1');
+
+    await page.evaluate(() => globalThis.__dispatchMidi([0x90, 36, 127]));
+    await expect(page.locator('#btn-record')).toContainText('STOP');
+  });
+
+  test('can learn a loop toggle and volume control', async ({ page }) => {
+    await page.click('#btn-record');
+    await page.waitForTimeout(600);
+    await page.click('#btn-record');
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+
+    const loopCard = page.locator('.loop-card').first();
+
+    await loopCard.locator('.btn-midi-learn[data-midi-target="loop-1-toggle"]').click();
+    await page.evaluate(() => globalThis.__dispatchMidi([0x90, 40, 127]));
+    await expect(loopCard.locator('[data-midi-binding="toggle"]')).toHaveText('Note 40 · Ch 1');
+
+    await page.evaluate(() => globalThis.__dispatchMidi([0x90, 40, 127]));
+    await expect(loopCard).toHaveClass(/playing/);
+
+    await loopCard.locator('.btn-midi-learn[data-midi-target="loop-1-volume"]').click();
+    await page.evaluate(() => globalThis.__dispatchMidi([0xb0, 7, 64]));
+    await expect(loopCard.locator('[data-midi-binding="volume"]')).toHaveText('CC 7 · Ch 1');
+
+    await page.evaluate(() => globalThis.__dispatchMidi([0xb0, 7, 0]));
+    await expect(loopCard.locator('[data-fader="volume"] input')).toHaveValue('0');
   });
 });
 
@@ -379,5 +813,27 @@ test.describe('tempo controls', () => {
   test('quantize toggle can be enabled', async ({ page }) => {
     await page.locator('#quantize-toggle').check();
     await expect(page.locator('#quantize-toggle')).toBeChecked();
+  });
+});
+
+// ─── Share via URL ────────────────────────────────────────────────────────────
+
+test.describe('share via URL', () => {
+  test('creates a shareable hash and restores loops after reload', async ({ page }) => {
+    await page.goto('/');
+    await page.click('#btn-request-mic');
+    await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+
+    await page.click('#btn-record');
+    await page.waitForTimeout(600);
+    await page.click('#btn-record');
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+
+    await page.click('#btn-share-session');
+    await expect.poll(() => page.url()).toContain('#share=');
+
+    await page.reload();
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('#master-controls')).toBeVisible();
   });
 });
