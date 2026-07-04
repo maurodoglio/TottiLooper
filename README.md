@@ -15,6 +15,7 @@ them on top of each other – your one-man band for busking starts here.
 
 ### Mixer
 - 🎵 **Layer** as many loops as you like, playing simultaneously
+- 🎼 **Likely key detection** on recorded loops, with a warning when a new layer may clash
 - 🎚️ **Per-loop volume, pan and playback-speed (pitch)** sliders
 - 🎚️ **Master volume** for overall level
 - 🔇 **Mute**, **S** Solo, and **⇄ Reverse** toggles on every loop

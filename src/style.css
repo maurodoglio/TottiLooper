@@ -425,6 +425,21 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+.loop-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 82px;
+}
+
+.loop-key {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .loop-actions {
   display: flex;
   align-items: center;
@@ -502,6 +517,10 @@ button:disabled {
 
 #error-toast.info {
   background: #2a4a7b;
+}
+
+#error-toast.warning {
+  background: #7b5a1f;
 }
 
 #error-toast.fade-out {
