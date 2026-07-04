@@ -28,6 +28,7 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
+const SWING_SCHEDULE_AHEAD_MS = 12;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -76,7 +77,7 @@ const deletedStack = [];
  * @property {number} playbackRate
  * @property {boolean} reversed
  * @property {Array<AudioBufferSourceNode>} sourceNodes
- * @property {number|null} swingTimerId
+ * @property {number | null} swingTimerId
  */
 
 /** @type {Array<Loop>} */
@@ -420,7 +421,8 @@ function trackLoopSource(loop, sourceNode) {
   loop.node = sourceNode;
   loop.sourceNodes.push(sourceNode);
   sourceNode.onended = () => {
-    loop.sourceNodes = loop.sourceNodes.filter(node => node !== sourceNode);
+    const idx = loop.sourceNodes.findIndex((node) => node === sourceNode);
+    if (idx !== -1) loop.sourceNodes.splice(idx, 1);
     if (loop.node === sourceNode) {
       loop.node = loop.sourceNodes[loop.sourceNodes.length - 1] || null;
     }
@@ -482,7 +484,7 @@ function scheduleSwungLoopSegment(loop, outputTime, bufferOffset, subdivisionInd
       (bufferOffset + straightSubdivision * loop.playbackRate) % buffer.duration,
       subdivisionIndex + 1,
     );
-  }, Math.max(0, targetDuration * 1000 - 12));
+  }, Math.max(0, targetDuration * 1000 - SWING_SCHEDULE_AHEAD_MS));
 }
 
 function restartPlayingLoops() {
