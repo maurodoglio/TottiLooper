@@ -1022,7 +1022,9 @@ function scheduleRecordingAutoStop() {
   clearRecordingAutoStop();
   if (currentRecordingTargetBars < 1) return;
 
-  const durationMs = currentRecordingTargetBars * currentRecordingBeatsPerBar * (60000 / currentRecordingBpm);
+  const durationMs = Math.round(
+    currentRecordingTargetBars * currentRecordingBeatsPerBar * (60000 / currentRecordingBpm),
+  );
   recordAutoStopTimeout = setTimeout(() => {
     recordAutoStopTimeout = null;
     shouldNormalizeToTargetBars = true;
