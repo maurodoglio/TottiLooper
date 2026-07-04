@@ -14,6 +14,7 @@ import {
   getSupportedMimeType,
   effectiveGain,
   quantizeBuffer,
+  offsetBuffer,
   reverseBuffer,
 } from '../../src/utils.js';
 
@@ -318,6 +319,47 @@ describe('quantizeBuffer', () => {
     expect(outData[srcLen - 1]).toBeCloseTo(0.5);
     // Tail that was zero-padded should be 0
     expect(outData[srcLen]).toBe(0);
+  });
+});
+
+// ─── offsetBuffer ──────────────────────────────────────────────────────────────
+
+describe('offsetBuffer', () => {
+  const ctx = makeMockAudioContext();
+
+  it('returns the original buffer when the offset is zero', () => {
+    const samples = new Float32Array([1, 2, 3]);
+    const src = {
+      numberOfChannels: 1,
+      length: 3,
+      sampleRate: 1000,
+      getChannelData: () => samples,
+    };
+    expect(offsetBuffer(src, 0, ctx)).toBe(src);
+  });
+
+  it('adds silence at the start for a positive offset', () => {
+    const samples = new Float32Array([1, 2, 3, 4]);
+    const src = {
+      numberOfChannels: 1,
+      length: 4,
+      sampleRate: 1000,
+      getChannelData: () => samples,
+    };
+    const out = offsetBuffer(src, 0.002, ctx);
+    expect(Array.from(out.getChannelData(0))).toEqual([0, 0, 1, 2]);
+  });
+
+  it('trims the start for a negative offset and pads the tail with silence', () => {
+    const samples = new Float32Array([1, 2, 3, 4]);
+    const src = {
+      numberOfChannels: 1,
+      length: 4,
+      sampleRate: 1000,
+      getChannelData: () => samples,
+    };
+    const out = offsetBuffer(src, -0.002, ctx);
+    expect(Array.from(out.getChannelData(0))).toEqual([3, 4, 0, 0]);
   });
 });
 

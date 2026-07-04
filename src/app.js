@@ -14,6 +14,7 @@ import {
   getSupportedMimeType,
   effectiveGain as computeEffectiveGain,
   quantizeBuffer as _quantizeBuffer,
+  offsetBuffer as _offsetBuffer,
   reverseBuffer as _reverseBuffer,
 } from './utils.js';
 
@@ -25,6 +26,8 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
+const MIN_MONITOR_OFFSET_MS = -250;
+const MAX_MONITOR_OFFSET_MS = 250;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -36,11 +39,15 @@ let isRecording    = false;
 let timerInterval  = null;
 let recordStartTime = 0;
 let loopCounter    = 0;
+let inputSource    = null;
 
 let masterGainNode = null;
 let masterVolume   = 1;
 
 let inputAnalyser  = null;
+let monitorGainNode  = null;
+let monitoringEnabled = false;
+let monitorLatencyOffsetMs = 0;
 
 // Tempo / metronome
 let bpm              = DEFAULT_BPM;
@@ -95,6 +102,8 @@ const recordTimer        = $('record-timer');
 const statusDot          = $('status-dot');
 const statusText         = $('status-text');
 const inputMeterFill     = $('input-meter-fill');
+const monitoringToggle   = $('monitoring-toggle');
+const monitorLatencyInput = $('monitor-latency-offset');
 const masterControls     = $('master-controls');
 const btnPlayAll         = $('btn-play-all');
 const btnStopAll         = $('btn-stop-all');
@@ -131,6 +140,8 @@ function init() {
   metronomeToggle.addEventListener('change', onMetronomeToggle);
   countInToggle.addEventListener('change', (e) => { countInEnabled = e.target.checked; });
   quantizeToggle.addEventListener('change', (e) => { quantizeEnabled = e.target.checked; });
+  monitoringToggle.addEventListener('change', onMonitoringToggle);
+  monitorLatencyInput.addEventListener('change', onMonitorLatencyChange);
 
   btnHelp.addEventListener('click', openHelp);
   helpCloseButton.addEventListener('click', closeHelp);
@@ -138,6 +149,7 @@ function init() {
 
   document.addEventListener('keydown', onGlobalKeydown);
 
+  syncMonitoringControls();
   updateUndoButton();
 }
 
@@ -160,10 +172,17 @@ async function requestMicrophoneAccess() {
     masterGainNode.connect(audioContext.destination);
 
     // Input analyser for level meter
-    const inputSource = audioContext.createMediaStreamSource(mediaStream);
+    inputSource = audioContext.createMediaStreamSource(mediaStream);
     inputAnalyser = audioContext.createAnalyser();
     inputAnalyser.fftSize = 512;
     inputSource.connect(inputAnalyser);
+
+    monitorGainNode = audioContext.createGain();
+    monitorGainNode.gain.value = 0;
+    inputSource.connect(monitorGainNode);
+    monitorGainNode.connect(masterGainNode);
+    updateMonitoringState();
+
     startInputMeter();
 
     permissionBanner.classList.add('hidden');
@@ -194,6 +213,34 @@ function startInputMeter() {
     requestAnimationFrame(tick);
   };
   tick();
+}
+
+function onMonitoringToggle(e) {
+  monitoringEnabled = e.target.checked;
+  if (monitoringEnabled && audioContext && audioContext.state === 'suspended') {
+    audioContext.resume();
+  }
+  updateMonitoringState();
+}
+
+function onMonitorLatencyChange() {
+  let v = parseInt(monitorLatencyInput.value, 10);
+  if (isNaN(v)) v = 0;
+  v = Math.max(MIN_MONITOR_OFFSET_MS, Math.min(MAX_MONITOR_OFFSET_MS, v));
+  monitorLatencyOffsetMs = v;
+  monitorLatencyInput.value = String(v);
+}
+
+function syncMonitoringControls() {
+  monitoringToggle.checked = monitoringEnabled;
+  monitorLatencyInput.value = String(monitorLatencyOffsetMs);
+  monitorLatencyInput.disabled = !monitoringEnabled;
+}
+
+function updateMonitoringState() {
+  syncMonitoringControls();
+  if (!audioContext || !monitorGainNode) return;
+  monitorGainNode.gain.setTargetAtTime(monitoringEnabled ? 1 : 0, audioContext.currentTime, 0.01);
 }
 
 // ─── Recording ────────────────────────────────────────────────────────────────
@@ -299,6 +346,9 @@ async function onRecordingStop() {
   try {
     const arrayBuffer = await blob.arrayBuffer();
     let audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    if (monitorLatencyOffsetMs !== 0) {
+      audioBuffer = offsetBuffer(audioBuffer, monitorLatencyOffsetMs / 1000, audioContext);
+    }
     if (quantizeEnabled) {
       audioBuffer = quantizeBuffer(audioBuffer);
     }
@@ -316,6 +366,10 @@ async function onRecordingStop() {
 
 function quantizeBuffer(buffer) {
   return _quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext });
+}
+
+function offsetBuffer(buffer, offsetSeconds, audioContext) {
+  return _offsetBuffer(buffer, offsetSeconds, audioContext);
 }
 
 // ─── Loop management ──────────────────────────────────────────────────────────
