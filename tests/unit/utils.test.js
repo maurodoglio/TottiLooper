@@ -21,6 +21,9 @@ import {
   clickTrackToMidi,
   getSupportedMimeType,
   effectiveGain,
+  detectKey,
+  areKeysLikelyCompatible,
+  shouldWarnAboutKeyClash,
   estimateTempo,
   getBarBeatPosition,
   packSharedSession,
@@ -46,6 +49,35 @@ function makeMockAudioContext(sampleRate = 44100) {
         getChannelData: (ch) => channelData[ch],
       };
     },
+  };
+}
+
+function frequencyForMidi(midi) {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function makeMelodyBuffer(midis, sampleRate = 44100, noteDuration = 0.12) {
+  const FADE_SAMPLES = 256;
+  const samplesPerNote = Math.floor(sampleRate * noteDuration);
+  const totalSamples = samplesPerNote * midis.length;
+  const data = new Float32Array(totalSamples);
+
+  midis.forEach((midi, noteIndex) => {
+    const freq = frequencyForMidi(midi);
+    const start = noteIndex * samplesPerNote;
+    for (let i = 0; i < samplesPerNote; i++) {
+      const t = i / sampleRate;
+      const fade = Math.min(1, i / FADE_SAMPLES, (samplesPerNote - i) / FADE_SAMPLES);
+      data[start + i] = Math.sin(2 * Math.PI * freq * t) * 0.5 * fade;
+    }
+  });
+
+  return {
+    numberOfChannels: 1,
+    length: totalSamples,
+    sampleRate,
+    duration: totalSamples / sampleRate,
+    getChannelData: () => data,
   };
 }
 
@@ -270,6 +302,51 @@ describe('effectiveGain', () => {
   it('returns 0 for every loop when volume is 0', () => {
     const loop = { muted: false, soloed: false, volume: 0 };
     expect(effectiveGain(loop, [loop])).toBe(0);
+  });
+});
+
+// ─── key detection ─────────────────────────────────────────────────────────────
+
+describe('detectKey', () => {
+  it('identifies a C major scale phrase as C major', () => {
+    const buffer = makeMelodyBuffer([60, 62, 64, 65, 67, 69, 71, 72]);
+    expect(detectKey(buffer)).toMatchObject({ name: 'C major', mode: 'major', root: 0 });
+  });
+
+  it('identifies an A natural minor scale phrase as A minor', () => {
+    const buffer = makeMelodyBuffer([57, 59, 60, 62, 64, 65, 67, 69]);
+    expect(detectKey(buffer)).toMatchObject({ name: 'A minor', mode: 'minor', root: 9 });
+  });
+
+  it('returns null when there is not enough pitched content', () => {
+    const silent = {
+      numberOfChannels: 1,
+      length: 4096,
+      sampleRate: 44100,
+      duration: 4096 / 44100,
+      getChannelData: () => new Float32Array(4096),
+    };
+    expect(detectKey(silent)).toBeNull();
+  });
+});
+
+describe('key clash helpers', () => {
+  const cMajor = { name: 'C major', signature: 0 };
+  const aMinor = { name: 'A minor', signature: 0 };
+  const gMajor = { name: 'G major', signature: 1 };
+  const eMajor = { name: 'E major', signature: 4 };
+
+  it('treats relative major/minor keys as compatible', () => {
+    expect(areKeysLikelyCompatible(cMajor, aMinor)).toBe(true);
+  });
+
+  it('treats neighboring key signatures as compatible', () => {
+    expect(areKeysLikelyCompatible(cMajor, gMajor)).toBe(true);
+  });
+
+  it('warns only when every known existing key appears incompatible', () => {
+    expect(shouldWarnAboutKeyClash(eMajor, [cMajor, gMajor])).toBe(true);
+    expect(shouldWarnAboutKeyClash(gMajor, [cMajor, eMajor])).toBe(false);
   });
 });
 

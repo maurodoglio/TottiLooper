@@ -211,6 +211,166 @@ export function effectiveGain(loop, loops) {
   return loop.volume;
 }
 
+// ─── Key detection ─────────────────────────────────────────────────────────────
+
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+const MAJOR_SIGNATURES = [0, 7, 2, -3, 4, -1, 6, 1, -4, 3, -2, 5];
+const MINOR_SIGNATURES = [-3, 4, -1, 6, 1, -4, 3, -2, 5, 0, 7, 2];
+const MIN_KEY_RMS_THRESHOLD = 0.01;
+const FIRST_NOTE_WEIGHT = 0.5;
+const LAST_NOTE_WEIGHT = 1;
+
+function detectFundamentalFrequency(samples, sampleRate, minFreq = 80, maxFreq = 1000) {
+  const minLag = Math.max(1, Math.floor(sampleRate / maxFreq));
+  const maxLag = Math.min(samples.length - 1, Math.ceil(sampleRate / minFreq));
+  let bestLag = -1;
+  let bestCorrelation = 0;
+
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    let correlation = 0;
+    for (let i = 0; i < samples.length - lag; i++) {
+      correlation += samples[i] * samples[i + lag];
+    }
+    if (correlation > bestCorrelation) {
+      bestCorrelation = correlation;
+      bestLag = lag;
+    }
+  }
+
+  if (bestLag <= 0 || bestCorrelation <= 0) return null;
+  return sampleRate / bestLag;
+}
+
+function buildPitchClassHistogram(buffer) {
+  if (!buffer || buffer.numberOfChannels === 0 || buffer.length === 0) {
+    return {
+      histogram: new Array(12).fill(0),
+      samplesUsed: 0,
+      firstPitchClass: null,
+      lastPitchClass: null,
+    };
+  }
+
+  const source = buffer.getChannelData(0);
+  const windowSize = Math.min(4096, source.length);
+  const hopSize = Math.max(1024, Math.floor(windowSize / 2));
+  const histogram = new Array(12).fill(0);
+  let samplesUsed = 0;
+  let firstPitchClass = null;
+  let lastPitchClass = null;
+
+  for (let start = 0; start + windowSize <= source.length; start += hopSize) {
+    const window = source.subarray(start, start + windowSize);
+    let sumSquares = 0;
+    for (let i = 0; i < window.length; i++) sumSquares += window[i] * window[i];
+    const rms = Math.sqrt(sumSquares / window.length);
+    if (rms < MIN_KEY_RMS_THRESHOLD) continue;
+
+    const freq = detectFundamentalFrequency(window, buffer.sampleRate);
+    if (!freq) continue;
+
+    const midi = Math.round(69 + 12 * Math.log2(freq / 440));
+    if (!Number.isFinite(midi)) continue;
+
+    const pitchClass = ((midi % 12) + 12) % 12;
+    histogram[pitchClass] += rms;
+    if (firstPitchClass === null) firstPitchClass = pitchClass;
+    lastPitchClass = pitchClass;
+    samplesUsed++;
+  }
+
+  if (firstPitchClass !== null) histogram[firstPitchClass] += FIRST_NOTE_WEIGHT;
+  if (lastPitchClass !== null) histogram[lastPitchClass] += LAST_NOTE_WEIGHT;
+
+  return { histogram, samplesUsed, firstPitchClass, lastPitchClass };
+}
+
+function keyScore(histogram, profile, root) {
+  let score = 0;
+  for (let pitchClass = 0; pitchClass < 12; pitchClass++) {
+    score += histogram[pitchClass] * profile[(pitchClass - root + 12) % 12];
+  }
+  return score;
+}
+
+/**
+ * Estimate the most likely musical key for a loop.
+ *
+ * @param {AudioBuffer} buffer
+ * @returns {{ root: number, mode: 'major'|'minor', name: string, signature: number, confidence: number } | null}
+ */
+export function detectKey(buffer) {
+  const { histogram, samplesUsed } = buildPitchClassHistogram(buffer);
+  if (samplesUsed < 2) return null;
+
+  let best = null;
+  let secondBestScore = -Infinity;
+
+  for (let root = 0; root < 12; root++) {
+    const candidates = [
+      {
+        root,
+        mode: 'major',
+        score: keyScore(histogram, MAJOR_PROFILE, root),
+        signature: MAJOR_SIGNATURES[root],
+      },
+      {
+        root,
+        mode: 'minor',
+        score: keyScore(histogram, MINOR_PROFILE, root),
+        signature: MINOR_SIGNATURES[root],
+      },
+    ];
+
+    for (const candidate of candidates) {
+      if (!best || candidate.score > best.score) {
+        if (best) secondBestScore = best.score;
+        best = candidate;
+      } else if (candidate.score > secondBestScore) {
+        secondBestScore = candidate.score;
+      }
+    }
+  }
+
+  if (!best || best.score <= 0) return null;
+
+  return {
+    root: best.root,
+    mode: best.mode,
+    name: `${NOTE_NAMES[best.root]} ${best.mode}`,
+    signature: best.signature,
+    confidence: Math.max(0, (best.score - secondBestScore) / best.score),
+  };
+}
+
+/**
+ * Return whether two detected keys are likely compatible enough to avoid a warning.
+ *
+ * @param {{ signature: number } | null} a
+ * @param {{ signature: number } | null} b
+ * @returns {boolean}
+ */
+export function areKeysLikelyCompatible(a, b) {
+  if (!a || !b) return true;
+  return Math.abs(a.signature - b.signature) <= 1;
+}
+
+/**
+ * Return whether a new detected key should trigger a clash warning.
+ *
+ * @param {{ signature: number } | null} newKey
+ * @param {Array<{ signature: number } | null>} existingKeys
+ * @returns {boolean}
+ */
+export function shouldWarnAboutKeyClash(newKey, existingKeys) {
+  if (!newKey) return false;
+  const knownKeys = existingKeys.filter(Boolean);
+  if (knownKeys.length === 0) return false;
+  return knownKeys.every((existingKey) => !areKeysLikelyCompatible(newKey, existingKey));
+}
+
 // ─── AudioBuffer utilities ────────────────────────────────────────────────────
 
 /**

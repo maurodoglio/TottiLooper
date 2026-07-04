@@ -18,6 +18,8 @@ import {
   scaleMidiValue,
   formatMidiBinding,
   audioBufferToWav,
+  detectKey as detectLoopKey,
+  shouldWarnAboutKeyClash,
   clickTrackToMidi,
   getSupportedMimeType,
   estimateTempo,
@@ -132,6 +134,7 @@ const redoStack = [];
  * @property {number} pan
  * @property {number} playbackRate
  * @property {boolean} reversed
+ * @property {{ name: string, signature: number } | null} detectedKey
  * @property {number} playStartTime
  * @property {number} playOffset
  * @property {number} playheadFrame
@@ -739,11 +742,22 @@ async function onRecordingStop() {
     if (quantizeEnabled) {
       audioBuffer = quantizeBuffer(audioBuffer);
     }
+    const detectedKey = detectLoopKey(audioBuffer);
+    const shouldWarn = shouldWarnAboutKeyClash(
+      detectedKey,
+      loops.map((loop) => loop.detectedKey),
+    );
     addLoop(audioBuffer, {
       sourceBlob: quantizeEnabled ? audioBufferToWav(audioBuffer) : blob,
+      detectedKey,
     });
-    if (!suggestedTempo) {
-      setStatus('Loop added! Press ● REC to record another.');
+    if (shouldWarn && detectedKey) {
+      showWarning(`New loop sounds like ${detectedKey.name}, which may clash with your existing loops.`);
+      setStatus(`Loop added with warning: detected key ${detectedKey.name}.`);
+    } else if (detectedKey) {
+      setStatus(`Loop added! Detected key: ${detectedKey.name}. Press ● REC to record another.`);
+    } else if (!suggestedTempo) {
+      setStatus('Loop added! Key unclear. Press ● REC to record another.');
     }
   } catch (err) {
     showError('Could not decode audio: ' + err.message);
@@ -781,6 +795,7 @@ function addLoop(audioBuffer, options = {}) {
     pan: options.pan ?? 0,
     playbackRate: options.playbackRate ?? 1,
     reversed: !!options.reversed,
+    detectedKey: options.detectedKey ?? null,
     playStartTime: 0,
     playOffset: 0,
     playheadFrame: 0,
@@ -1867,6 +1882,17 @@ function renderLoop(loop) {
   durationEl.className = 'loop-duration';
   durationEl.textContent = formatDuration(loop.duration);
 
+  const keyEl = document.createElement('span');
+  keyEl.className = 'loop-key';
+  keyEl.textContent = loop.detectedKey ? loop.detectedKey.name : 'Key unknown';
+  keyEl.title = loop.detectedKey
+    ? `Detected key: ${loop.detectedKey.name}`
+    : 'Detected key unavailable';
+
+  const metaEl = document.createElement('div');
+  metaEl.className = 'loop-meta';
+  metaEl.append(durationEl, keyEl);
+
   const actions = document.createElement('div');
   actions.className = 'loop-actions';
 
@@ -1912,7 +1938,7 @@ function renderLoop(loop) {
   btnDelete.addEventListener('click', () => deleteLoop(loop.id));
 
   actions.append(btnPlay, btnMute, btnSolo, btnQuantize, btnReverse, btnExport, btnDelete);
-  topRow.append(nameInput, waveformEl, durationEl, actions);
+  topRow.append(nameInput, waveformEl, metaEl, actions);
 
   // Bottom row: faders
   const faderRow = document.createElement('div');
@@ -2329,10 +2355,11 @@ function setStatus(msg) {
 }
 
 let toastTimeout = null;
-function showError(msg) { showToast(msg, false); }
-function showInfo(msg)  { showToast(msg, true); }
+function showError(msg) { showToast(msg, 'error'); }
+function showInfo(msg)  { showToast(msg, 'info'); }
+function showWarning(msg) { showToast(msg, 'warning'); }
 
-function showToast(msg, isInfo) {
+function showToast(msg, variant) {
   let toast = document.getElementById('error-toast');
   if (!toast) {
     toast = document.createElement('div');
@@ -2341,7 +2368,8 @@ function showToast(msg, isInfo) {
   }
   toast.textContent = msg;
   toast.classList.remove('fade-out');
-  toast.classList.toggle('info', !!isInfo);
+  toast.classList.toggle('info', variant === 'info');
+  toast.classList.toggle('warning', variant === 'warning');
   clearTimeout(toastTimeout);
   toastTimeout = setTimeout(() => {
     toast.classList.add('fade-out');

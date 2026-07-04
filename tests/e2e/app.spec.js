@@ -9,6 +9,41 @@
 
 import { test, expect } from '@playwright/test';
 
+async function installSyntheticDecode(page) {
+  await page.addInitScript(() => {
+    globalThis.__testDecodeMidis = [60, 62, 64, 65, 67, 69, 71, 72];
+
+    const frequencyForMidi = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+    const decodeAudioData = async function decodeAudioData() {
+      const sampleRate = this.sampleRate || 44100;
+      const noteDuration = 0.12;
+      const samplesPerNote = Math.floor(sampleRate * noteDuration);
+      const totalSamples = samplesPerNote * globalThis.__testDecodeMidis.length;
+      const buffer = this.createBuffer(1, totalSamples, sampleRate);
+      const data = buffer.getChannelData(0);
+
+      globalThis.__testDecodeMidis.forEach((midi, noteIndex) => {
+        const freq = frequencyForMidi(midi);
+        const start = noteIndex * samplesPerNote;
+        for (let i = 0; i < samplesPerNote; i++) {
+          const t = i / sampleRate;
+          const fade = Math.min(1, i / 256, (samplesPerNote - i) / 256);
+          data[start + i] = Math.sin(2 * Math.PI * freq * t) * 0.5 * fade;
+        }
+      });
+
+      return buffer;
+    };
+
+    if (globalThis.AudioContext) {
+      globalThis.AudioContext.prototype.decodeAudioData = decodeAudioData;
+    }
+    if (globalThis.webkitAudioContext) {
+      globalThis.webkitAudioContext.prototype.decodeAudioData = decodeAudioData;
+    }
+  });
+}
+
 async function mockDetectedTempo(page, bpm = 120) {
   await page.addInitScript((detectedBpm) => {
     const makeTempoBuffer = () => {
@@ -495,6 +530,45 @@ test.describe('recording flow', () => {
 
     await page.keyboard.press('r');
     await expect(page.locator('#btn-record')).toContainText('STOP');
+  });
+});
+
+// ─── Key detection ─────────────────────────────────────────────────────────────
+
+test.describe('key detection', () => {
+  test.beforeEach(async ({ page }) => {
+    await installSyntheticDecode(page);
+    await page.goto('/');
+    await page.click('#btn-request-mic');
+    await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('shows the detected key on a recorded loop', async ({ page }) => {
+    await page.click('#btn-record');
+    await page.waitForTimeout(600);
+    await page.click('#btn-record');
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('.loop-key')).toHaveText('C major');
+    await expect(page.locator('#status-text')).toContainText('Detected key: C major');
+  });
+
+  test('warns when a new loop appears to clash with existing loops', async ({ page }) => {
+    await page.click('#btn-record');
+    await page.waitForTimeout(600);
+    await page.click('#btn-record');
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+
+    await page.evaluate(() => {
+      // E major scale
+      globalThis.__testDecodeMidis = [64, 66, 68, 69, 71, 73, 75, 76];
+    });
+
+    await page.click('#btn-record');
+    await page.waitForTimeout(600);
+    await page.click('#btn-record');
+    await expect(page.locator('.loop-card')).toHaveCount(2, { timeout: 8000 });
+    await expect(page.locator('#error-toast')).toContainText('may clash');
+    await expect(page.locator('.loop-key').nth(1)).toHaveText('E major');
   });
 });
 
