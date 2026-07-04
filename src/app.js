@@ -40,6 +40,13 @@ let loopCounter    = 0;
 let masterGainNode = null;
 let masterVolume   = 1;
 
+let compressorNode   = null;
+let compressorEnabled = true;
+let reverbSendGain   = null;
+let convolverNode    = null;
+let reverbReturnGain = null;
+let reverbAmount     = 0;
+
 let inputAnalyser  = null;
 
 // Tempo / metronome
@@ -101,6 +108,8 @@ const btnStopAll         = $('btn-stop-all');
 const btnExportMix       = $('btn-export-mix');
 const btnUndo            = $('btn-undo');
 const masterVolumeInput  = $('master-volume');
+const reverbSendInput    = $('reverb-send');
+const compressorToggle   = $('compressor-toggle');
 const loopsSection       = $('loops-section');
 const loopsList          = $('loops-list');
 const emptyState         = $('empty-state');
@@ -125,6 +134,8 @@ function init() {
   btnUndo.addEventListener('click', undoDelete);
 
   masterVolumeInput.addEventListener('input', onMasterVolumeChange);
+  reverbSendInput.addEventListener('input', onReverbSendChange);
+  compressorToggle.addEventListener('change', onCompressorToggle);
 
   bpmInput.addEventListener('change', onBpmChange);
   beatsPerBarInput.addEventListener('change', onBeatsPerBarChange);
@@ -157,7 +168,28 @@ async function requestMicrophoneAccess() {
 
     masterGainNode = audioContext.createGain();
     masterGainNode.gain.value = masterVolume;
-    masterGainNode.connect(audioContext.destination);
+
+    compressorNode = audioContext.createDynamicsCompressor();
+    compressorNode.threshold.value = -24;
+    compressorNode.knee.value      = 30;
+    compressorNode.ratio.value     = 4;
+    compressorNode.attack.value    = 0.003;
+    compressorNode.release.value   = 0.25;
+
+    masterGainNode.connect(compressorNode);
+    compressorNode.connect(audioContext.destination);
+
+    // Reverb send: masterGain → reverbSendGain → convolver → reverbReturnGain → compressor
+    reverbSendGain = audioContext.createGain();
+    reverbSendGain.gain.value = reverbAmount;
+    convolverNode = audioContext.createConvolver();
+    convolverNode.buffer = createReverbIR(audioContext);
+    reverbReturnGain = audioContext.createGain();
+    reverbReturnGain.gain.value = 1;
+    masterGainNode.connect(reverbSendGain);
+    reverbSendGain.connect(convolverNode);
+    convolverNode.connect(reverbReturnGain);
+    reverbReturnGain.connect(compressorNode);
 
     // Input analyser for level meter
     const inputSource = audioContext.createMediaStreamSource(mediaStream);
@@ -577,6 +609,27 @@ function onMasterVolumeChange(e) {
   }
 }
 
+function onReverbSendChange(e) {
+  reverbAmount = parseFloat(e.target.value);
+  if (reverbSendGain) {
+    reverbSendGain.gain.setTargetAtTime(reverbAmount, audioContext.currentTime, 0.01);
+  }
+}
+
+function onCompressorToggle(e) {
+  compressorEnabled = e.target.checked;
+  if (compressorNode && audioContext) {
+    if (compressorEnabled) {
+      compressorNode.threshold.setTargetAtTime(-24, audioContext.currentTime, 0.01);
+      compressorNode.ratio.setTargetAtTime(4, audioContext.currentTime, 0.01);
+    } else {
+      // Bypass: push threshold to 0 dBFS and ratio to 1:1 (transparent)
+      compressorNode.threshold.setTargetAtTime(0, audioContext.currentTime, 0.01);
+      compressorNode.ratio.setTargetAtTime(1, audioContext.currentTime, 0.01);
+    }
+  }
+}
+
 // ─── Metronome ────────────────────────────────────────────────────────────────
 
 function onBpmChange() {
@@ -658,7 +711,32 @@ async function exportMix() {
   const offline = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
   const offlineMaster = offline.createGain();
   offlineMaster.gain.value = masterVolume;
-  offlineMaster.connect(offline.destination);
+
+  // Mirror live master bus: compressor → destination
+  const offlineCompressor = offline.createDynamicsCompressor();
+  if (compressorNode) {
+    offlineCompressor.threshold.value = compressorNode.threshold.value;
+    offlineCompressor.knee.value      = compressorNode.knee.value;
+    offlineCompressor.ratio.value     = compressorNode.ratio.value;
+    offlineCompressor.attack.value    = compressorNode.attack.value;
+    offlineCompressor.release.value   = compressorNode.release.value;
+  }
+  offlineMaster.connect(offlineCompressor);
+  offlineCompressor.connect(offline.destination);
+
+  // Mirror reverb send if active
+  if (reverbAmount > 0 && convolverNode && convolverNode.buffer) {
+    const offlineReverbSend = offline.createGain();
+    offlineReverbSend.gain.value = reverbAmount;
+    const offlineConvolver = offline.createConvolver();
+    offlineConvolver.buffer = convolverNode.buffer;
+    const offlineReverbReturn = offline.createGain();
+    offlineReverbReturn.gain.value = 1;
+    offlineMaster.connect(offlineReverbSend);
+    offlineReverbSend.connect(offlineConvolver);
+    offlineConvolver.connect(offlineReverbReturn);
+    offlineReverbReturn.connect(offlineCompressor);
+  }
 
   for (const l of loops) {
     const g = effectiveGain(l);
@@ -961,6 +1039,26 @@ function openHelp()  { helpModal.classList.remove('hidden'); }
 function closeHelp() { helpModal.classList.add('hidden'); }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Synthesise a simple stereo reverb impulse response using exponentially-decayed white noise.
+ *
+ * @param {AudioContext|OfflineAudioContext} context
+ * @param {number} [durationSeconds=2] - total IR length in seconds
+ * @param {number} [decay=2] - higher values = faster tail decay
+ * @returns {AudioBuffer}
+ */
+function createReverbIR(context, durationSeconds = 2, decay = 2) {
+  const length = Math.ceil(context.sampleRate * durationSeconds);
+  const ir = context.createBuffer(2, length, context.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = ir.getChannelData(ch);
+    for (let i = 0; i < length; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+    }
+  }
+  return ir;
+}
 
 function setStatus(msg) {
   statusText.textContent = msg;
