@@ -468,7 +468,8 @@ describe('makeReverbIR', () => {
     const data = ir.getChannelData(0);
     // Compute RMS of first and last 10 % of the IR.
     const segLen = Math.floor(data.length * 0.1);
-    let headRms = 0, tailRms = 0;
+    let headRms = 0;
+    let tailRms = 0;
     for (let i = 0; i < segLen; i++) headRms += data[i] * data[i];
     for (let i = data.length - segLen; i < data.length; i++) tailRms += data[i] * data[i];
     expect(tailRms).toBeLessThan(headRms);

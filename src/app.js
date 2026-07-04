@@ -1236,7 +1236,8 @@ function renderFxSection(loop) {
   return wrapper;
 }
 
-function iconButton(cls, text, title, onClick) {  const b = document.createElement('button');
+function iconButton(cls, text, title, onClick) {
+  const b = document.createElement('button');
   b.className = 'btn-icon ' + cls;
   b.textContent = text;
   b.title = title;
