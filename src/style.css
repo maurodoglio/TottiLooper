@@ -212,6 +212,34 @@ main {
   transition: width 0.05s linear;
 }
 
+.record-monitoring,
+.monitor-offset-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.record-monitoring {
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.monitor-offset-field input[type="number"] {
+  width: 72px;
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.monitor-offset-field input[type="number"]:disabled {
+  opacity: 0.6;
+}
+
 /* ── Master controls ── */
 #master-controls .master-volume-field {
   flex: 1;
@@ -643,6 +671,49 @@ button:disabled {
 
 .shortcuts { list-style: none; padding-left: 0; }
 .shortcuts li { margin-bottom: 6px; }
+
+.shortcut-help-text {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+
+.shortcut-editor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px 14px;
+  margin-top: 12px;
+}
+
+.shortcut-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.shortcut-field input {
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+}
+
+.shortcut-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.shortcut-reset {
+  margin-top: 14px;
+}
+
+.shortcut-empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
 
 .help-close {
   position: absolute;

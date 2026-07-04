@@ -78,6 +78,8 @@ test.describe('initial state', () => {
 test.describe('help modal', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
   });
 
   test('is hidden on page load', async ({ page }) => {
@@ -119,6 +121,25 @@ test.describe('help modal', () => {
     await page.click('#btn-help');
     await expect(page.locator('#help-modal')).toContainText('Getting started');
     await expect(page.locator('#help-modal')).toContainText('Keyboard shortcuts');
+  });
+
+  test('persists remapped help shortcut in localStorage', async ({ page }) => {
+    await page.click('#btn-help');
+    await page.locator('input[aria-label="Open help shortcut"]').click();
+    await page.keyboard.press('h');
+    await expect(page.locator('input[aria-label="Open help shortcut"]')).toHaveValue('H');
+    await page.click('#help-close');
+
+    await page.keyboard.press('?');
+    await expect(page.locator('#help-modal')).toBeHidden();
+
+    await page.keyboard.press('h');
+    await expect(page.locator('#help-modal')).toBeVisible();
+
+    await page.reload();
+    await expect(page.locator('#help-modal')).toBeHidden();
+    await page.keyboard.press('h');
+    await expect(page.locator('#help-modal')).toBeVisible();
   });
 });
 
@@ -164,8 +185,30 @@ test.describe('after microphone access', () => {
     await expect(page.locator('#master-volume')).toHaveValue('1');
   });
 
+  test('MIDI click export toggle is available', async ({ page }) => {
+    await expect(page.locator('#export-midi-toggle')).toBeVisible();
+  });
+
   test('status text shows ready message', async ({ page }) => {
     await expect(page.locator('#status-text')).toContainText('Ready');
+  });
+
+  test('input monitoring defaults to off with latency offset disabled', async ({ page }) => {
+    await expect(page.locator('#monitoring-toggle')).not.toBeChecked();
+    await expect(page.locator('#monitor-latency-offset')).toHaveValue('0');
+    await expect(page.locator('#monitor-latency-offset')).toBeDisabled();
+  });
+
+  test('enabling input monitoring enables the latency offset control', async ({ page }) => {
+    await page.locator('#monitoring-toggle').check();
+    await expect(page.locator('#monitoring-toggle')).toBeChecked();
+    await expect(page.locator('#monitor-latency-offset')).toBeEnabled();
+  });
+
+  test('latency offset can be adjusted while monitoring is enabled', async ({ page }) => {
+    await page.locator('#monitoring-toggle').check();
+    await page.locator('#monitor-latency-offset').fill('-25');
+    await expect(page.locator('#monitor-latency-offset')).toHaveValue('-25');
   });
 });
 
@@ -174,6 +217,8 @@ test.describe('after microphone access', () => {
 test.describe('recording flow', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
     await page.click('#btn-request-mic');
     await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
   });
@@ -232,6 +277,19 @@ test.describe('recording flow', () => {
     await page.keyboard.press('Space');
     await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
   });
+
+  test('uses a remapped record shortcut', async ({ page }) => {
+    await page.click('#btn-help');
+    await page.locator('input[aria-label="Start / stop recording shortcut"]').click();
+    await page.keyboard.press('r');
+    await page.click('#help-close');
+
+    await page.keyboard.press('Space');
+    await expect(page.locator('#btn-record')).toContainText('REC');
+
+    await page.keyboard.press('r');
+    await expect(page.locator('#btn-record')).toContainText('STOP');
+  });
 });
 
 // ─── Loop controls ────────────────────────────────────────────────────────────
@@ -260,6 +318,17 @@ test.describe('loop controls', () => {
 
   test('loop card shows the duration', async ({ page }) => {
     await expect(page.locator('.loop-duration')).toBeVisible();
+  });
+
+  test('existing loop can be re-quantized to the current BPM grid', async ({ page }) => {
+    await expect(page.locator('.loop-card')).toBeVisible();
+    await expect(page.locator('.loop-duration')).toHaveText('0:00');
+    await page.locator('#bpm-input').fill('240');
+    await page.locator('#bpm-input').press('Tab');
+    await expect(page.locator('#bpm-input')).toHaveValue('240');
+    await page.locator('.btn-quantize').click();
+    await expect(page.locator('.loop-duration')).toHaveText('0:01');
+    await expect(page.locator('#status-text')).toContainText('Re-quantized');
   });
 
   test('undo button becomes enabled after a loop is deleted', async ({ page }) => {
@@ -366,5 +435,27 @@ test.describe('tempo controls', () => {
   test('quantize toggle can be enabled', async ({ page }) => {
     await page.locator('#quantize-toggle').check();
     await expect(page.locator('#quantize-toggle')).toBeChecked();
+  });
+});
+
+// ─── Share via URL ────────────────────────────────────────────────────────────
+
+test.describe('share via URL', () => {
+  test('creates a shareable hash and restores loops after reload', async ({ page }) => {
+    await page.goto('/');
+    await page.click('#btn-request-mic');
+    await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+
+    await page.click('#btn-record');
+    await page.waitForTimeout(600);
+    await page.click('#btn-record');
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+
+    await page.click('#btn-share-session');
+    await expect.poll(() => page.url()).toContain('#share=');
+
+    await page.reload();
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('#master-controls')).toBeVisible();
   });
 });
