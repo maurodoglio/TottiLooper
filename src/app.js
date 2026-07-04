@@ -56,6 +56,15 @@ import {
   loadShortcutMappings,
   saveShortcutMappings,
 } from './shortcuts.js';
+import {
+  ONBOARDING_STORAGE_KEY,
+  TOUR_STEPS,
+  clampTourStep,
+  nextTourStep,
+  prevTourStep,
+  isLastTourStep,
+  isFirstTourStep,
+} from './tour.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -356,6 +365,16 @@ const themeToggleLabel   = btnThemeToggle.querySelector('.theme-toggle-label');
 const btnHelp            = $('btn-help');
 const helpModal          = $('help-modal');
 const helpCloseButton    = $('help-close');
+const btnTour            = $('btn-tour');
+const tourOverlay        = $('tour-overlay');
+const tourSpotlight      = $('tour-spotlight');
+const tourTooltip        = $('tour-tooltip');
+const tourTitle          = $('tour-title');
+const tourBody           = $('tour-body');
+const tourStepIndicator  = $('tour-step-indicator');
+const tourSkipButton     = $('tour-skip');
+const tourBackButton     = $('tour-back');
+const tourNextButton     = $('tour-next');
 const shortcutList       = $('shortcut-list');
 const shortcutEditor     = $('shortcut-editor');
 const btnResetShortcuts  = $('btn-reset-shortcuts');
@@ -469,6 +488,10 @@ function init() {
   btnHelp.addEventListener('click', openHelp);
   helpCloseButton.addEventListener('click', closeHelp);
   helpModal.addEventListener('click', (e) => { if (e.target === helpModal) closeHelp(); });
+  btnTour.addEventListener('click', () => startTour());
+  tourSkipButton.addEventListener('click', () => finishTour());
+  tourBackButton.addEventListener('click', onTourBack);
+  tourNextButton.addEventListener('click', onTourNext);
   midiControls.addEventListener('click', onMidiControlsClick);
   loopsList.addEventListener('click', onMidiControlsClick);
   btnResetShortcuts.addEventListener('click', resetShortcuts);
@@ -490,6 +513,7 @@ function init() {
   renderSceneSlots();
   refreshSceneButtons();
   void restoreSharedSessionFromUrl();
+  maybeStartOnboardingTour();
 }
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -4338,6 +4362,12 @@ function toggleNextLoop() {
 // ─── Keyboard shortcuts ──────────────────────────────────────────────────────
 
 function onGlobalKeydown(e) {
+  // The onboarding tour is modal — Escape skips it and it swallows other keys.
+  if (tourActive) {
+    if (e.key === 'Escape') { finishTour(); e.preventDefault(); }
+    return;
+  }
+
   // Don't intercept keystrokes inside form fields.
   const tag = e.target && e.target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
@@ -4396,6 +4426,135 @@ function onGlobalKeydown(e) {
 
 function openHelp()  { helpModal.classList.remove('hidden'); }
 function closeHelp() { helpModal.classList.add('hidden'); }
+
+// ─── Onboarding tour ────────────────────────────────────────────────────────────
+
+let tourStep = 0;
+let tourActive = false;
+
+function isOnboardingDone() {
+  try {
+    return localStorage.getItem(ONBOARDING_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markOnboardingDone() {
+  try {
+    localStorage.setItem(ONBOARDING_STORAGE_KEY, '1');
+  } catch {
+    /* localStorage unavailable — tour simply reopens next time */
+  }
+}
+
+function maybeStartOnboardingTour() {
+  if (isOnboardingDone()) return;
+  startTour();
+}
+
+function startTour() {
+  tourStep = 0;
+  tourActive = true;
+  tourOverlay.classList.remove('hidden');
+  renderTourStep();
+}
+
+function finishTour() {
+  tourActive = false;
+  tourOverlay.classList.add('hidden');
+  tourOverlay.classList.remove('tour-centered');
+  markOnboardingDone();
+}
+
+function onTourNext() {
+  if (isLastTourStep(tourStep, TOUR_STEPS.length)) {
+    finishTour();
+    return;
+  }
+  tourStep = nextTourStep(tourStep, TOUR_STEPS.length);
+  renderTourStep();
+}
+
+function onTourBack() {
+  tourStep = prevTourStep(tourStep, TOUR_STEPS.length);
+  renderTourStep();
+}
+
+function renderTourStep() {
+  tourStep = clampTourStep(tourStep, TOUR_STEPS.length);
+  const step = TOUR_STEPS[tourStep];
+  if (!step) {
+    finishTour();
+    return;
+  }
+
+  tourTitle.textContent = step.title;
+  tourBody.textContent = step.body;
+  tourStepIndicator.textContent = `Step ${tourStep + 1} of ${TOUR_STEPS.length}`;
+
+  tourBackButton.disabled = isFirstTourStep(tourStep, TOUR_STEPS.length);
+  tourNextButton.textContent = isLastTourStep(tourStep, TOUR_STEPS.length) ? 'Done' : 'Next';
+
+  positionTourStep(step);
+}
+
+function positionTourStep(step) {
+  const target = step.target ? document.querySelector(step.target) : null;
+  const rect = getVisibleRect(target);
+
+  if (!rect) {
+    // No visible target (panel hidden pre-mic) — dim the whole screen and centre the card.
+    tourOverlay.classList.add('tour-centered');
+    tourSpotlight.style.width = '0px';
+    tourSpotlight.style.height = '0px';
+    return;
+  }
+
+  tourOverlay.classList.remove('tour-centered');
+
+  const pad = 8;
+  const top = Math.max(rect.top - pad, 0);
+  const left = Math.max(rect.left - pad, 0);
+  const width = rect.width + pad * 2;
+  const height = rect.height + pad * 2;
+  tourSpotlight.style.top = `${top}px`;
+  tourSpotlight.style.left = `${left}px`;
+  tourSpotlight.style.width = `${width}px`;
+  tourSpotlight.style.height = `${height}px`;
+
+  positionTourTooltip(top, left, width, height);
+}
+
+function positionTourTooltip(top, left, width, height) {
+  const margin = 12;
+  const tipRect = tourTooltip.getBoundingClientRect();
+  const tipWidth = tipRect.width || 340;
+  const tipHeight = tipRect.height || 160;
+  const viewportW = window.innerWidth;
+  const viewportH = window.innerHeight;
+
+  // Prefer placing the tooltip below the spotlight; flip above if there isn't room.
+  let tipTop = top + height + margin;
+  if (tipTop + tipHeight > viewportH) {
+    tipTop = top - tipHeight - margin;
+  }
+  tipTop = Math.max(margin, Math.min(tipTop, viewportH - tipHeight - margin));
+
+  let tipLeft = left;
+  tipLeft = Math.max(margin, Math.min(tipLeft, viewportW - tipWidth - margin));
+
+  tourTooltip.style.top = `${tipTop}px`;
+  tourTooltip.style.left = `${tipLeft}px`;
+}
+
+function getVisibleRect(el) {
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  return rect;
+}
+
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
