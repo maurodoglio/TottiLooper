@@ -168,13 +168,13 @@ function getPreferredTheme() {
 }
 
 function applyTheme(theme, persist = false) {
-  const nextTheme = theme === 'dark' ? 'dark' : 'light';
-  const toggleLabel = nextTheme === 'dark'
+  const currentTheme = theme === 'dark' ? 'dark' : 'light';
+  const toggleLabel = currentTheme === 'dark'
     ? 'Switch to light theme'
     : 'Switch to dark theme';
 
-  document.documentElement.dataset.theme = nextTheme;
-  themeToggleIcon.textContent = nextTheme === 'dark' ? '☀️' : '🌙';
+  document.documentElement.dataset.theme = currentTheme;
+  themeToggleIcon.textContent = currentTheme === 'dark' ? '☀️' : '🌙';
   themeToggleLabel.textContent = toggleLabel;
   btnThemeToggle.title = toggleLabel;
   btnThemeToggle.setAttribute('aria-label', toggleLabel);
@@ -183,7 +183,7 @@ function applyTheme(theme, persist = false) {
 
   if (persist) {
     try {
-      localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+      localStorage.setItem(THEME_STORAGE_KEY, currentTheme);
     } catch {
       // Ignore storage errors so theme switching still works for the session.
     }
@@ -191,9 +191,7 @@ function applyTheme(theme, persist = false) {
 }
 
 function toggleTheme() {
-  const currentTheme = document.documentElement.dataset.theme === 'dark'
-    ? 'dark'
-    : getPreferredTheme();
+  const currentTheme = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
   applyTheme(currentTheme === 'dark' ? 'light' : 'dark', true);
 }
 

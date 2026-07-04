@@ -27,29 +27,28 @@
 <body>
 
   <header>
-  <button id="btn-theme-toggle" class="btn-theme-toggle" type="button" title="Switch theme" aria-label="Switch theme">
-    <span class="theme-toggle-icon" aria-hidden="true">🌙</span>
-    <span class="sr-only theme-toggle-label">Switch theme</span>
+  <button id="btn-theme-toggle" class="btn-theme-toggle" type="button">
+    <span class="theme-toggle-icon" aria-hidden="true"></span>
+    <span class="sr-only theme-toggle-label"></span>
   </button>
+  <script>
+    (() => {
+      const button = document.getElementById('btn-theme-toggle');
+      const icon = button.querySelector('.theme-toggle-icon');
+      const label = button.querySelector('.theme-toggle-label');
+      const theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+      const buttonLabel = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+
+      icon.textContent = theme === 'dark' ? '☀️' : '🌙';
+      label.textContent = buttonLabel;
+      button.setAttribute('title', buttonLabel);
+      button.setAttribute('aria-label', buttonLabel);
+    })();
+  </script>
   <button id="btn-help" class="btn-help" title="Help (press ?)" aria-label="Open help">?</button>
   <h1>🎸 TottiLooper</h1>
   <p>Record riffs, layer them live – your one-man band starts here.</p>
 </header>
-
-<script>
-  (() => {
-    const button = document.getElementById('btn-theme-toggle');
-    const icon = button.querySelector('.theme-toggle-icon');
-    const label = button.querySelector('.theme-toggle-label');
-    const theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
-    const buttonLabel = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
-
-    icon.textContent = theme === 'dark' ? '☀️' : '🌙';
-    label.textContent = buttonLabel;
-    button.setAttribute('title', buttonLabel);
-    button.setAttribute('aria-label', buttonLabel);
-  })();
-</script>
 
 <main>
 
