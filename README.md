@@ -21,6 +21,8 @@ them on top of each other – your one-man band for busking starts here.
 - ▶ **Play / Stop** each loop independently or **Play All / Stop All** together
 - 🖊️ **Rename loops** (e.g. "Bass", "Chords", "Beatbox")
 - 📊 **Waveform preview** for each recorded loop
+- ✂️ **Trim loop start/end** directly on the waveform with non-destructive handles
+- 🌊 **Fade-in / fade-out envelopes** to smooth loop seams without re-recording
 - ✨ Click-free start/stop with short automatic fades
 
 ### Save, share, recover
