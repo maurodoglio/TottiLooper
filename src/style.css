@@ -1,5 +1,7 @@
 /* TottiLooper – styles */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -20,7 +22,7 @@
   --text-muted: #888;
   --border: #333;
   --radius: 8px;
-  --shadow: 0 2px 8px rgba(0,0,0,0.5);
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
 body {
@@ -70,7 +72,9 @@ header p {
   padding: 0;
 }
 
-.btn-help:hover { background: #3a3a3a; }
+.btn-help:hover {
+  background: #3a3a3a;
+}
 
 /* ── Main container ── */
 main {
@@ -121,7 +125,7 @@ main {
   color: var(--text-muted);
 }
 
-#tempo-controls input[type="number"] {
+#tempo-controls input[type='number'] {
   width: 64px;
   background: var(--surface-raised);
   color: var(--text);
@@ -132,7 +136,7 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
-.toggle input[type="checkbox"] {
+.toggle input[type='checkbox'] {
   accent-color: var(--accent);
   width: 16px;
   height: 16px;
@@ -184,8 +188,13 @@ main {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 #status-text {
@@ -208,7 +217,13 @@ main {
 #input-meter-fill {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, var(--green) 0%, var(--green) 60%, var(--amber) 80%, var(--accent) 100%);
+  background: linear-gradient(
+    90deg,
+    var(--green) 0%,
+    var(--green) 60%,
+    var(--amber) 80%,
+    var(--accent) 100%
+  );
   transition: width 0.05s linear;
 }
 
@@ -218,7 +233,7 @@ main {
   min-width: 160px;
 }
 
-#master-controls input[type="range"] {
+#master-controls input[type='range'] {
   flex: 1;
   width: 100%;
 }
@@ -231,7 +246,10 @@ button {
   padding: 10px 18px;
   font-size: 0.9rem;
   font-weight: 600;
-  transition: background 0.15s, transform 0.1s, opacity 0.15s;
+  transition:
+    background 0.15s,
+    transform 0.1s,
+    opacity 0.15s;
   user-select: none;
 }
 
@@ -297,7 +315,7 @@ button:disabled {
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: rgba(232,64,64,0.15);
+  background: rgba(232, 64, 64, 0.15);
 }
 
 .btn-icon {
@@ -362,7 +380,9 @@ button:disabled {
   flex-direction: column;
   gap: 10px;
   box-shadow: var(--shadow);
-  transition: border-color 0.2s, opacity 0.2s;
+  transition:
+    border-color 0.2s,
+    opacity 0.2s;
 }
 
 .loop-card.playing {
@@ -456,7 +476,7 @@ button:disabled {
   letter-spacing: 1px;
 }
 
-.fader input[type="range"] {
+.fader input[type='range'] {
   flex: 1;
   accent-color: var(--accent);
 }
@@ -554,8 +574,12 @@ button:disabled {
   font-size: 0.92rem;
 }
 
-.help-card li { margin-bottom: 4px; }
-.help-card strong { color: var(--text); }
+.help-card li {
+  margin-bottom: 4px;
+}
+.help-card strong {
+  color: var(--text);
+}
 
 .help-card kbd {
   display: inline-block;
@@ -570,8 +594,13 @@ button:disabled {
   margin: 0 1px;
 }
 
-.shortcuts { list-style: none; padding-left: 0; }
-.shortcuts li { margin-bottom: 6px; }
+.shortcuts {
+  list-style: none;
+  padding-left: 0;
+}
+.shortcuts li {
+  margin-bottom: 6px;
+}
 
 .help-close {
   position: absolute;
@@ -587,4 +616,6 @@ button:disabled {
   border: 1px solid var(--border);
 }
 
-.help-close:hover { background: #3a3a3a; }
+.help-close:hover {
+  background: #3a3a3a;
+}

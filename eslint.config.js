@@ -1,5 +1,6 @@
 import js from '@eslint/js';
 import globals from 'globals';
+import prettier from 'eslint-config-prettier';
 
 export default [
   js.configs.recommended,
@@ -12,10 +13,13 @@ export default [
       globals: globals.browser,
     },
     rules: {
-      'no-unused-vars': ['error', {
-        argsIgnorePattern: '^_',
-        caughtErrors: 'none',
-      }],
+      'no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          caughtErrors: 'none',
+        },
+      ],
     },
   },
   // Test files – Node environment
@@ -27,10 +31,13 @@ export default [
       globals: globals.node,
     },
     rules: {
-      'no-unused-vars': ['error', {
-        argsIgnorePattern: '^_',
-        caughtErrors: 'none',
-      }],
+      'no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          caughtErrors: 'none',
+        },
+      ],
     },
   },
   // Config files
@@ -42,4 +49,6 @@ export default [
       globals: globals.node,
     },
   },
+  // Disable ESLint formatting rules that conflict with Prettier
+  prettier,
 ];

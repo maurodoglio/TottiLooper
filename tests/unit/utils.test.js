@@ -208,8 +208,8 @@ describe('audioBufferToWav', () => {
     expect(view.getUint8(2)).toBe(0x46); // F
     expect(view.getUint8(3)).toBe(0x46); // F
     // "WAVE"
-    expect(view.getUint8(8)).toBe(0x57);  // W
-    expect(view.getUint8(9)).toBe(0x41);  // A
+    expect(view.getUint8(8)).toBe(0x57); // W
+    expect(view.getUint8(9)).toBe(0x41); // A
     expect(view.getUint8(10)).toBe(0x56); // V
     expect(view.getUint8(11)).toBe(0x45); // E
   });

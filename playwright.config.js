@@ -20,10 +20,7 @@ export default defineConfig({
     // Use fake mic/camera so tests don't need a real microphone and the
     // permission dialog is auto-accepted.
     launchOptions: {
-      args: [
-        '--use-fake-device-for-media-stream',
-        '--use-fake-ui-for-media-stream',
-      ],
+      args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
     },
   },
 

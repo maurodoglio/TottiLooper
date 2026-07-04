@@ -1,146 +1,198 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TottiLooper</title>
-  <link rel="stylesheet" href="src/style.css" />
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TottiLooper</title>
+    <link rel="stylesheet" href="src/style.css" />
+  </head>
+  <body>
+    <header>
+      <button id="btn-help" class="btn-help" title="Help (press ?)" aria-label="Open help">
+        ?
+      </button>
+      <h1>🎸 TottiLooper</h1>
+      <p>Record riffs, layer them live – your one-man band starts here.</p>
+    </header>
 
-  <header>
-    <button id="btn-help" class="btn-help" title="Help (press ?)" aria-label="Open help">?</button>
-    <h1>🎸 TottiLooper</h1>
-    <p>Record riffs, layer them live – your one-man band starts here.</p>
-  </header>
-
-  <main>
-
-    <!-- Microphone permission -->
-    <div id="permission-banner">
-      <p>TottiLooper needs access to your microphone to record loops.</p>
-      <button id="btn-request-mic" class="btn-primary">🎤 Allow Microphone</button>
-    </div>
-
-    <!-- Tempo / metronome controls -->
-    <div id="tempo-controls" class="panel">
-      <label class="field">
-        <span>BPM</span>
-        <input id="bpm-input" type="number" min="40" max="240" value="100" />
-      </label>
-      <label class="field">
-        <span>Beats/bar</span>
-        <input id="beats-per-bar-input" type="number" min="1" max="12" value="4" />
-      </label>
-      <label class="toggle">
-        <input id="metronome-toggle" type="checkbox" />
-        <span>Metronome</span>
-      </label>
-      <label class="toggle">
-        <input id="count-in-toggle" type="checkbox" />
-        <span>Count-in</span>
-      </label>
-      <label class="toggle">
-        <input id="quantize-toggle" type="checkbox" />
-        <span>Quantize</span>
-      </label>
-    </div>
-
-    <!-- Recording controls -->
-    <div id="record-controls">
-      <div id="status-dot" class="status-dot"></div>
-      <span id="record-timer">0:00</span>
-      <div id="input-meter" aria-hidden="true"><div id="input-meter-fill"></div></div>
-      <span id="status-text">Press ● REC to start recording.</span>
-      <button id="btn-record" class="btn-record">● REC</button>
-      <button id="btn-stop-record" class="btn-stop" disabled>■ DISCARD</button>
-    </div>
-
-    <!-- Master playback -->
-    <div id="master-controls" class="panel">
-      <button id="btn-play-all" class="btn-primary">▶ Play All</button>
-      <button id="btn-stop-all" class="btn-stop">■ Stop All</button>
-      <label class="field master-volume-field">
-        <span>Master</span>
-        <input id="master-volume" type="range" min="0" max="1.5" step="0.01" value="1" aria-label="Master volume" />
-      </label>
-      <button id="btn-export-mix" class="btn-secondary" title="Export mix as WAV">⬇ Export</button>
-      <button id="btn-undo" class="btn-secondary" title="Undo delete (Ctrl+Z)" disabled>↶ Undo</button>
-    </div>
-
-    <!-- Loops list -->
-    <section id="loops-section">
-      <h2>Loops</h2>
-      <div id="loops-list">
-        <div id="empty-state">
-          <div class="icon">🎵</div>
-          <p>No loops yet. Hit <strong>● REC</strong> to record your first loop!</p>
-        </div>
+    <main>
+      <!-- Microphone permission -->
+      <div id="permission-banner">
+        <p>TottiLooper needs access to your microphone to record loops.</p>
+        <button id="btn-request-mic" class="btn-primary">🎤 Allow Microphone</button>
       </div>
-    </section>
 
-  </main>
+      <!-- Tempo / metronome controls -->
+      <div id="tempo-controls" class="panel">
+        <label class="field">
+          <span>BPM</span>
+          <input id="bpm-input" type="number" min="40" max="240" value="100" />
+        </label>
+        <label class="field">
+          <span>Beats/bar</span>
+          <input id="beats-per-bar-input" type="number" min="1" max="12" value="4" />
+        </label>
+        <label class="toggle">
+          <input id="metronome-toggle" type="checkbox" />
+          <span>Metronome</span>
+        </label>
+        <label class="toggle">
+          <input id="count-in-toggle" type="checkbox" />
+          <span>Count-in</span>
+        </label>
+        <label class="toggle">
+          <input id="quantize-toggle" type="checkbox" />
+          <span>Quantize</span>
+        </label>
+      </div>
 
-  <!-- Help modal -->
-  <div id="help-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="help-title">
-    <div class="help-card">
-      <button id="help-close" class="help-close" aria-label="Close help">✕</button>
-      <h2 id="help-title">How to use TottiLooper</h2>
+      <!-- Recording controls -->
+      <div id="record-controls">
+        <div id="status-dot" class="status-dot"></div>
+        <span id="record-timer">0:00</span>
+        <div id="input-meter" aria-hidden="true"><div id="input-meter-fill"></div></div>
+        <span id="status-text">Press ● REC to start recording.</span>
+        <button id="btn-record" class="btn-record">● REC</button>
+        <button id="btn-stop-record" class="btn-stop" disabled>■ DISCARD</button>
+      </div>
 
-      <h3>Getting started</h3>
-      <ol>
-        <li>Click <strong>🎤 Allow Microphone</strong> and grant permission when prompted.</li>
-        <li>Plug in headphones — without them your mic will re-record whatever is already playing back.</li>
-        <li>(Optional) Set your <strong>BPM</strong>, enable <strong>Metronome</strong>, <strong>Count-in</strong> and <strong>Quantize</strong> to keep layered loops locked to a bar.</li>
-      </ol>
+      <!-- Master playback -->
+      <div id="master-controls" class="panel">
+        <button id="btn-play-all" class="btn-primary">▶ Play All</button>
+        <button id="btn-stop-all" class="btn-stop">■ Stop All</button>
+        <label class="field master-volume-field">
+          <span>Master</span>
+          <input
+            id="master-volume"
+            type="range"
+            min="0"
+            max="1.5"
+            step="0.01"
+            value="1"
+            aria-label="Master volume"
+          />
+        </label>
+        <button id="btn-export-mix" class="btn-secondary" title="Export mix as WAV">
+          ⬇ Export
+        </button>
+        <button id="btn-undo" class="btn-secondary" title="Undo delete (Ctrl+Z)" disabled>
+          ↶ Undo
+        </button>
+      </div>
 
-      <h3>Recording a loop</h3>
-      <ol>
-        <li>Press <strong>● REC</strong> (or the <kbd>Space</kbd> key) to start. Watch the input meter to make sure your signal is healthy.</li>
-        <li>Play your riff.</li>
-        <li>Press <strong>■ STOP</strong> (or <kbd>Space</kbd> again) when finished — the loop appears in the list and is ready to play.</li>
-        <li>Press <strong>■ DISCARD</strong> to abandon the current take without saving it.</li>
-      </ol>
+      <!-- Loops list -->
+      <section id="loops-section">
+        <h2>Loops</h2>
+        <div id="loops-list">
+          <div id="empty-state">
+            <div class="icon">🎵</div>
+            <p>No loops yet. Hit <strong>● REC</strong> to record your first loop!</p>
+          </div>
+        </div>
+      </section>
+    </main>
 
-      <h3>Per-loop controls</h3>
-      <ul>
-        <li><strong>▶ / ⏹</strong> – start or stop this loop.</li>
-        <li><strong>🔊 / 🔇</strong> – mute or unmute.</li>
-        <li><strong>S</strong> – solo this loop (everything not soloed is silenced).</li>
-        <li><strong>⇄</strong> – play the loop in reverse.</li>
-        <li><strong>⬇</strong> – download this loop as a WAV file.</li>
-        <li><strong>✕</strong> – delete the loop. Use <strong>↶ Undo</strong> or <kbd>Ctrl</kbd>+<kbd>Z</kbd> to bring it back.</li>
-        <li><strong>Vol / Pan / Speed</strong> sliders – mix each loop and warp its pitch via playback rate.</li>
-        <li>Click the <strong>loop name</strong> field to rename it (e.g. "Bass", "Chords", "Beatbox").</li>
-      </ul>
+    <!-- Help modal -->
+    <div
+      id="help-modal"
+      class="hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="help-title"
+    >
+      <div class="help-card">
+        <button id="help-close" class="help-close" aria-label="Close help">✕</button>
+        <h2 id="help-title">How to use TottiLooper</h2>
 
-      <h3>Master controls</h3>
-      <ul>
-        <li><strong>▶ Play All</strong> / <strong>■ Stop All</strong> – start or stop every loop at once.</li>
-        <li><strong>Master</strong> slider – sets the overall output level.</li>
-        <li><strong>⬇ Export</strong> – render the current mix to a WAV file you can save or share.</li>
-      </ul>
+        <h3>Getting started</h3>
+        <ol>
+          <li>Click <strong>🎤 Allow Microphone</strong> and grant permission when prompted.</li>
+          <li>
+            Plug in headphones — without them your mic will re-record whatever is already playing
+            back.
+          </li>
+          <li>
+            (Optional) Set your <strong>BPM</strong>, enable <strong>Metronome</strong>,
+            <strong>Count-in</strong> and <strong>Quantize</strong> to keep layered loops locked to
+            a bar.
+          </li>
+        </ol>
 
-      <h3>Keyboard shortcuts</h3>
-      <ul class="shortcuts">
-        <li><kbd>Space</kbd> – start / stop recording</li>
-        <li><kbd>Enter</kbd> – play all loops</li>
-        <li><kbd>Esc</kbd> – stop all loops</li>
-        <li><kbd>1</kbd>…<kbd>9</kbd> – toggle loops 1 through 9</li>
-        <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> (or <kbd>⌘</kbd>+<kbd>Z</kbd>) – undo the last delete</li>
-        <li><kbd>?</kbd> – open this help</li>
-      </ul>
+        <h3>Recording a loop</h3>
+        <ol>
+          <li>
+            Press <strong>● REC</strong> (or the <kbd>Space</kbd> key) to start. Watch the input
+            meter to make sure your signal is healthy.
+          </li>
+          <li>Play your riff.</li>
+          <li>
+            Press <strong>■ STOP</strong> (or <kbd>Space</kbd> again) when finished — the loop
+            appears in the list and is ready to play.
+          </li>
+          <li>Press <strong>■ DISCARD</strong> to abandon the current take without saving it.</li>
+        </ol>
 
-      <h3>Tips</h3>
-      <ul>
-        <li>Enable <strong>Quantize</strong> for tight, bar-aligned layers that never drift.</li>
-        <li>Use <strong>Count-in</strong> so your first note isn't chopped off.</li>
-        <li>Drop <strong>Speed</strong> below 1× for half-time pads, push above 1× for chipmunk leads.</li>
-        <li>Use <strong>Pan</strong> to spread rhythm and lead parts across the stereo field — it instantly sounds bigger.</li>
-      </ul>
+        <h3>Per-loop controls</h3>
+        <ul>
+          <li><strong>▶ / ⏹</strong> – start or stop this loop.</li>
+          <li><strong>🔊 / 🔇</strong> – mute or unmute.</li>
+          <li><strong>S</strong> – solo this loop (everything not soloed is silenced).</li>
+          <li><strong>⇄</strong> – play the loop in reverse.</li>
+          <li><strong>⬇</strong> – download this loop as a WAV file.</li>
+          <li>
+            <strong>✕</strong> – delete the loop. Use <strong>↶ Undo</strong> or
+            <kbd>Ctrl</kbd>+<kbd>Z</kbd> to bring it back.
+          </li>
+          <li>
+            <strong>Vol / Pan / Speed</strong> sliders – mix each loop and warp its pitch via
+            playback rate.
+          </li>
+          <li>
+            Click the <strong>loop name</strong> field to rename it (e.g. "Bass", "Chords",
+            "Beatbox").
+          </li>
+        </ul>
+
+        <h3>Master controls</h3>
+        <ul>
+          <li>
+            <strong>▶ Play All</strong> / <strong>■ Stop All</strong> – start or stop every loop at
+            once.
+          </li>
+          <li><strong>Master</strong> slider – sets the overall output level.</li>
+          <li>
+            <strong>⬇ Export</strong> – render the current mix to a WAV file you can save or share.
+          </li>
+        </ul>
+
+        <h3>Keyboard shortcuts</h3>
+        <ul class="shortcuts">
+          <li><kbd>Space</kbd> – start / stop recording</li>
+          <li><kbd>Enter</kbd> – play all loops</li>
+          <li><kbd>Esc</kbd> – stop all loops</li>
+          <li><kbd>1</kbd>…<kbd>9</kbd> – toggle loops 1 through 9</li>
+          <li>
+            <kbd>Ctrl</kbd>+<kbd>Z</kbd> (or <kbd>⌘</kbd>+<kbd>Z</kbd>) – undo the last delete
+          </li>
+          <li><kbd>?</kbd> – open this help</li>
+        </ul>
+
+        <h3>Tips</h3>
+        <ul>
+          <li>Enable <strong>Quantize</strong> for tight, bar-aligned layers that never drift.</li>
+          <li>Use <strong>Count-in</strong> so your first note isn't chopped off.</li>
+          <li>
+            Drop <strong>Speed</strong> below 1× for half-time pads, push above 1× for chipmunk
+            leads.
+          </li>
+          <li>
+            Use <strong>Pan</strong> to spread rhythm and lead parts across the stereo field — it
+            instantly sounds bigger.
+          </li>
+        </ul>
+      </div>
     </div>
-  </div>
 
-  <script type="module" src="src/app.js"></script>
-</body>
+    <script type="module" src="src/app.js"></script>
+  </body>
 </html>

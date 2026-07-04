@@ -6,6 +6,7 @@ them on top of each other – your one-man band for busking starts here.
 ## Features
 
 ### Recording & tempo
+
 - 🎤 **Record** audio loops directly from your microphone
 - 📈 **Input level meter** so you can set a healthy recording level
 - 🥁 **Built-in metronome** with adjustable **BPM** and **beats-per-bar**
@@ -14,6 +15,7 @@ them on top of each other – your one-man band for busking starts here.
 - ⏱️ **Live recording timer** + one-click **Discard**
 
 ### Mixer
+
 - 🎵 **Layer** as many loops as you like, playing simultaneously
 - 🎚️ **Per-loop volume, pan and playback-speed (pitch)** sliders
 - 🎚️ **Master volume** for overall level
@@ -24,11 +26,13 @@ them on top of each other – your one-man band for busking starts here.
 - ✨ Click-free start/stop with short automatic fades
 
 ### Save, share, recover
+
 - ⬇ **Export the full mix as WAV** (rendered via `OfflineAudioContext`)
 - ⬇ **Export any individual loop as WAV**
 - ↶ **Undo delete** – last 20 deleted loops can be restored (also `Ctrl`+`Z`)
 
 ### Accessibility & UX
+
 - ⌨️ **Keyboard shortcuts** for all common actions (see Help)
 - 🏷️ `aria-label` / `aria-pressed` on every icon-only control
 - ❓ **Built-in Help / tutorial modal** with step-by-step instructions
@@ -53,14 +57,14 @@ time to open the in-app tutorial.
 
 ### Keyboard shortcuts
 
-| Key | Action |
-| --- | --- |
-| <kbd>Space</kbd> | Start / stop recording |
-| <kbd>Enter</kbd> | Play all loops |
-| <kbd>Esc</kbd> | Stop all loops |
-| <kbd>1</kbd> … <kbd>9</kbd> | Toggle loops 1 through 9 |
-| <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>⌘</kbd>+<kbd>Z</kbd> | Undo the last delete |
-| <kbd>?</kbd> | Open the Help modal |
+| Key                                                      | Action                   |
+| -------------------------------------------------------- | ------------------------ |
+| <kbd>Space</kbd>                                         | Start / stop recording   |
+| <kbd>Enter</kbd>                                         | Play all loops           |
+| <kbd>Esc</kbd>                                           | Stop all loops           |
+| <kbd>1</kbd> … <kbd>9</kbd>                              | Toggle loops 1 through 9 |
+| <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>⌘</kbd>+<kbd>Z</kbd> | Undo the last delete     |
+| <kbd>?</kbd>                                             | Open the Help modal      |
 
 ### Tip: use headphones
 
@@ -84,6 +88,7 @@ Or use any static-file server (e.g. `npx serve .`).
 ## Browser support
 
 Requires a browser with support for:
+
 - [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API)
   (including `StereoPannerNode` and `OfflineAudioContext`)
 - [MediaRecorder API](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder)

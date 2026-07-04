@@ -19,37 +19,37 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const FADE_TIME        = 0.015; // seconds – short fades to avoid clicks on start/stop
+const FADE_TIME = 0.015; // seconds – short fades to avoid clicks on start/stop
 const METRONOME_VOLUME = 0.3;
-const DEFAULT_BPM      = 100;
-const MIN_BPM          = 40;
-const MAX_BPM          = 240;
-const MAX_UNDO         = 20;
+const DEFAULT_BPM = 100;
+const MIN_BPM = 40;
+const MAX_BPM = 240;
+const MAX_UNDO = 20;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-let audioContext   = null;
-let mediaStream    = null;
-let mediaRecorder  = null;
+let audioContext = null;
+let mediaStream = null;
+let mediaRecorder = null;
 let recordedChunks = [];
-let isRecording    = false;
-let timerInterval  = null;
+let isRecording = false;
+let timerInterval = null;
 let recordStartTime = 0;
-let loopCounter    = 0;
+let loopCounter = 0;
 
 let masterGainNode = null;
-let masterVolume   = 1;
+let masterVolume = 1;
 
-let inputAnalyser  = null;
+let inputAnalyser = null;
 
 // Tempo / metronome
-let bpm              = DEFAULT_BPM;
-let beatsPerBar      = 4;
+let bpm = DEFAULT_BPM;
+let beatsPerBar = 4;
 let metronomeEnabled = false;
-let countInEnabled   = false;
-let quantizeEnabled  = false;
+let countInEnabled = false;
+let quantizeEnabled = false;
 let metronomeInterval = null;
-let metronomeBeatIdx  = 0;
+let metronomeBeatIdx = 0;
 
 // Undo stack for deleted loops
 const deletedStack = [];
@@ -80,33 +80,33 @@ const loops = [];
 
 const $ = (id) => document.getElementById(id);
 
-const permissionBanner   = $('permission-banner');
-const btnRequestMic      = $('btn-request-mic');
-const tempoControls      = $('tempo-controls');
-const bpmInput           = $('bpm-input');
-const beatsPerBarInput   = $('beats-per-bar-input');
-const metronomeToggle    = $('metronome-toggle');
-const countInToggle      = $('count-in-toggle');
-const quantizeToggle     = $('quantize-toggle');
-const recordControls     = $('record-controls');
-const btnRecord          = $('btn-record');
-const btnStopRecord      = $('btn-stop-record');
-const recordTimer        = $('record-timer');
-const statusDot          = $('status-dot');
-const statusText         = $('status-text');
-const inputMeterFill     = $('input-meter-fill');
-const masterControls     = $('master-controls');
-const btnPlayAll         = $('btn-play-all');
-const btnStopAll         = $('btn-stop-all');
-const btnExportMix       = $('btn-export-mix');
-const btnUndo            = $('btn-undo');
-const masterVolumeInput  = $('master-volume');
-const loopsSection       = $('loops-section');
-const loopsList          = $('loops-list');
-const emptyState         = $('empty-state');
-const btnHelp            = $('btn-help');
-const helpModal          = $('help-modal');
-const helpCloseButton    = $('help-close');
+const permissionBanner = $('permission-banner');
+const btnRequestMic = $('btn-request-mic');
+const tempoControls = $('tempo-controls');
+const bpmInput = $('bpm-input');
+const beatsPerBarInput = $('beats-per-bar-input');
+const metronomeToggle = $('metronome-toggle');
+const countInToggle = $('count-in-toggle');
+const quantizeToggle = $('quantize-toggle');
+const recordControls = $('record-controls');
+const btnRecord = $('btn-record');
+const btnStopRecord = $('btn-stop-record');
+const recordTimer = $('record-timer');
+const statusDot = $('status-dot');
+const statusText = $('status-text');
+const inputMeterFill = $('input-meter-fill');
+const masterControls = $('master-controls');
+const btnPlayAll = $('btn-play-all');
+const btnStopAll = $('btn-stop-all');
+const btnExportMix = $('btn-export-mix');
+const btnUndo = $('btn-undo');
+const masterVolumeInput = $('master-volume');
+const loopsSection = $('loops-section');
+const loopsList = $('loops-list');
+const emptyState = $('empty-state');
+const btnHelp = $('btn-help');
+const helpModal = $('help-modal');
+const helpCloseButton = $('help-close');
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
@@ -129,12 +129,18 @@ function init() {
   bpmInput.addEventListener('change', onBpmChange);
   beatsPerBarInput.addEventListener('change', onBeatsPerBarChange);
   metronomeToggle.addEventListener('change', onMetronomeToggle);
-  countInToggle.addEventListener('change', (e) => { countInEnabled = e.target.checked; });
-  quantizeToggle.addEventListener('change', (e) => { quantizeEnabled = e.target.checked; });
+  countInToggle.addEventListener('change', (e) => {
+    countInEnabled = e.target.checked;
+  });
+  quantizeToggle.addEventListener('change', (e) => {
+    quantizeEnabled = e.target.checked;
+  });
 
   btnHelp.addEventListener('click', openHelp);
   helpCloseButton.addEventListener('click', closeHelp);
-  helpModal.addEventListener('click', (e) => { if (e.target === helpModal) closeHelp(); });
+  helpModal.addEventListener('click', (e) => {
+    if (e.target === helpModal) closeHelp();
+  });
 
   document.addEventListener('keydown', onGlobalKeydown);
 
@@ -149,7 +155,7 @@ async function requestMicrophoneAccess() {
       audio: {
         echoCancellation: false,
         noiseSuppression: false,
-        autoGainControl:  false,
+        autoGainControl: false,
       },
       video: false,
     });
@@ -278,7 +284,11 @@ function stopRecording() {
 function discardRecording() {
   if (!isRecording || !mediaRecorder) return;
   mediaRecorder.onstop = null;
-  try { mediaRecorder.stop(); } catch { /* ignore */ }
+  try {
+    mediaRecorder.stop();
+  } catch {
+    /* ignore */
+  }
   recordedChunks = [];
   isRecording = false;
   clearInterval(timerInterval);
@@ -381,9 +391,7 @@ function playLoop(loop) {
   gainNode.gain.value = 0;
   gainNode.gain.setTargetAtTime(targetGain, audioContext.currentTime, FADE_TIME);
 
-  const pannerNode = audioContext.createStereoPanner
-    ? audioContext.createStereoPanner()
-    : null;
+  const pannerNode = audioContext.createStereoPanner ? audioContext.createStereoPanner() : null;
   if (pannerNode) pannerNode.pan.value = loop.pan;
 
   const sourceNode = audioContext.createBufferSource();
@@ -432,7 +440,11 @@ function stopLoop(loop) {
   }
   // Give the fade a few time-constants to decay before killing the source.
   const stopAt = audioContext.currentTime + FADE_TIME * 5;
-  try { node && node.stop(stopAt); } catch { /* already stopped */ }
+  try {
+    node && node.stop(stopAt);
+  } catch {
+    /* already stopped */
+  }
 
   loop.node = null;
   loop.gainNode = null;
@@ -453,7 +465,7 @@ function stopLoop(loop) {
 }
 
 function deleteLoop(loopId) {
-  const idx = loops.findIndex(l => l.id === loopId);
+  const idx = loops.findIndex((l) => l.id === loopId);
   if (idx === -1) return;
   const loop = loops[idx];
   stopLoop(loop);
@@ -563,11 +575,11 @@ function renameLoop(loop, newName) {
 }
 
 function playAllLoops() {
-  loops.forEach(loop => playLoop(loop));
+  loops.forEach((loop) => playLoop(loop));
 }
 
 function stopAllLoops() {
-  loops.forEach(loop => stopLoop(loop));
+  loops.forEach((loop) => stopLoop(loop));
 }
 
 function onMasterVolumeChange(e) {
@@ -601,7 +613,8 @@ function onBeatsPerBarChange() {
 
 function onMetronomeToggle(e) {
   metronomeEnabled = e.target.checked;
-  if (metronomeEnabled) startMetronome(); else stopMetronome();
+  if (metronomeEnabled) startMetronome();
+  else stopMetronome();
 }
 
 function startMetronome() {
@@ -653,7 +666,7 @@ async function exportMix() {
   const sampleRate = audioContext.sampleRate;
   // Render a chunk that's long enough to hear every loop repeat a few times.
   const maxLoopDur = loops.reduce((m, l) => Math.max(m, l.duration / l.playbackRate), 0);
-  const duration   = Math.max(4, Math.min(60, Math.ceil(maxLoopDur * 4)));
+  const duration = Math.max(4, Math.min(60, Math.ceil(maxLoopDur * 4)));
 
   const offline = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
   const offlineMaster = offline.createGain();
@@ -718,7 +731,7 @@ function renderLoop(loop) {
   const card = document.createElement('div');
   card.className = 'loop-card';
   card.id = `loop-card-${loop.id}`;
-  if (loop.muted)  card.classList.add('muted');
+  if (loop.muted) card.classList.add('muted');
   if (loop.soloed) card.classList.add('soloed');
 
   // Top row: name / waveform / duration / action buttons
@@ -755,7 +768,9 @@ function renderLoop(loop) {
     'btn-play',
     loop.playing ? '⏹' : '▶',
     loop.playing ? 'Stop loop' : 'Play loop',
-    () => { loop.playing ? stopLoop(loop) : playLoop(loop); },
+    () => {
+      loop.playing ? stopLoop(loop) : playLoop(loop);
+    },
   );
   if (loop.playing) btnPlay.classList.add('active');
 
@@ -793,15 +808,25 @@ function renderLoop(loop) {
   faderRow.className = 'loop-faders';
 
   faderRow.append(
-    makeFader('Vol',   0,    1.5, 0.01, loop.volume,
+    makeFader(
+      'Vol',
+      0,
+      1.5,
+      0.01,
+      loop.volume,
       (v) => `${Math.round(v * 100)}%`,
-      (v) => setLoopVolume(loop, v)),
-    makeFader('Pan',  -1,    1,   0.01, loop.pan,
-      panText,
-      (v) => setLoopPan(loop, v)),
-    makeFader('Speed', 0.5,  2,   0.01, loop.playbackRate,
+      (v) => setLoopVolume(loop, v),
+    ),
+    makeFader('Pan', -1, 1, 0.01, loop.pan, panText, (v) => setLoopPan(loop, v)),
+    makeFader(
+      'Speed',
+      0.5,
+      2,
+      0.01,
+      loop.playbackRate,
       (v) => `${v.toFixed(2)}×`,
-      (v) => setLoopPlaybackRate(loop, v)),
+      (v) => setLoopPlaybackRate(loop, v),
+    ),
   );
 
   card.appendChild(topRow);
@@ -832,8 +857,8 @@ function makeFader(label, min, max, step, value, formatValue, onInput) {
 
   const input = document.createElement('input');
   input.type = 'range';
-  input.min  = String(min);
-  input.max  = String(max);
+  input.min = String(min);
+  input.max = String(max);
   input.step = String(step);
   input.value = String(value);
   input.setAttribute('aria-label', label);
@@ -854,18 +879,18 @@ function makeFader(label, min, max, step, value, formatValue, onInput) {
 
 function drawWaveform(canvas, audioBuffer) {
   const data = audioBuffer.getChannelData(0);
-  const dpr  = window.devicePixelRatio || 1;
-  const w    = canvas.offsetWidth  || 200;
-  const h    = canvas.offsetHeight || 34;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.offsetWidth || 200;
+  const h = canvas.offsetHeight || 34;
 
-  canvas.width  = w * dpr;
+  canvas.width = w * dpr;
   canvas.height = h * dpr;
 
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
 
   const step = Math.max(1, Math.ceil(data.length / w));
-  const mid  = h / 2;
+  const mid = h / 2;
 
   ctx.fillStyle = '#2a2a2a';
   ctx.fillRect(0, 0, w, h);
@@ -875,7 +900,8 @@ function drawWaveform(canvas, audioBuffer) {
   ctx.beginPath();
 
   for (let x = 0; x < w; x++) {
-    let min = 1, max = -1;
+    let min = 1,
+      max = -1;
     for (let i = 0; i < step; i++) {
       const sample = data[x * step + i] || 0;
       if (sample < min) min = sample;
@@ -914,7 +940,10 @@ function onGlobalKeydown(e) {
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
   if (helpModal && !helpModal.classList.contains('hidden')) {
-    if (e.key === 'Escape') { closeHelp(); e.preventDefault(); }
+    if (e.key === 'Escape') {
+      closeHelp();
+      e.preventDefault();
+    }
     return;
   }
 
@@ -950,15 +979,21 @@ function onGlobalKeydown(e) {
         e.preventDefault();
         const idx = parseInt(e.key, 10) - 1;
         const loop = loops[idx];
-        if (loop) { loop.playing ? stopLoop(loop) : playLoop(loop); }
+        if (loop) {
+          loop.playing ? stopLoop(loop) : playLoop(loop);
+        }
       }
   }
 }
 
 // ─── Help modal ───────────────────────────────────────────────────────────────
 
-function openHelp()  { helpModal.classList.remove('hidden'); }
-function closeHelp() { helpModal.classList.add('hidden'); }
+function openHelp() {
+  helpModal.classList.remove('hidden');
+}
+function closeHelp() {
+  helpModal.classList.add('hidden');
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -967,8 +1002,12 @@ function setStatus(msg) {
 }
 
 let toastTimeout = null;
-function showError(msg) { showToast(msg, false); }
-function showInfo(msg)  { showToast(msg, true); }
+function showError(msg) {
+  showToast(msg, false);
+}
+function showInfo(msg) {
+  showToast(msg, true);
+}
 
 function showToast(msg, isInfo) {
   let toast = document.getElementById('error-toast');

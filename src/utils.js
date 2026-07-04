@@ -45,7 +45,7 @@ export function getSupportedMimeType() {
     'audio/ogg',
     'audio/mp4',
   ];
-  return types.find(t => MediaRecorder.isTypeSupported(t)) || '';
+  return types.find((t) => MediaRecorder.isTypeSupported(t)) || '';
 }
 
 // ─── Gain / mix logic ─────────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ export function getSupportedMimeType() {
  */
 export function effectiveGain(loop, loops) {
   if (loop.muted) return 0;
-  const anySolo = loops.some(l => l.soloed);
+  const anySolo = loops.some((l) => l.soloed);
   if (anySolo && !loop.soloed) return 0;
   return loop.volume;
 }
@@ -76,16 +76,12 @@ export function effectiveGain(loop, loops) {
  */
 export function quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext }) {
   const beatSeconds = 60 / bpm;
-  const barSeconds  = beatSeconds * beatsPerBar;
-  const numBars     = Math.max(1, Math.round(buffer.duration / barSeconds));
-  const targetDur   = numBars * barSeconds;
-  const targetLen   = Math.round(targetDur * buffer.sampleRate);
+  const barSeconds = beatSeconds * beatsPerBar;
+  const numBars = Math.max(1, Math.round(buffer.duration / barSeconds));
+  const targetDur = numBars * barSeconds;
+  const targetLen = Math.round(targetDur * buffer.sampleRate);
 
-  const out = audioContext.createBuffer(
-    buffer.numberOfChannels,
-    targetLen,
-    buffer.sampleRate,
-  );
+  const out = audioContext.createBuffer(buffer.numberOfChannels, targetLen, buffer.sampleRate);
   for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
     const src = buffer.getChannelData(ch);
     const dst = out.getChannelData(ch);
@@ -103,11 +99,7 @@ export function quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext }) {
  * @returns {AudioBuffer}
  */
 export function reverseBuffer(buffer, audioContext) {
-  const rev = audioContext.createBuffer(
-    buffer.numberOfChannels,
-    buffer.length,
-    buffer.sampleRate,
-  );
+  const rev = audioContext.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
   for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
     const src = buffer.getChannelData(ch);
     const dst = rev.getChannelData(ch);
@@ -140,13 +132,13 @@ export function writeString(view, offset, str) {
  * @returns {Blob}
  */
 export function audioBufferToWav(buffer) {
-  const numCh      = buffer.numberOfChannels;
+  const numCh = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
-  const numFrames  = buffer.length;
+  const numFrames = buffer.length;
   const blockAlign = numCh * 2;
-  const byteRate   = sampleRate * blockAlign;
-  const dataSize   = numFrames * blockAlign;
-  const ab   = new ArrayBuffer(44 + dataSize);
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = numFrames * blockAlign;
+  const ab = new ArrayBuffer(44 + dataSize);
   const view = new DataView(ab);
 
   writeString(view, 0, 'RIFF');
