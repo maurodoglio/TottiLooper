@@ -206,6 +206,24 @@ const shortcutDefinitions = [
 
 let shortcuts = { ...DEFAULT_SHORTCUTS };
 
+function setRangeValueText(input, valueText) {
+  input.setAttribute('aria-valuetext', valueText);
+}
+
+function formatPercentValueText(v) {
+  return `${Math.round(v * 100)} percent`;
+}
+
+function formatPanValueText(v) {
+  if (Math.abs(v) < 0.02) return 'Center';
+  return `${Math.round(Math.abs(v) * 100)} percent ${v < 0 ? 'left' : 'right'}`;
+}
+
+function formatPlaybackRateValueText(v) {
+  const speed = Number(v.toFixed(2));
+  return speed === 1 ? 'Normal speed' : `${speed} times speed`;
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 function init() {
@@ -233,6 +251,7 @@ function init() {
   btnEnableMidi.addEventListener('click', enableMidi);
 
   masterVolumeInput.addEventListener('input', onMasterVolumeChange);
+  setRangeValueText(masterVolumeInput, formatPercentValueText(masterVolume));
 
   bpmInput.addEventListener('change', onBpmChange);
   beatsPerBarInput.addEventListener('change', onBeatsPerBarChange);
@@ -1191,6 +1210,7 @@ function stopAllLoops() {
 
 function onMasterVolumeChange(e) {
   masterVolume = parseFloat(e.target.value);
+  setRangeValueText(e.target, formatPercentValueText(masterVolume));
   if (masterGainNode) {
     masterGainNode.gain.setTargetAtTime(masterVolume, audioContext.currentTime, 0.01);
   }
@@ -1641,10 +1661,14 @@ function renderLoop(loop) {
   nameInput.type = 'text';
   nameInput.value = loop.name;
   nameInput.title = 'Rename loop';
-  nameInput.setAttribute('aria-label', 'Loop name');
+  const syncLoopNameLabel = () => {
+    nameInput.setAttribute('aria-label', `Loop name for ${loop.name}`);
+  };
+  syncLoopNameLabel();
   nameInput.addEventListener('change', () => {
     renameLoop(loop, nameInput.value);
     nameInput.value = loop.name;
+    syncLoopNameLabel();
   });
   nameInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') nameInput.blur();
@@ -1652,6 +1676,7 @@ function renderLoop(loop) {
 
   const waveformEl = document.createElement('div');
   waveformEl.className = 'loop-waveform';
+  waveformEl.setAttribute('aria-hidden', 'true');
   const canvas = document.createElement('canvas');
   const playhead = document.createElement('div');
   playhead.className = 'loop-playhead';
@@ -1754,18 +1779,21 @@ function renderLoop(loop) {
   const faderRow = document.createElement('div');
   faderRow.className = 'loop-faders';
 
-  const volumeFader = makeFader('Vol',   0,    1.5, 0.01, loop.volume,
+  const volumeFader = makeFader('Vol', 'Loop volume', 0, 1.5, 0.01, loop.volume,
     (v) => `${Math.round(v * 100)}%`,
+    formatPercentValueText,
     (v) => setLoopVolume(loop, v));
   volumeFader.dataset.fader = 'volume';
 
   faderRow.append(
     volumeFader,
-    makeFader('Pan',  -1,    1,   0.01, loop.pan,
+    makeFader('Pan', 'Loop pan', -1,    1,   0.01, loop.pan,
       panText,
+      formatPanValueText,
       (v) => setLoopPan(loop, v)),
-    makeFader('Speed', 0.5,  2,   0.01, loop.playbackRate,
+    makeFader('Speed', 'Loop speed', 0.5,  2,   0.01, loop.playbackRate,
       (v) => `${v.toFixed(2)}×`,
+      formatPlaybackRateValueText,
       (v) => setLoopPlaybackRate(loop, v)),
   );
 
@@ -1802,7 +1830,7 @@ function iconButton(cls, text, title, onClick) {
   return b;
 }
 
-function makeFader(label, min, max, step, value, formatValue, onInput) {
+function makeFader(label, ariaLabel, min, max, step, value, formatValue, formatValueText, onInput) {
   const wrap = document.createElement('label');
   wrap.className = 'fader';
 
@@ -1816,15 +1844,19 @@ function makeFader(label, min, max, step, value, formatValue, onInput) {
   input.max  = String(max);
   input.step = String(step);
   input.value = String(value);
-  input.setAttribute('aria-label', label);
+  input.setAttribute('aria-label', ariaLabel);
 
   const valueEl = document.createElement('span');
   valueEl.className = 'fader-value';
-  valueEl.textContent = formatValue(value);
+  const syncFaderValue = (v) => {
+    valueEl.textContent = formatValue(v);
+    setRangeValueText(input, formatValueText(v));
+  };
+  syncFaderValue(value);
 
   input.addEventListener('input', () => {
     const v = parseFloat(input.value);
-    valueEl.textContent = formatValue(v);
+    syncFaderValue(v);
     onInput(v);
   });
 
