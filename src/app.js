@@ -10,6 +10,12 @@
 import {
   formatDuration,
   panText,
+  parseMidiMessage,
+  createMidiBinding,
+  matchesMidiBinding,
+  isMidiButtonPress,
+  scaleMidiValue,
+  formatMidiBinding,
   audioBufferToWav,
   clickTrackToMidi,
   getSupportedMimeType,
@@ -69,6 +75,14 @@ let quantizeEnabled  = false;
 let metronomeInterval = null;
 let metronomeBeatIdx  = 0;
 
+let midiAccess = null;
+let midiLearnTarget = null;
+const midiBindings = {
+  record: null,
+  playAll: null,
+  stopAll: null,
+};
+
 // Undo stack for deleted loops
 const deletedStack = [];
 
@@ -89,6 +103,8 @@ const deletedStack = [];
  * @property {number} pan
  * @property {number} playbackRate
  * @property {boolean} reversed
+ * @property {{ source: 'note' | 'cc', channel: number, number: number, mode: 'button' | 'range' } | null} midiToggleBinding
+ * @property {{ source: 'note' | 'cc', channel: number, number: number, mode: 'button' | 'range' } | null} midiVolumeBinding
  * @property {Blob|null} sourceBlob
  */
 
@@ -124,6 +140,9 @@ const btnShareSession    = $('btn-share-session');
 const exportMidiToggle   = $('export-midi-toggle');
 const btnUndo            = $('btn-undo');
 const masterVolumeInput  = $('master-volume');
+const midiControls       = $('midi-controls');
+const midiStatus         = $('midi-status');
+const btnEnableMidi      = $('btn-enable-midi');
 const loopsSection       = $('loops-section');
 const loopsList          = $('loops-list');
 const emptyState         = $('empty-state');
@@ -160,6 +179,7 @@ let shortcuts = { ...DEFAULT_SHORTCUTS };
 function init() {
   recordControls.classList.add('hidden');
   masterControls.classList.add('hidden');
+  midiControls.classList.add('hidden');
   loopsSection.classList.add('hidden');
   tempoControls.classList.add('hidden');
 
@@ -171,6 +191,7 @@ function init() {
   btnExportMix.addEventListener('click', exportMix);
   btnShareSession.addEventListener('click', shareSession);
   btnUndo.addEventListener('click', undoDelete);
+  btnEnableMidi.addEventListener('click', enableMidi);
 
   masterVolumeInput.addEventListener('input', onMasterVolumeChange);
 
@@ -185,12 +206,16 @@ function init() {
   btnHelp.addEventListener('click', openHelp);
   helpCloseButton.addEventListener('click', closeHelp);
   helpModal.addEventListener('click', (e) => { if (e.target === helpModal) closeHelp(); });
+  midiControls.addEventListener('click', onMidiControlsClick);
+  loopsList.addEventListener('click', onMidiControlsClick);
   btnResetShortcuts.addEventListener('click', resetShortcuts);
 
   shortcuts = loadShortcutMappings();
   renderShortcutSettings();
   document.addEventListener('keydown', onGlobalKeydown);
 
+  updateMidiStatus('Connect a controller, then click Learn to map pads, buttons, or faders.');
+  updateAllMidiBindingLabels();
   syncMonitoringControls();
   updateUndoButton();
   void restoreSharedSessionFromUrl();
@@ -228,6 +253,7 @@ async function requestMicrophoneAccess() {
     tempoControls.classList.remove('hidden');
     recordControls.classList.remove('hidden');
     masterControls.classList.remove('hidden');
+    midiControls.classList.remove('hidden');
     loopsSection.classList.remove('hidden');
     setStatus('Ready. Press ● REC to start recording.');
   } catch (err) {
@@ -444,6 +470,8 @@ function addLoop(audioBuffer, options = {}) {
     playbackRate: options.playbackRate ?? 1,
     reversed: !!options.reversed,
     sourceBlob: options.sourceBlob || null,
+    midiToggleBinding: null,
+    midiVolumeBinding: null,
   };
   loops.push(loop);
   renderLoop(loop);
@@ -561,6 +589,9 @@ function deleteLoop(loopId) {
   const idx = loops.findIndex(l => l.id === loopId);
   if (idx === -1) return;
   const loop = loops[idx];
+  if (midiLearnTarget && midiLearnTarget.target.startsWith(`loop-${loopId}-`)) {
+    stopMidiLearn();
+  }
   stopLoop(loop);
   loops.splice(idx, 1);
 
@@ -628,6 +659,7 @@ function toggleSolo(loop) {
 
 function setLoopVolume(loop, value) {
   loop.volume = value;
+  updateLoopVolumeUI(loop);
   refreshAllGains();
 }
 
@@ -703,6 +735,178 @@ function onMasterVolumeChange(e) {
   if (masterGainNode) {
     masterGainNode.gain.setTargetAtTime(masterVolume, audioContext.currentTime, 0.01);
   }
+}
+
+// ─── MIDI ─────────────────────────────────────────────────────────────────────
+
+async function enableMidi() {
+  if (!navigator.requestMIDIAccess) {
+    updateMidiStatus('Web MIDI is not available in this browser.');
+    btnEnableMidi.disabled = true;
+    return;
+  }
+  try {
+    midiAccess = await navigator.requestMIDIAccess();
+    attachMidiInputs();
+    if (typeof midiAccess.addEventListener === 'function') {
+      midiAccess.addEventListener('statechange', attachMidiInputs);
+    } else {
+      midiAccess.onstatechange = attachMidiInputs;
+    }
+    btnEnableMidi.textContent = 'MIDI ready';
+    btnEnableMidi.disabled = true;
+    updateMidiStatus(`Listening to ${midiAccess.inputs.size} MIDI input${midiAccess.inputs.size === 1 ? '' : 's'}.`);
+  } catch (err) {
+    updateMidiStatus('Could not enable MIDI access.');
+    showError('MIDI access denied or unavailable.');
+    console.error('requestMIDIAccess error:', err);
+  }
+}
+
+function attachMidiInputs() {
+  if (!midiAccess) return;
+  for (const input of midiAccess.inputs.values()) {
+    input.onmidimessage = onMidiMessage;
+  }
+  if (!midiLearnTarget) {
+    updateMidiStatus(`Listening to ${midiAccess.inputs.size} MIDI input${midiAccess.inputs.size === 1 ? '' : 's'}.`);
+  }
+}
+
+function onMidiControlsClick(e) {
+  const learnBtn = e.target.closest('.btn-midi-learn');
+  if (learnBtn) {
+    const target = learnBtn.dataset.midiTarget;
+    if (target) startMidiLearn(target, learnBtn);
+    return;
+  }
+  const clearBtn = e.target.closest('.btn-midi-clear');
+  if (clearBtn) {
+    const target = clearBtn.dataset.midiTarget;
+    if (target) clearMidiBinding(target);
+  }
+}
+
+function startMidiLearn(target, buttonEl) {
+  stopMidiLearn();
+  if (!buttonEl.dataset.defaultLabel) buttonEl.dataset.defaultLabel = buttonEl.textContent;
+  midiLearnTarget = { target, buttonEl };
+  buttonEl.classList.add('learning');
+  buttonEl.textContent = 'Listening…';
+  updateMidiStatus(isVolumeTarget(target)
+    ? 'Move a MIDI fader or knob to bind volume.'
+    : 'Press a MIDI pad or button to bind this action.');
+}
+
+function stopMidiLearn() {
+  if (!midiLearnTarget) return;
+  midiLearnTarget.buttonEl.classList.remove('learning');
+  midiLearnTarget.buttonEl.textContent = midiLearnTarget.buttonEl.dataset.defaultLabel || 'Learn';
+  midiLearnTarget = null;
+}
+
+function onMidiMessage(event) {
+  const message = parseMidiMessage(event.data);
+  if (!message) return;
+
+  if (midiLearnTarget) {
+    const binding = createMidiBinding(message, isVolumeTarget(midiLearnTarget.target) ? 'range' : 'button');
+    if (!binding) {
+      updateMidiStatus('That control type is not supported for this mapping. Try again.');
+      return;
+    }
+    assignMidiBinding(midiLearnTarget.target, binding);
+    updateMidiStatus(`${midiTargetLabel(midiLearnTarget.target)} mapped to ${formatMidiBinding(binding)}.`);
+    stopMidiLearn();
+    return;
+  }
+
+  if (matchesMidiBinding(midiBindings.record, message) && isMidiButtonPress(message)) {
+    handleRecordButton();
+  }
+  if (matchesMidiBinding(midiBindings.playAll, message) && isMidiButtonPress(message)) {
+    playAllLoops();
+  }
+  if (matchesMidiBinding(midiBindings.stopAll, message) && isMidiButtonPress(message)) {
+    stopAllLoops();
+  }
+
+  for (const loop of loops) {
+    if (matchesMidiBinding(loop.midiToggleBinding, message) && isMidiButtonPress(message)) {
+      loop.playing ? stopLoop(loop) : playLoop(loop);
+    }
+    if (matchesMidiBinding(loop.midiVolumeBinding, message)) {
+      setLoopVolume(loop, scaleMidiValue(message.value, 0, 1.5));
+    }
+  }
+}
+
+function assignMidiBinding(target, binding) {
+  if (target === 'record') midiBindings.record = binding;
+  else if (target === 'play-all') midiBindings.playAll = binding;
+  else if (target === 'stop-all') midiBindings.stopAll = binding;
+  else {
+    const { loop, type } = getLoopTarget(target);
+    if (!loop) return;
+    if (type === 'toggle') loop.midiToggleBinding = binding;
+    if (type === 'volume') loop.midiVolumeBinding = binding;
+  }
+  updateAllMidiBindingLabels();
+}
+
+function clearMidiBinding(target) {
+  if (target === 'record') midiBindings.record = null;
+  else if (target === 'play-all') midiBindings.playAll = null;
+  else if (target === 'stop-all') midiBindings.stopAll = null;
+  else {
+    const { loop, type } = getLoopTarget(target);
+    if (!loop) return;
+    if (type === 'toggle') loop.midiToggleBinding = null;
+    if (type === 'volume') loop.midiVolumeBinding = null;
+  }
+  if (midiLearnTarget && midiLearnTarget.target === target) stopMidiLearn();
+  updateAllMidiBindingLabels();
+}
+
+function getLoopTarget(target) {
+  const match = /^loop-(\d+)-(toggle|volume)$/.exec(target);
+  if (!match) return { loop: null, type: null };
+  return {
+    loop: loops.find((item) => item.id === parseInt(match[1], 10)) || null,
+    type: match[2],
+  };
+}
+
+function isVolumeTarget(target) {
+  return target.endsWith('-volume');
+}
+
+function midiTargetLabel(target) {
+  if (target === 'record') return 'Record toggle';
+  if (target === 'play-all') return 'Play all';
+  if (target === 'stop-all') return 'Stop all';
+  const { loop, type } = getLoopTarget(target);
+  if (!loop) return 'Control';
+  return type === 'toggle' ? `${loop.name} toggle` : `${loop.name} volume`;
+}
+
+function updateAllMidiBindingLabels() {
+  updateMidiBindingLabel('[data-midi-action="record"] .midi-binding-value', midiBindings.record);
+  updateMidiBindingLabel('[data-midi-action="play-all"] .midi-binding-value', midiBindings.playAll);
+  updateMidiBindingLabel('[data-midi-action="stop-all"] .midi-binding-value', midiBindings.stopAll);
+  loops.forEach((loop) => {
+    updateMidiBindingLabel(`#loop-card-${loop.id} [data-midi-binding="toggle"]`, loop.midiToggleBinding);
+    updateMidiBindingLabel(`#loop-card-${loop.id} [data-midi-binding="volume"]`, loop.midiVolumeBinding);
+  });
+}
+
+function updateMidiBindingLabel(selector, binding) {
+  const el = document.querySelector(selector);
+  if (el) el.textContent = formatMidiBinding(binding);
+}
+
+function updateMidiStatus(msg) {
+  midiStatus.textContent = msg;
 }
 
 // ─── Metronome ────────────────────────────────────────────────────────────────
@@ -1045,10 +1249,13 @@ function renderLoop(loop) {
   const faderRow = document.createElement('div');
   faderRow.className = 'loop-faders';
 
+  const volumeFader = makeFader('Vol',   0,    1.5, 0.01, loop.volume,
+    (v) => `${Math.round(v * 100)}%`,
+    (v) => setLoopVolume(loop, v));
+  volumeFader.dataset.fader = 'volume';
+
   faderRow.append(
-    makeFader('Vol',   0,    1.5, 0.01, loop.volume,
-      (v) => `${Math.round(v * 100)}%`,
-      (v) => setLoopVolume(loop, v)),
+    volumeFader,
     makeFader('Pan',  -1,    1,   0.01, loop.pan,
       panText,
       (v) => setLoopPan(loop, v)),
@@ -1057,12 +1264,26 @@ function renderLoop(loop) {
       (v) => setLoopPlaybackRate(loop, v)),
   );
 
+  const midiRow = document.createElement('div');
+  midiRow.className = 'loop-midi';
+  midiRow.innerHTML = `
+    <span class="loop-midi-title">MIDI</span>
+    <span class="midi-binding-value" data-midi-binding="toggle">Unassigned</span>
+    <button class="btn-secondary btn-midi-learn" data-midi-target="loop-${loop.id}-toggle">Learn toggle</button>
+    <button class="btn-secondary btn-midi-clear" data-midi-target="loop-${loop.id}-toggle">Clear</button>
+    <span class="midi-binding-value" data-midi-binding="volume">Unassigned</span>
+    <button class="btn-secondary btn-midi-learn" data-midi-target="loop-${loop.id}-volume">Learn volume</button>
+    <button class="btn-secondary btn-midi-clear" data-midi-target="loop-${loop.id}-volume">Clear</button>
+  `;
+
   card.appendChild(topRow);
   card.appendChild(faderRow);
+  card.appendChild(midiRow);
 
   // Canvas sizing requires the element be in the DOM to measure offsetWidth.
   loopsList.appendChild(card);
   drawWaveform(canvas, loop.audioBuffer);
+  updateAllMidiBindingLabels();
 }
 
 function iconButton(cls, text, title, onClick) {
@@ -1103,6 +1324,17 @@ function makeFader(label, min, max, step, value, formatValue, onInput) {
 
   wrap.append(title, input, valueEl);
   return wrap;
+}
+
+function updateLoopVolumeUI(loop) {
+  const card = document.getElementById(`loop-card-${loop.id}`);
+  if (!card) return;
+  const fader = card.querySelector('[data-fader="volume"]');
+  if (!fader) return;
+  const input = fader.querySelector('input[type="range"]');
+  const valueEl = fader.querySelector('.fader-value');
+  if (input) input.value = String(loop.volume);
+  if (valueEl) valueEl.textContent = `${Math.round(loop.volume * 100)}%`;
 }
 
 function drawWaveform(canvas, audioBuffer) {

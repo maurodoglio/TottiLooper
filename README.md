@@ -18,6 +18,7 @@ them on top of each other – your one-man band for busking starts here.
 - 🎵 **Layer** as many loops as you like, playing simultaneously
 - 🎚️ **Per-loop volume, pan and playback-speed (pitch)** sliders
 - 🎚️ **Master volume** for overall level
+- 🎛️ **Web MIDI learn** for record/play controls, loop toggles, and per-loop volume faders
 - 🔇 **Mute**, **S** Solo, and **⇄ Reverse** toggles on every loop
 - ▶ **Play / Stop** each loop independently or **Play All / Stop All** together
 - 🖊️ **Rename loops** (e.g. "Bass", "Chords", "Beatbox")
@@ -50,7 +51,8 @@ them on top of each other – your one-man band for busking starts here.
 8. Drag **Vol / Pan / Speed** sliders to mix, **S** to solo, **⇄** to reverse.
 9. Record more riffs and stack them up to build your sound.
 10. Use **▶ Play All / ■ Stop All** to control everything at once.
-11. Click **🔗 Share** to copy a URL for a small session, or **⬇ Export** to save the current mix as a WAV file.
+11. Click **Enable MIDI** and use **Learn** if you want to map controller pads, buttons, or faders.
+12. Click **🔗 Share** to copy a URL for a small session, or **⬇ Export** to save the current mix as a WAV file.
 
 Click the **?** button in the top-right corner (or press <kbd>?</kbd>) at any
 time to open the in-app tutorial.
@@ -95,6 +97,7 @@ Requires a browser with support for:
   (including `StereoPannerNode` and `OfflineAudioContext`)
 - [MediaRecorder API](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder)
 - [getUserMedia](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)
+- [Web MIDI API](https://developer.mozilla.org/en-US/docs/Web/API/Web_MIDI_API) for controller mapping
 
 All modern browsers (Chrome 66+, Firefox 57+, Edge 79+, Safari 14.1+) are
 supported.

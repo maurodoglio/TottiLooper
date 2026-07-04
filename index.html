@@ -83,6 +83,37 @@
       <button id="btn-undo" class="btn-secondary" title="Undo delete (Ctrl+Z)" disabled>↶ Undo</button>
     </div>
 
+    <!-- MIDI controls -->
+    <section id="midi-controls" class="panel hidden" aria-labelledby="midi-title">
+      <div class="midi-header">
+        <div>
+          <h2 id="midi-title">MIDI controller</h2>
+          <p id="midi-status">Connect a controller, then click Learn to map pads, buttons, or faders.</p>
+        </div>
+        <button id="btn-enable-midi" class="btn-secondary">Enable MIDI</button>
+      </div>
+      <div class="midi-bindings">
+        <div class="midi-binding-row" data-midi-action="record">
+          <span class="midi-binding-label">Record toggle</span>
+          <span class="midi-binding-value">Unassigned</span>
+          <button class="btn-secondary btn-midi-learn" data-midi-target="record">Learn</button>
+          <button class="btn-secondary btn-midi-clear" data-midi-target="record">Clear</button>
+        </div>
+        <div class="midi-binding-row" data-midi-action="play-all">
+          <span class="midi-binding-label">Play all</span>
+          <span class="midi-binding-value">Unassigned</span>
+          <button class="btn-secondary btn-midi-learn" data-midi-target="play-all">Learn</button>
+          <button class="btn-secondary btn-midi-clear" data-midi-target="play-all">Clear</button>
+        </div>
+        <div class="midi-binding-row" data-midi-action="stop-all">
+          <span class="midi-binding-label">Stop all</span>
+          <span class="midi-binding-value">Unassigned</span>
+          <button class="btn-secondary btn-midi-learn" data-midi-target="stop-all">Learn</button>
+          <button class="btn-secondary btn-midi-clear" data-midi-target="stop-all">Clear</button>
+        </div>
+      </div>
+    </section>
+
     <!-- Loops list -->
     <section id="loops-section">
       <h2>Loops</h2>
@@ -137,6 +168,13 @@
         <li><strong>MIDI click</strong> – optionally export a click-track MIDI file at the current tempo for easy DAW alignment.</li>
         <li><strong>⬇ Export</strong> – render the current mix to a WAV file, and optionally download the matching MIDI click track alongside it.</li>
         <li><strong>🔗 Share</strong> – encode a small session into the page URL so you can send it as a link.</li>
+      </ul>
+
+      <h3>MIDI learn</h3>
+      <ul>
+        <li>Click <strong>Enable MIDI</strong> after plugging in your controller.</li>
+        <li>Use <strong>Learn</strong> on Record / Play All / Stop All, then press a pad or button.</li>
+        <li>Each loop card also has <strong>Learn toggle</strong> and <strong>Learn volume</strong> so you can map pads and faders per loop.</li>
       </ul>
 
       <h3>Keyboard shortcuts</h3>

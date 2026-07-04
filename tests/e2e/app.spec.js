@@ -9,6 +9,34 @@
 
 import { test, expect } from '@playwright/test';
 
+async function installFakeMidi(page) {
+  await page.addInitScript(() => {
+    const input = {
+      id: 'fake-midi-1',
+      name: 'Fake MIDI Controller',
+      manufacturer: 'Playwright',
+      onmidimessage: null,
+    };
+    const access = {
+      inputs: new Map([[input.id, input]]),
+      outputs: new Map(),
+      onstatechange: null,
+      addEventListener(type, handler) {
+        if (type === 'statechange') this.onstatechange = handler;
+      },
+    };
+
+    Object.defineProperty(navigator, 'requestMIDIAccess', {
+      configurable: true,
+      value: async () => access,
+    });
+
+    globalThis.__dispatchMidi = (data) => {
+      input.onmidimessage?.({ data: new Uint8Array(data), target: input });
+    };
+  });
+}
+
 // ─── Initial page state ───────────────────────────────────────────────────────
 
 test.describe('initial state', () => {
@@ -319,6 +347,51 @@ test.describe('loop controls', () => {
     await page.locator('.btn-danger').click();
     await page.keyboard.press('Control+z');
     await expect(page.locator('.loop-card')).toBeVisible();
+  });
+});
+
+// ─── MIDI controls ────────────────────────────────────────────────────────────
+
+test.describe('MIDI controls', () => {
+  test.beforeEach(async ({ page }) => {
+    await installFakeMidi(page);
+    await page.goto('/');
+    await page.click('#btn-request-mic');
+    await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+    await page.click('#btn-enable-midi');
+    await expect(page.locator('#midi-status')).toContainText('Listening to 1 MIDI input');
+  });
+
+  test('can learn a MIDI button for recording', async ({ page }) => {
+    await page.locator('[data-midi-action="record"] .btn-midi-learn').click();
+    await page.evaluate(() => globalThis.__dispatchMidi([0x90, 36, 127]));
+    await expect(page.locator('[data-midi-action="record"] .midi-binding-value')).toHaveText('Note 36 · Ch 1');
+
+    await page.evaluate(() => globalThis.__dispatchMidi([0x90, 36, 127]));
+    await expect(page.locator('#btn-record')).toContainText('STOP');
+  });
+
+  test('can learn a loop toggle and volume control', async ({ page }) => {
+    await page.click('#btn-record');
+    await page.waitForTimeout(600);
+    await page.click('#btn-record');
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+
+    const loopCard = page.locator('.loop-card').first();
+
+    await loopCard.locator('.btn-midi-learn[data-midi-target="loop-1-toggle"]').click();
+    await page.evaluate(() => globalThis.__dispatchMidi([0x90, 40, 127]));
+    await expect(loopCard.locator('[data-midi-binding="toggle"]')).toHaveText('Note 40 · Ch 1');
+
+    await page.evaluate(() => globalThis.__dispatchMidi([0x90, 40, 127]));
+    await expect(loopCard).toHaveClass(/playing/);
+
+    await loopCard.locator('.btn-midi-learn[data-midi-target="loop-1-volume"]').click();
+    await page.evaluate(() => globalThis.__dispatchMidi([0xb0, 7, 64]));
+    await expect(loopCard.locator('[data-midi-binding="volume"]')).toHaveText('CC 7 · Ch 1');
+
+    await page.evaluate(() => globalThis.__dispatchMidi([0xb0, 7, 0]));
+    await expect(loopCard.locator('[data-fader="volume"] input')).toHaveValue('0');
   });
 });
 

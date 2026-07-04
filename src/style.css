@@ -251,6 +251,67 @@ main {
   width: 100%;
 }
 
+/* ── MIDI controls ── */
+#midi-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.midi-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.midi-header h2 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.midi-header p {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.midi-bindings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.midi-binding-row,
+.loop-midi {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.midi-binding-label {
+  color: var(--text);
+  font-size: 0.85rem;
+  min-width: 96px;
+}
+
+.midi-binding-value {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  min-width: 120px;
+  flex: 1;
+}
+
+.btn-secondary.learning {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* ── Buttons ── */
 button {
   cursor: pointer;
@@ -458,6 +519,16 @@ button:disabled {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.loop-midi {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.loop-midi-title {
+  color: var(--text);
+  font-weight: 600;
 }
 
 /* Faders row */
