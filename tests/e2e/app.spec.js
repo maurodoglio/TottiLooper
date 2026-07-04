@@ -45,6 +45,40 @@ test.describe('initial state', () => {
   });
 });
 
+// ─── Theme toggle ──────────────────────────────────────────────────────────────
+
+test.describe('theme toggle', () => {
+  test('defaults to light theme when the system prefers light', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto('/');
+
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect(page.locator('#btn-theme-toggle')).toHaveAttribute('aria-label', 'Switch to dark theme');
+  });
+
+  test('defaults to dark theme when the system prefers dark', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.goto('/');
+
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(page.locator('#btn-theme-toggle')).toHaveAttribute('aria-label', 'Switch to light theme');
+  });
+
+  test('persists the selected theme across reloads', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto('/');
+
+    await page.click('#btn-theme-toggle');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect.poll(async () => page.evaluate(() => localStorage.getItem('tottilooper-theme'))).toBe('dark');
+
+    await page.reload();
+
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(page.locator('#btn-theme-toggle')).toHaveAttribute('aria-label', 'Switch to light theme');
+  });
+});
+
 // ─── Help modal ───────────────────────────────────────────────────────────────
 
 test.describe('help modal', () => {

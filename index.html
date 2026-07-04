@@ -4,11 +4,30 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>TottiLooper</title>
+  <script>
+    (() => {
+      const storageKey = 'tottilooper-theme';
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light';
+
+      try {
+        const savedTheme = localStorage.getItem(storageKey);
+        document.documentElement.dataset.theme =
+          savedTheme === 'dark' || savedTheme === 'light'
+            ? savedTheme
+            : systemTheme;
+      } catch {
+        document.documentElement.dataset.theme = systemTheme;
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="src/style.css" />
 </head>
 <body>
 
   <header>
+    <button id="btn-theme-toggle" class="btn-theme-toggle" title="Switch theme" aria-label="Switch theme"></button>
     <button id="btn-help" class="btn-help" title="Help (press ?)" aria-label="Open help">?</button>
     <h1>🎸 TottiLooper</h1>
     <p>Record riffs, layer them live – your one-man band starts here.</p>

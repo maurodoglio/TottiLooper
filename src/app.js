@@ -25,6 +25,7 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
+const THEME_STORAGE_KEY = 'tottilooper-theme';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -104,6 +105,7 @@ const masterVolumeInput  = $('master-volume');
 const loopsSection       = $('loops-section');
 const loopsList          = $('loops-list');
 const emptyState         = $('empty-state');
+const btnThemeToggle     = $('btn-theme-toggle');
 const btnHelp            = $('btn-help');
 const helpModal          = $('help-modal');
 const helpCloseButton    = $('help-close');
@@ -116,6 +118,7 @@ function init() {
   loopsSection.classList.add('hidden');
   tempoControls.classList.add('hidden');
 
+  btnThemeToggle.addEventListener('click', toggleTheme);
   btnRequestMic.addEventListener('click', requestMicrophoneAccess);
   btnRecord.addEventListener('click', handleRecordButton);
   btnStopRecord.addEventListener('click', discardRecording);
@@ -138,7 +141,68 @@ function init() {
 
   document.addEventListener('keydown', onGlobalKeydown);
 
+  applyTheme(getPreferredTheme());
+  followSystemTheme();
   updateUndoButton();
+}
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+
+function getSavedTheme() {
+  try {
+    const theme = localStorage.getItem(THEME_STORAGE_KEY);
+    return theme === 'dark' || theme === 'light' ? theme : null;
+  } catch {
+    return null;
+  }
+}
+
+function getSystemTheme() {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function getPreferredTheme() {
+  return getSavedTheme() || getSystemTheme();
+}
+
+function applyTheme(theme, persist = false) {
+  document.documentElement.dataset.theme = theme;
+
+  btnThemeToggle.textContent = theme === 'dark' ? '☀️' : '🌙';
+  btnThemeToggle.title = theme === 'dark'
+    ? 'Switch to light theme'
+    : 'Switch to dark theme';
+  btnThemeToggle.setAttribute('aria-label', btnThemeToggle.title);
+  btnThemeToggle.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
+
+  refreshWaveforms();
+
+  if (persist) {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // Ignore storage errors so theme switching still works for the session.
+    }
+  }
+}
+
+function toggleTheme() {
+  applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark', true);
+}
+
+function followSystemTheme() {
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  const onChange = (e) => {
+    if (!getSavedTheme()) {
+      applyTheme(e.matches ? 'dark' : 'light');
+    }
+  };
+
+  if (typeof mediaQuery.addEventListener === 'function') {
+    mediaQuery.addEventListener('change', onChange);
+  } else if (typeof mediaQuery.addListener === 'function') {
+    mediaQuery.addListener(onChange);
+  }
 }
 
 // ─── Microphone access ────────────────────────────────────────────────────────
@@ -866,11 +930,12 @@ function drawWaveform(canvas, audioBuffer) {
 
   const step = Math.max(1, Math.ceil(data.length / w));
   const mid  = h / 2;
+  const styles = getComputedStyle(document.documentElement);
 
-  ctx.fillStyle = '#2a2a2a';
+  ctx.fillStyle = styles.getPropertyValue('--waveform-bg').trim();
   ctx.fillRect(0, 0, w, h);
 
-  ctx.strokeStyle = '#e84040';
+  ctx.strokeStyle = styles.getPropertyValue('--waveform-stroke').trim();
   ctx.lineWidth = 1;
   ctx.beginPath();
 
@@ -885,6 +950,16 @@ function drawWaveform(canvas, audioBuffer) {
     ctx.lineTo(x, mid + max * mid);
   }
   ctx.stroke();
+}
+
+function refreshWaveforms() {
+  for (const loop of loops) {
+    const card = document.getElementById(`loop-card-${loop.id}`);
+    const canvas = card && card.querySelector('canvas');
+    if (canvas) {
+      drawWaveform(canvas, loop.audioBuffer);
+    }
+  }
 }
 
 function updateEmptyState() {

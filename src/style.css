@@ -21,6 +21,37 @@
   --border: #333;
   --radius: 8px;
   --shadow: 0 2px 8px rgba(0,0,0,0.5);
+  --surface-hover: #3a3a3a;
+  --button-neutral: #333;
+  --button-neutral-hover: #444;
+  --danger-hover: rgba(232,64,64,0.15);
+  --modal-overlay: rgba(0, 0, 0, 0.7);
+  --toast-error: #7b1f1f;
+  --toast-info: #2a4a7b;
+  --waveform-bg: #2a2a2a;
+  --waveform-stroke: var(--accent);
+  --solo-text: #222;
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --bg: #f4f6fb;
+  --surface: #ffffff;
+  --surface-raised: #e9edf5;
+  --text: #1f2937;
+  --text-muted: #5f6b7a;
+  --border: #cfd7e3;
+  --shadow: 0 2px 8px rgba(15,23,42,0.12);
+  --surface-hover: #dde4ef;
+  --button-neutral: #dde4ef;
+  --button-neutral-hover: #cfd8e5;
+  --danger-hover: rgba(232,64,64,0.08);
+  --modal-overlay: rgba(15, 23, 42, 0.45);
+  --toast-error: #b64242;
+  --toast-info: #335c99;
+  --waveform-bg: #d9e1ec;
+  --solo-text: #17202c;
+  color-scheme: light;
 }
 
 body {
@@ -70,7 +101,22 @@ header p {
   padding: 0;
 }
 
-.btn-help:hover { background: #3a3a3a; }
+.btn-theme-toggle {
+  position: absolute;
+  top: 32px;
+  left: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 1rem;
+  border: 1px solid var(--border);
+  padding: 0;
+}
+
+.btn-help:hover,
+.btn-theme-toggle:hover { background: var(--surface-hover); }
 
 /* ── Main container ── */
 main {
@@ -255,18 +301,18 @@ button:disabled {
 }
 
 .btn-record.recording {
-  background: #333;
+  background: var(--button-neutral);
   color: var(--accent);
   border: 2px solid var(--accent);
 }
 
 .btn-stop {
-  background: #333;
+  background: var(--button-neutral);
   color: var(--text);
 }
 
 .btn-stop:hover:not(:disabled) {
-  background: #444;
+  background: var(--button-neutral-hover);
 }
 
 .btn-primary {
@@ -285,7 +331,7 @@ button:disabled {
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #3a3a3a;
+  background: var(--surface-hover);
 }
 
 .btn-danger {
@@ -297,7 +343,7 @@ button:disabled {
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: rgba(232,64,64,0.15);
+  background: var(--danger-hover);
 }
 
 .btn-icon {
@@ -314,7 +360,7 @@ button:disabled {
 }
 
 .btn-icon:hover:not(:disabled) {
-  background: #3a3a3a;
+  background: var(--surface-hover);
 }
 
 .btn-icon.active {
@@ -324,7 +370,7 @@ button:disabled {
 
 .btn-icon.btn-solo.active {
   background: var(--amber);
-  color: #222;
+  color: var(--solo-text);
 }
 
 .btn-icon.btn-reverse.active {
@@ -487,7 +533,7 @@ button:disabled {
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  background: #7b1f1f;
+  background: var(--toast-error);
   color: #fff;
   padding: 12px 24px;
   border-radius: var(--radius);
@@ -501,7 +547,7 @@ button:disabled {
 }
 
 #error-toast.info {
-  background: #2a4a7b;
+  background: var(--toast-info);
 }
 
 #error-toast.fade-out {
@@ -512,7 +558,7 @@ button:disabled {
 #help-modal {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--modal-overlay);
   z-index: 200;
   display: flex;
   align-items: flex-start;
@@ -587,4 +633,4 @@ button:disabled {
   border: 1px solid var(--border);
 }
 
-.help-close:hover { background: #3a3a3a; }
+.help-close:hover { background: var(--surface-hover); }
