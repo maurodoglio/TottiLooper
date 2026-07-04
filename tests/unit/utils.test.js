@@ -23,6 +23,7 @@ import {
   clickTrackToMidi,
   getSupportedMimeType,
   effectiveGain,
+  getBeatSeconds,
   applyLoopEdits,
   detectKey,
   areKeysLikelyCompatible,
@@ -546,6 +547,16 @@ describe('getSupportedMimeType', () => {
 
 // ─── quantizeBuffer ───────────────────────────────────────────────────────────
 
+describe('getBeatSeconds', () => {
+  it('returns quarter-note beat length for x/4 signatures', () => {
+    expect(getBeatSeconds(120, 4)).toBeCloseTo(0.5);
+  });
+
+  it('returns eighth-note beat length for x/8 signatures', () => {
+    expect(getBeatSeconds(120, 8)).toBeCloseTo(0.25);
+  });
+});
+
 describe('quantizeBuffer', () => {
   const ctx = makeMockAudioContext();
   const sampleRate = ctx.sampleRate; // 44100
@@ -601,6 +612,18 @@ describe('quantizeBuffer', () => {
     expect(outData[srcLen - 1]).toBeCloseTo(0.5);
     // Tail that was zero-padded should be 0
     expect(outData[srcLen]).toBe(0);
+  });
+
+  it('uses the beat unit when quantizing compound time signatures', () => {
+    const compoundBarSamples = Math.round(1.5 * sampleRate); // 6/8 at 120 BPM = 1.5 s/bar
+    const src = makeBuffer(Math.round(1.6 * sampleRate));
+    const out = quantizeBuffer(src, {
+      bpm,
+      beatsPerBar: 6,
+      beatUnit: 8,
+      audioContext: ctx,
+    });
+    expect(out.length).toBe(compoundBarSamples);
   });
 });
 

@@ -389,14 +389,25 @@ export function shouldWarnAboutKeyClash(newKey, existingKeys) {
 // ─── AudioBuffer utilities ────────────────────────────────────────────────────
 
 /**
+ * Convert BPM into seconds per beat for the selected time-signature denominator.
+ *
+ * @param {number} bpm
+ * @param {number} [beatUnit=4]
+ * @returns {number}
+ */
+export function getBeatSeconds(bpm, beatUnit = 4) {
+  return (60 / bpm) * (4 / beatUnit);
+}
+
+/**
  * Snap a recorded AudioBuffer's length to a whole number of bars.
  *
  * @param {AudioBuffer} buffer
- * @param {{ bpm: number, beatsPerBar: number, audioContext: AudioContext }} opts
+ * @param {{ bpm: number, beatsPerBar: number, beatUnit?: number, audioContext: AudioContext }} opts
  * @returns {AudioBuffer}
  */
-export function quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext }) {
-  const beatSeconds = 60 / bpm;
+export function quantizeBuffer(buffer, { bpm, beatsPerBar, beatUnit = 4, audioContext }) {
+  const beatSeconds = getBeatSeconds(bpm, beatUnit);
   const barSeconds  = beatSeconds * beatsPerBar;
   const numBars     = Math.max(1, Math.round(buffer.duration / barSeconds));
   const targetDur   = numBars * barSeconds;

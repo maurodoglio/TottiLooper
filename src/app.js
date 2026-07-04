@@ -24,6 +24,7 @@ import {
   shouldWarnAboutKeyClash,
   clickTrackToMidi,
   getSupportedMimeType,
+  getBeatSeconds,
   estimateTempo,
   packSharedSession,
   effectiveGain as computeEffectiveGain,
@@ -128,6 +129,7 @@ let monitorLatencyOffsetMs = 0;
 // Tempo / metronome
 let bpm              = DEFAULT_BPM;
 let beatsPerBar      = 4;
+let beatUnit         = 4;
 let metronomeEnabled = false;
 let countInEnabled   = false;
 let quantizeEnabled  = false;
@@ -212,6 +214,7 @@ const drumControls       = $('drum-controls');
 const bpmInput           = $('bpm-input');
 const btnTapTempo        = $('btn-tap-tempo');
 const beatsPerBarInput   = $('beats-per-bar-input');
+const beatUnitInput      = $('beat-unit-input');
 const metronomeSubdivisionInput = $('metronome-subdivision-input');
 const drumStyleSelect    = $('drum-style');
 const btnGenerateDrums   = $('btn-generate-drums');
@@ -353,6 +356,7 @@ function init() {
   bpmInput.addEventListener('change', onBpmChange);
   btnTapTempo.addEventListener('click', onTapTempo);
   beatsPerBarInput.addEventListener('change', onBeatsPerBarChange);
+  beatUnitInput.addEventListener('change', onBeatUnitChange);
   metronomeSubdivisionInput.addEventListener('change', onMetronomeSubdivisionChange);
   metronomeToggle.addEventListener('change', onMetronomeToggle);
   countInToggle.addEventListener('change', (e) => { countInEnabled = e.target.checked; });
@@ -727,7 +731,7 @@ async function beginRecording() {
 
 function doCountIn() {
   return new Promise((resolve) => {
-    const intervalMs = 60000 / bpm;
+    const intervalMs = getBeatIntervalMs();
     let beat = 1;
     setStatus(`Count-in… ${beat}`);
     playClick('downbeat');
@@ -870,7 +874,7 @@ async function onRecordingStop() {
 // ─── Quantize (snap loop length to whole bars) ───────────────────────────────
 
 function quantizeBuffer(buffer) {
-  return _quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext });
+  return _quantizeBuffer(buffer, { bpm, beatsPerBar, beatUnit, audioContext });
 }
 
 function applyPunchInToLoop(loop, takeBuffer, punchIn) {
@@ -1831,6 +1835,23 @@ function onBeatsPerBarChange() {
   if (v > 12) v = 12;
   beatsPerBar = v;
   beatsPerBarInput.value = String(v);
+  if (metronomeEnabled) {
+    stopMetronome();
+    startMetronome();
+  }
+  syncPunchBarInputs();
+  updatePlaybackPosition();
+}
+
+function onBeatUnitChange() {
+  let v = parseInt(beatUnitInput.value, 10);
+  if (![2, 4, 8, 16].includes(v)) v = 4;
+  beatUnit = v;
+  beatUnitInput.value = String(v);
+  if (metronomeEnabled) {
+    stopMetronome();
+    startMetronome();
+  }
   syncPunchBarInputs();
   updatePlaybackPosition();
 }
@@ -1857,7 +1878,7 @@ function startMetronome() {
   metronomeBeatIdx = 0;
   playClick('downbeat');
   metronomeBeatIdx = 1;
-  const intervalMs = 60000 / bpm / metronomeSubdivision;
+  const intervalMs = getBeatIntervalMs() / metronomeSubdivision;
   metronomeInterval = setInterval(() => {
     const isDownbeat = metronomeBeatIdx % subdivisionsPerBar === 0;
     const isBeat = metronomeBeatIdx % metronomeSubdivision === 0;
@@ -1871,6 +1892,10 @@ function stopMetronome() {
     clearInterval(metronomeInterval);
     metronomeInterval = null;
   }
+}
+
+function getBeatIntervalMs() {
+  return getBeatSeconds(bpm, beatUnit) * 1000;
 }
 
 function applyBpmValue(value) {

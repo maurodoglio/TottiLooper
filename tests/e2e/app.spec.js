@@ -235,6 +235,10 @@ test.describe('initial state', () => {
     await expect(page.locator('#beats-per-bar-input')).toHaveValue('4');
   });
 
+  test('beat-unit input defaults to 4', async ({ page }) => {
+    await expect(page.locator('#beat-unit-input')).toHaveValue('4');
+  });
+
   test('metronome subdivision defaults to quarter notes', async ({ page }) => {
     await expect(page.locator('#metronome-subdivision-input')).toHaveValue('1');
   });
@@ -1124,6 +1128,11 @@ test.describe('tempo controls', () => {
   test('metronome toggle can be enabled', async ({ page }) => {
     await page.locator('#metronome-toggle').check();
     await expect(page.locator('#metronome-toggle')).toBeChecked();
+  });
+
+  test('beat unit can be updated via the select', async ({ page }) => {
+    await page.locator('#beat-unit-input').selectOption('8');
+    await expect(page.locator('#beat-unit-input')).toHaveValue('8');
   });
 
   test('metronome subdivision can be set to 8ths', async ({ page }) => {
