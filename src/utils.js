@@ -78,9 +78,27 @@ export function quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext }) {
   const beatSeconds = 60 / bpm;
   const barSeconds  = beatSeconds * beatsPerBar;
   const numBars     = Math.max(1, Math.round(buffer.duration / barSeconds));
-  const targetDur   = numBars * barSeconds;
+  return fitBufferToBars(buffer, { bars: numBars, bpm, beatsPerBar, audioContext });
+}
+
+/**
+ * Resize a recorded AudioBuffer to an exact number of bars by trimming or
+ * zero-padding the tail as needed.
+ *
+ * @param {AudioBuffer} buffer
+ * @param {{ bars: number, bpm: number, beatsPerBar: number, audioContext: AudioContext }} opts
+ * @returns {AudioBuffer}
+ */
+export function fitBufferToBars(buffer, { bars, bpm, beatsPerBar, audioContext }) {
+  const beatSeconds = 60 / bpm;
+  const barSeconds  = beatSeconds * beatsPerBar;
+  const targetDur   = Math.max(1, bars) * barSeconds;
   const targetLen   = Math.round(targetDur * buffer.sampleRate);
 
+  return resizeBuffer(buffer, targetLen, audioContext);
+}
+
+function resizeBuffer(buffer, targetLen, audioContext) {
   const out = audioContext.createBuffer(
     buffer.numberOfChannels,
     targetLen,

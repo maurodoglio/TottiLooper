@@ -13,6 +13,7 @@ import {
   audioBufferToWav,
   getSupportedMimeType,
   effectiveGain,
+  fitBufferToBars,
   quantizeBuffer,
   reverseBuffer,
 } from '../../src/utils.js';
@@ -318,6 +319,46 @@ describe('quantizeBuffer', () => {
     expect(outData[srcLen - 1]).toBeCloseTo(0.5);
     // Tail that was zero-padded should be 0
     expect(outData[srcLen]).toBe(0);
+  });
+});
+
+// ─── fitBufferToBars ──────────────────────────────────────────────────────────
+
+describe('fitBufferToBars', () => {
+  const ctx = makeMockAudioContext();
+  const sampleRate = ctx.sampleRate;
+  const bpm = 120;
+  const beatsPerBar = 4;
+  const barSamples = Math.round(2 * sampleRate);
+
+  function makeBuffer(samples) {
+    const data = new Float32Array(samples);
+    data.fill(0.25);
+    return {
+      numberOfChannels: 1,
+      length: samples,
+      sampleRate,
+      duration: samples / sampleRate,
+      getChannelData: (ch) => (ch === 0 ? data : new Float32Array(samples)),
+    };
+  }
+
+  it('pads a short recording to the requested bar count', () => {
+    const src = makeBuffer(Math.round(1.5 * barSamples));
+    const out = fitBufferToBars(src, { bars: 2, bpm, beatsPerBar, audioContext: ctx });
+    const outData = out.getChannelData(0);
+
+    expect(out.length).toBe(barSamples * 2);
+    expect(outData[src.length - 1]).toBeCloseTo(0.25);
+    expect(outData[src.length]).toBe(0);
+  });
+
+  it('trims a long recording down to the requested bar count', () => {
+    const src = makeBuffer(Math.round(2.5 * barSamples));
+    const out = fitBufferToBars(src, { bars: 2, bpm, beatsPerBar, audioContext: ctx });
+
+    expect(out.length).toBe(barSamples * 2);
+    expect(out.getChannelData(0)[out.length - 1]).toBeCloseTo(0.25);
   });
 });
 

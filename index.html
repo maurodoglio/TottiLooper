@@ -32,6 +32,10 @@
         <span>Beats/bar</span>
         <input id="beats-per-bar-input" type="number" min="1" max="12" value="4" />
       </label>
+      <label class="field">
+        <span>Loop bars</span>
+        <input id="loop-length-bars" type="number" min="1" max="32" placeholder="Manual" inputmode="numeric" />
+      </label>
       <label class="toggle">
         <input id="metronome-toggle" type="checkbox" />
         <span>Metronome</span>
@@ -91,14 +95,14 @@
       <ol>
         <li>Click <strong>🎤 Allow Microphone</strong> and grant permission when prompted.</li>
         <li>Plug in headphones — without them your mic will re-record whatever is already playing back.</li>
-        <li>(Optional) Set your <strong>BPM</strong>, enable <strong>Metronome</strong>, <strong>Count-in</strong> and <strong>Quantize</strong> to keep layered loops locked to a bar.</li>
+        <li>(Optional) Set your <strong>BPM</strong>, choose <strong>Loop bars</strong>, and enable <strong>Metronome</strong>, <strong>Count-in</strong> and <strong>Quantize</strong> to keep layered loops locked to a bar.</li>
       </ol>
 
       <h3>Recording a loop</h3>
       <ol>
         <li>Press <strong>● REC</strong> (or the <kbd>Space</kbd> key) to start. Watch the input meter to make sure your signal is healthy.</li>
         <li>Play your riff.</li>
-        <li>Press <strong>■ STOP</strong> (or <kbd>Space</kbd> again) when finished — the loop appears in the list and is ready to play.</li>
+        <li>Press <strong>■ STOP</strong> (or <kbd>Space</kbd> again) when finished — or let <strong>Loop bars</strong> auto-stop exactly at the chosen bar count.</li>
         <li>Press <strong>■ DISCARD</strong> to abandon the current take without saving it.</li>
       </ol>
 
@@ -134,6 +138,7 @@
       <h3>Tips</h3>
       <ul>
         <li>Enable <strong>Quantize</strong> for tight, bar-aligned layers that never drift.</li>
+        <li>Set <strong>Loop bars</strong> to 1, 2, 4, or more when you want hands-free, bar-perfect takes.</li>
         <li>Use <strong>Count-in</strong> so your first note isn't chopped off.</li>
         <li>Drop <strong>Speed</strong> below 1× for half-time pads, push above 1× for chipmunk leads.</li>
         <li>Use <strong>Pan</strong> to spread rhythm and lead parts across the stereo field — it instantly sounds bigger.</li>

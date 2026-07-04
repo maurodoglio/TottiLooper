@@ -13,6 +13,7 @@ import {
   audioBufferToWav,
   getSupportedMimeType,
   effectiveGain as computeEffectiveGain,
+  fitBufferToBars as _fitBufferToBars,
   quantizeBuffer as _quantizeBuffer,
   reverseBuffer as _reverseBuffer,
 } from './utils.js';
@@ -24,6 +25,8 @@ const METRONOME_VOLUME = 0.3;
 const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
+const MIN_LOOP_LENGTH_BARS = 1;
+const MAX_LOOP_LENGTH_BARS = 32;
 const MAX_UNDO         = 20;
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -36,6 +39,12 @@ let isRecording    = false;
 let timerInterval  = null;
 let recordStartTime = 0;
 let loopCounter    = 0;
+let loopLengthBars = 0;
+let currentRecordingTargetBars = 0;
+let currentRecordingBpm = DEFAULT_BPM;
+let currentRecordingBeatsPerBar = 4;
+let shouldNormalizeToTargetBars = false;
+let recordAutoStopTimeout = null;
 
 let masterGainNode = null;
 let masterVolume   = 1;
@@ -85,6 +94,7 @@ const btnRequestMic      = $('btn-request-mic');
 const tempoControls      = $('tempo-controls');
 const bpmInput           = $('bpm-input');
 const beatsPerBarInput   = $('beats-per-bar-input');
+const loopLengthBarsInput = $('loop-length-bars');
 const metronomeToggle    = $('metronome-toggle');
 const countInToggle      = $('count-in-toggle');
 const quantizeToggle     = $('quantize-toggle');
@@ -128,6 +138,7 @@ function init() {
 
   bpmInput.addEventListener('change', onBpmChange);
   beatsPerBarInput.addEventListener('change', onBeatsPerBarChange);
+  loopLengthBarsInput.addEventListener('change', onLoopLengthBarsChange);
   metronomeToggle.addEventListener('change', onMetronomeToggle);
   countInToggle.addEventListener('change', (e) => { countInEnabled = e.target.checked; });
   quantizeToggle.addEventListener('change', (e) => { quantizeEnabled = e.target.checked; });
@@ -251,19 +262,30 @@ function startRecording() {
   mediaRecorder.onstop = onRecordingStop;
   mediaRecorder.start(100);
 
+  currentRecordingTargetBars = loopLengthBars;
+  currentRecordingBpm = bpm;
+  currentRecordingBeatsPerBar = beatsPerBar;
+  shouldNormalizeToTargetBars = false;
   isRecording = true;
   recordStartTime = Date.now();
+  scheduleRecordingAutoStop();
 
   btnRecord.textContent = '■ STOP';
   btnRecord.classList.add('recording');
   btnStopRecord.disabled = false;
+  loopLengthBarsInput.disabled = true;
   statusDot.classList.add('recording');
-  setStatus('Recording…');
+  setStatus(
+    currentRecordingTargetBars > 0
+      ? `Recording… auto-stop at ${formatBars(currentRecordingTargetBars)}.`
+      : 'Recording…',
+  );
   startTimer();
 }
 
 function stopRecording() {
   if (!isRecording || !mediaRecorder) return;
+  clearRecordingAutoStop();
   mediaRecorder.stop();
   isRecording = false;
   clearInterval(timerInterval);
@@ -271,21 +293,25 @@ function stopRecording() {
   btnRecord.textContent = '● REC';
   btnRecord.classList.remove('recording');
   btnStopRecord.disabled = true;
+  loopLengthBarsInput.disabled = false;
   statusDot.classList.remove('recording');
   setStatus('Processing loop…');
 }
 
 function discardRecording() {
   if (!isRecording || !mediaRecorder) return;
+  clearRecordingAutoStop();
   mediaRecorder.onstop = null;
   try { mediaRecorder.stop(); } catch { /* ignore */ }
   recordedChunks = [];
   isRecording = false;
   clearInterval(timerInterval);
+  resetRecordingTarget();
 
   btnRecord.textContent = '● REC';
   btnRecord.classList.remove('recording');
   btnStopRecord.disabled = true;
+  loopLengthBarsInput.disabled = false;
   statusDot.classList.remove('recording');
   resetTimer();
   setStatus('Recording discarded. Press ● REC to try again.');
@@ -299,7 +325,9 @@ async function onRecordingStop() {
   try {
     const arrayBuffer = await blob.arrayBuffer();
     let audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    if (quantizeEnabled) {
+    if (shouldNormalizeToTargetBars && currentRecordingTargetBars > 0) {
+      audioBuffer = fitBufferToBars(audioBuffer, currentRecordingTargetBars);
+    } else if (quantizeEnabled) {
       audioBuffer = quantizeBuffer(audioBuffer);
     }
     addLoop(audioBuffer);
@@ -309,6 +337,7 @@ async function onRecordingStop() {
     console.error('decodeAudioData error:', err);
     setStatus('Ready. Press ● REC to start recording.');
   }
+  resetRecordingTarget();
   resetTimer();
 }
 
@@ -316,6 +345,15 @@ async function onRecordingStop() {
 
 function quantizeBuffer(buffer) {
   return _quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext });
+}
+
+function fitBufferToBars(buffer, bars) {
+  return _fitBufferToBars(buffer, {
+    bars,
+    bpm: currentRecordingBpm,
+    beatsPerBar: currentRecordingBeatsPerBar,
+    audioContext,
+  });
 }
 
 // ─── Loop management ──────────────────────────────────────────────────────────
@@ -597,6 +635,20 @@ function onBeatsPerBarChange() {
   if (v > 12) v = 12;
   beatsPerBar = v;
   beatsPerBarInput.value = String(v);
+}
+
+function onLoopLengthBarsChange() {
+  const raw = loopLengthBarsInput.value.trim();
+  if (raw === '') {
+    loopLengthBars = 0;
+    return;
+  }
+
+  let v = parseInt(raw, 10);
+  if (isNaN(v)) v = 0;
+  v = Math.max(MIN_LOOP_LENGTH_BARS, Math.min(MAX_LOOP_LENGTH_BARS, v));
+  loopLengthBars = v;
+  loopLengthBarsInput.value = String(v);
 }
 
 function onMetronomeToggle(e) {
@@ -964,6 +1016,36 @@ function closeHelp() { helpModal.classList.add('hidden'); }
 
 function setStatus(msg) {
   statusText.textContent = msg;
+}
+
+function scheduleRecordingAutoStop() {
+  clearRecordingAutoStop();
+  if (currentRecordingTargetBars < 1) return;
+
+  const durationMs = currentRecordingTargetBars * currentRecordingBeatsPerBar * (60000 / currentRecordingBpm);
+  recordAutoStopTimeout = setTimeout(() => {
+    recordAutoStopTimeout = null;
+    shouldNormalizeToTargetBars = true;
+    stopRecording();
+  }, durationMs);
+}
+
+function clearRecordingAutoStop() {
+  if (recordAutoStopTimeout) {
+    clearTimeout(recordAutoStopTimeout);
+    recordAutoStopTimeout = null;
+  }
+}
+
+function resetRecordingTarget() {
+  currentRecordingTargetBars = 0;
+  currentRecordingBpm = bpm;
+  currentRecordingBeatsPerBar = beatsPerBar;
+  shouldNormalizeToTargetBars = false;
+}
+
+function formatBars(bars) {
+  return `${bars} bar${bars === 1 ? '' : 's'}`;
 }
 
 let toastTimeout = null;

@@ -9,6 +9,7 @@ them on top of each other – your one-man band for busking starts here.
 - 🎤 **Record** audio loops directly from your microphone
 - 📈 **Input level meter** so you can set a healthy recording level
 - 🥁 **Built-in metronome** with adjustable **BPM** and **beats-per-bar**
+- 📏 **Pre-set loop length in bars** with hands-free auto-stop at the bar boundary
 - ⏱️ **Count-in** before recording so your first note isn't clipped
 - 📐 **Quantize** recorded loops to whole bars for perfectly aligned layers
 - ⏱️ **Live recording timer** + one-click **Discard**
@@ -37,8 +38,8 @@ them on top of each other – your one-man band for busking starts here.
 
 1. Open `index.html` in a modern browser (Chrome, Firefox, Edge, Safari 14+).
 2. Click **🎤 Allow Microphone** and grant permission when prompted.
-3. (Optional) Set your **BPM**, then enable **Metronome**, **Count-in** and
-   **Quantize** if you want bar-locked loops.
+3. (Optional) Set your **BPM** and **Loop bars**, then enable **Metronome**,
+   **Count-in** and **Quantize** if you want bar-locked loops.
 4. Click **● REC** (or press <kbd>Space</kbd>) to start recording a riff.
 5. Click **■ STOP** (or press <kbd>Space</kbd> again) when you're done – the
    loop is saved automatically and appears in the list.
