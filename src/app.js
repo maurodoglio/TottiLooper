@@ -308,7 +308,9 @@ async function onRecordingStop() {
   try {
     const arrayBuffer = await blob.arrayBuffer();
     let audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    maybeSuggestTempo(audioBuffer);
+    if (loops.length === 0 && !firstLoopTempoHandled) {
+      maybeSuggestTempo(audioBuffer);
+    }
     if (quantizeEnabled) {
       audioBuffer = quantizeBuffer(audioBuffer);
     }
@@ -363,8 +365,6 @@ function effectiveGain(loop) {
 }
 
 function maybeSuggestTempo(audioBuffer) {
-  if (loops.length !== 0 || firstLoopTempoHandled) return;
-
   firstLoopTempoHandled = true;
   const detectedBpm = estimateTempo(audioBuffer, { minBpm: MIN_BPM, maxBpm: MAX_BPM });
   if (!detectedBpm) return;
@@ -661,7 +661,7 @@ function applyBpmValue(value) {
 function acceptDetectedTempo() {
   if (pendingDetectedBpm === null) return;
   const detectedBpm = pendingDetectedBpm;
-  applyBpmValue(detectedBpm);
+  applyBpmValue(String(detectedBpm));
   hideTempoSuggestion();
   setStatus(`Session tempo set to ${detectedBpm} BPM from your first loop.`);
 }

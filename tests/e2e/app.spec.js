@@ -340,7 +340,7 @@ test('detected BPM from the first loop can be accepted', async ({ page }) => {
   await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
 
   await page.click('#btn-record');
-  await page.waitForTimeout(600);
+  await expect(page.locator('#record-timer')).toHaveText('0:01', { timeout: 3000 });
   await page.click('#btn-record');
 
   await expect(page.locator('#tempo-suggestion')).toBeVisible({ timeout: 8000 });
