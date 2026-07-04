@@ -42,6 +42,7 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
+const THEME_STORAGE_KEY = 'tottilooper-theme';
 const GAMEPAD_RECORD_BUTTON = 0;
 const GAMEPAD_PLAY_BUTTON   = 1;
 const GAMEPAD_STOP_BUTTON   = 2;
@@ -161,6 +162,9 @@ const btnEnableMidi      = $('btn-enable-midi');
 const loopsSection       = $('loops-section');
 const loopsList          = $('loops-list');
 const emptyState         = $('empty-state');
+const btnThemeToggle     = $('btn-theme-toggle');
+const themeToggleIcon    = btnThemeToggle.querySelector('.theme-toggle-icon');
+const themeToggleLabel   = btnThemeToggle.querySelector('.theme-toggle-label');
 const btnHelp            = $('btn-help');
 const helpModal          = $('help-modal');
 const helpCloseButton    = $('help-close');
@@ -199,6 +203,7 @@ function init() {
   loopsSection.classList.add('hidden');
   tempoControls.classList.add('hidden');
 
+  btnThemeToggle.addEventListener('click', toggleTheme);
   btnRequestMic.addEventListener('click', requestMicrophoneAccess);
   inputDeviceSelect.addEventListener('change', onInputDeviceChange);
   inputChannelSelect.addEventListener('change', onInputChannelChange);
@@ -233,11 +238,73 @@ function init() {
   document.addEventListener('keydown', onGlobalKeydown);
   startGamepadPolling();
 
+  applyTheme(getPreferredTheme());
+  followSystemTheme();
   updateMidiStatus('Connect a controller, then click Learn to map pads, buttons, or faders.');
   updateAllMidiBindingLabels();
   syncMonitoringControls();
   updateUndoButton();
   void restoreSharedSessionFromUrl();
+}
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+
+function getSavedTheme() {
+  try {
+    const theme = localStorage.getItem(THEME_STORAGE_KEY);
+    return theme === 'dark' || theme === 'light' ? theme : null;
+  } catch {
+    return null;
+  }
+}
+
+function getSystemTheme() {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function getPreferredTheme() {
+  return getSavedTheme() || getSystemTheme();
+}
+
+function applyTheme(theme, persist = false) {
+  const currentTheme = theme === 'dark' ? 'dark' : 'light';
+  const toggleLabel = currentTheme === 'dark'
+    ? 'Switch to light theme'
+    : 'Switch to dark theme';
+
+  document.documentElement.dataset.theme = currentTheme;
+  themeToggleIcon.textContent = currentTheme === 'dark' ? '☀️' : '🌙';
+  themeToggleLabel.textContent = toggleLabel;
+  btnThemeToggle.title = toggleLabel;
+  btnThemeToggle.setAttribute('aria-label', toggleLabel);
+
+  refreshWaveforms();
+
+  if (persist) {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, currentTheme);
+    } catch {
+      // Ignore storage errors so theme switching still works for the session.
+    }
+  }
+}
+
+function toggleTheme() {
+  const currentTheme = document.documentElement.dataset.theme === 'dark'
+    ? 'dark'
+    : document.documentElement.dataset.theme === 'light'
+      ? 'light'
+      : getPreferredTheme();
+  applyTheme(currentTheme === 'dark' ? 'light' : 'dark', true);
+}
+
+function followSystemTheme() {
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  mediaQuery.addEventListener('change', (e) => {
+    if (!getSavedTheme()) {
+      applyTheme(e.matches ? 'dark' : 'light');
+    }
+  });
 }
 
 // ─── Microphone access ────────────────────────────────────────────────────────
@@ -1532,11 +1599,12 @@ function drawWaveform(canvas, audioBuffer) {
 
   const step = Math.max(1, Math.ceil(data.length / w));
   const mid  = h / 2;
+  const styles = getComputedStyle(document.documentElement);
 
-  ctx.fillStyle = '#2a2a2a';
+  ctx.fillStyle = styles.getPropertyValue('--waveform-bg').trim();
   ctx.fillRect(0, 0, w, h);
 
-  ctx.strokeStyle = '#e84040';
+  ctx.strokeStyle = styles.getPropertyValue('--waveform-stroke').trim();
   ctx.lineWidth = 1;
   ctx.beginPath();
 
@@ -1551,6 +1619,16 @@ function drawWaveform(canvas, audioBuffer) {
     ctx.lineTo(x, mid + max * mid);
   }
   ctx.stroke();
+}
+
+function refreshWaveforms() {
+  for (const loop of loops) {
+    const card = document.getElementById(`loop-card-${loop.id}`);
+    const canvas = card && card.querySelector('canvas');
+    if (canvas) {
+      drawWaveform(canvas, loop.audioBuffer);
+    }
+  }
 }
 
 function updateEmptyState() {
