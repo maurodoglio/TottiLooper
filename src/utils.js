@@ -52,7 +52,8 @@ export function getSupportedMimeType() {
 
 /**
  * Compute the effective output gain for a loop, accounting for mute, solo,
- * per-loop volume, and optional lead-loop ducking.
+ * per-loop volume, and optional lead-loop ducking (reducing non-lead loops
+ * while the lead loop is currently playing).
  *
  * @param {{ id?: number, muted: boolean, soloed: boolean, volume: number }} loop
  * @param {Array<{ id?: number, soloed: boolean, playing?: boolean }>} loops - the complete list of loops

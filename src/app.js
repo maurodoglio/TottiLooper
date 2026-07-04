@@ -25,7 +25,7 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
-const DUCK_GAIN        = 0.35;
+const DUCK_GAIN        = 0.35; // Non-lead loops play at 35% volume when the lead is playing.
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -378,6 +378,7 @@ function refreshLeadUi() {
 }
 
 function toggleLead(loop) {
+  // Clicking the active lead clears lead mode; otherwise this loop becomes lead.
   leadLoopId = isLeadLoop(loop) ? null : loop.id;
   refreshLeadUi();
   refreshAllGains();
