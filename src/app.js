@@ -173,7 +173,6 @@ function applyTheme(theme, persist = false) {
     ? 'Switch to light theme'
     : 'Switch to dark theme';
   btnThemeToggle.setAttribute('aria-label', btnThemeToggle.title);
-  btnThemeToggle.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
 
   refreshWaveforms();
 
@@ -192,17 +191,11 @@ function toggleTheme() {
 
 function followSystemTheme() {
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-  const onChange = (e) => {
+  mediaQuery.addEventListener('change', (e) => {
     if (!getSavedTheme()) {
       applyTheme(e.matches ? 'dark' : 'light');
     }
-  };
-
-  if (typeof mediaQuery.addEventListener === 'function') {
-    mediaQuery.addEventListener('change', onChange);
-  } else if (typeof mediaQuery.addListener === 'function') {
-    mediaQuery.addListener(onChange);
-  }
+  });
 }
 
 // ─── Microphone access ────────────────────────────────────────────────────────
