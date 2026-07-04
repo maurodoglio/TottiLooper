@@ -333,12 +333,12 @@ function quantizeBuffer(buffer) {
 
 // ─── Loop management ──────────────────────────────────────────────────────────
 
-function addLoop(audioBuffer) {
+function addLoop(audioBuffer, name = null) {
   loopCounter++;
   /** @type {Loop} */
   const loop = {
     id: loopCounter,
-    name: `Loop ${loopCounter}`,
+    name: name || `Loop ${loopCounter}`,
     audioBuffer,
     reversedBuffer: null,
     duration: audioBuffer.duration,
@@ -356,7 +356,6 @@ function addLoop(audioBuffer) {
   loops.push(loop);
   renderLoop(loop);
   updateEmptyState();
-  return loop;
 }
 
 /** Effective gain for a loop accounting for mute/solo/volume. */
@@ -698,11 +697,7 @@ async function generateDrumLoop() {
 
     const { audioBuffer, plan } = await renderDrumLoop(drumStyleSelect.value);
     const label = getDrumStyleLabel(plan.style);
-    const loop = addLoop(audioBuffer);
-    renameLoop(loop, `${label} Drums · ${bpm} BPM`);
-    const card = document.getElementById(`loop-card-${loop.id}`);
-    const nameInput = card && card.querySelector('.loop-name');
-    if (nameInput) nameInput.value = loop.name;
+    addLoop(audioBuffer, `${label} Drums · ${bpm} BPM`);
     setStatus(`${label} drum loop added.`);
   } catch (err) {
     showError('Could not generate drums: ' + err.message);
