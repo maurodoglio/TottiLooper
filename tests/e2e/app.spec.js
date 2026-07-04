@@ -293,7 +293,7 @@ test.describe('loop controls', () => {
     await page.click('#btn-clear-all');
 
     await expect(page.locator('.loop-card')).toHaveCount(2);
-    expect(dialogMessage).toContain('Clear all 2 loops?');
+    expect(dialogMessage).toBe('Clear all 2 loops? This will remove them from your current session.');
   });
 
   test('clear all removes every loop and can be undone', async ({ page }) => {

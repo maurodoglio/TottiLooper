@@ -495,7 +495,7 @@ function redoDelete() {
 
 function clearAllLoops() {
   if (loops.length === 0) return;
-  const confirmed = window.confirm(`Clear all ${loops.length} loops? This will remove the current session.`);
+  const confirmed = window.confirm(getClearAllConfirmationMessage(loops.length));
   if (!confirmed) return;
 
   const action = {
@@ -504,7 +504,7 @@ function clearAllLoops() {
   };
   applyDeleteAction(action);
   rememberUndoAction(action);
-  showInfo(`Cleared all loops – press ↶ Undo (or Ctrl+Z) to restore ${describeAction(action)}.`);
+  showInfo(`Cleared all ${formatLoopCount(action.loops.length)} – press ↶ Undo (or Ctrl+Z) to restore ${action.loops.length === 1 ? 'it' : 'them'}.`);
 }
 
 function rememberUndoAction(action) {
@@ -527,10 +527,12 @@ function applyDeleteAction(action) {
 
 function restoreDeleteAction(action) {
   const entries = [...action.loops].sort((a, b) => a.index - b.index);
+  const existingIds = new Set(loops.map(loop => loop.id));
   for (const { loop, index } of entries) {
     resetLoopPlaybackState(loop);
-    if (loops.some(existing => existing.id === loop.id)) continue;
+    if (existingIds.has(loop.id)) continue;
     loops.splice(Math.min(index, loops.length), 0, loop);
+    existingIds.add(loop.id);
   }
   renderAllLoops();
 }
@@ -551,7 +553,16 @@ function renderAllLoops() {
 
 function describeAction(action) {
   if (action.loops.length === 1) return `"${action.loops[0].loop.name}"`;
-  return `${action.loops.length} loops`;
+  return formatLoopCount(action.loops.length);
+}
+
+function formatLoopCount(count) {
+  return `${count} loop${count === 1 ? '' : 's'}`;
+}
+
+function getClearAllConfirmationMessage(count) {
+  if (count === 1) return 'Clear the only loop? This will remove it from your current session.';
+  return `Clear all ${count} loops? This will remove them from your current session.`;
 }
 
 function updateHistoryButtons() {
@@ -996,13 +1007,10 @@ function onGlobalKeydown(e) {
 
   if (!audioContext) return;
 
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
-    e.preventDefault();
-    redoDelete();
-    return;
-  }
-
-  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+  if (
+    (((e.ctrlKey || e.metaKey) && e.shiftKey) && (e.key === 'z' || e.key === 'Z'))
+    || ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y'))
+  ) {
     e.preventDefault();
     redoDelete();
     return;
