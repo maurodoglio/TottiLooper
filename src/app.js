@@ -26,6 +26,8 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
+// Wait a few fade time-constants before restarting playback so the old source
+// has decayed enough to avoid an audible click or doubled attack.
 const FADE_SETTLE_MULTIPLIER = 6;
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -332,6 +334,8 @@ async function onRecordingStop() {
       audioBuffer = quantizeBuffer(audioBuffer);
     }
     if (punchIn) {
+      // Punch-in uses an explicit target bar range, so preserve the take as
+      // recorded instead of re-quantizing it to a fresh loop length.
       applyPunchInToLoop(punchIn.loop, audioBuffer, punchIn);
       setStatus(`Punch-in applied to "${punchIn.loop.name}" (bars ${punchIn.startBar}-${punchIn.endBar}).`);
     } else {
@@ -771,8 +775,16 @@ function getLoopBarCount(loop) {
 }
 
 function clampBar(value, min, max) {
-  if (isNaN(value)) return min;
-  return Math.max(min, Math.min(max, value));
+  const numericValue = typeof value === 'number' ? value : parseInt(value, 10);
+  if (Number.isNaN(numericValue)) return min;
+  return Math.max(min, Math.min(max, numericValue));
+}
+
+function getPunchBarRange(loop) {
+  const totalBars = getLoopBarCount(loop);
+  const startBar = clampBar(punchStartBarInput.value, 1, totalBars);
+  const endBar = clampBar(punchEndBarInput.value, startBar, totalBars);
+  return { totalBars, startBar, endBar };
 }
 
 function refreshPunchLoopOptions() {
@@ -817,9 +829,7 @@ function syncPunchBarInputs() {
     return;
   }
 
-  const totalBars = getLoopBarCount(loop);
-  const startBar = clampBar(parseInt(punchStartBarInput.value, 10), 1, totalBars);
-  const endBar = clampBar(parseInt(punchEndBarInput.value, 10), startBar, totalBars);
+  const { totalBars, startBar, endBar } = getPunchBarRange(loop);
   punchStartBarInput.max = String(totalBars);
   punchEndBarInput.max = String(totalBars);
   punchStartBarInput.value = String(startBar);
@@ -832,9 +842,7 @@ function getSelectedPunchIn() {
   const loop = loops.find(item => String(item.id) === punchLoopSelect.value) || loops[0];
   if (!loop) return null;
 
-  const totalBars = getLoopBarCount(loop);
-  const startBar = clampBar(parseInt(punchStartBarInput.value, 10), 1, totalBars);
-  const endBar = clampBar(parseInt(punchEndBarInput.value, 10), startBar, totalBars);
+  const { startBar, endBar } = getPunchBarRange(loop);
   punchStartBarInput.value = String(startBar);
   punchEndBarInput.value = String(endBar);
 

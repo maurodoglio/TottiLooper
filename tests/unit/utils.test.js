@@ -11,11 +11,11 @@ import {
   panText,
   writeString,
   audioBufferToWav,
+  applyPunchIn,
   getSupportedMimeType,
   effectiveGain,
   quantizeBuffer,
   reverseBuffer,
-  applyPunchIn,
 } from '../../src/utils.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

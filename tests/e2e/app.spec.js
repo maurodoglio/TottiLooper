@@ -254,7 +254,7 @@ test.describe('loop controls', () => {
 
   test('punch-in overdubs a selected bar range without creating another loop', async ({ page }) => {
     const punchBpm = 240;
-    const punchBarMs = (60000 / punchBpm) * 4;
+    const punchBarDurationMs = (60000 / punchBpm) * 4;
     const processingBufferMs = 500;
 
     await page.locator('#bpm-input').fill('240');
@@ -263,7 +263,7 @@ test.describe('loop controls', () => {
     await expect(page.locator('#punch-loop-select')).toBeEnabled();
     await page.click('#btn-record');
     await expect(page.locator('#btn-record')).toContainText('STOP');
-    await page.waitForTimeout(punchBarMs + processingBufferMs);
+    await page.waitForTimeout(punchBarDurationMs + processingBufferMs);
     await expect(page.locator('#btn-record')).toContainText('REC');
     await expect(page.locator('.loop-card')).toHaveCount(1);
     await expect(page.locator('#status-text')).toContainText('Punch-in applied');
