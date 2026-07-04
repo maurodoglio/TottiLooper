@@ -69,6 +69,7 @@ const MAX_LOOP_LENGTH_BARS = 32;
 const TAP_TEMPO_TIMEOUT_MS = 2000;
 const TAP_TEMPO_MAX_TAPS = 8;
 const MAX_UNDO         = 20;
+const MAX_SCENES       = 9;
 const DUCK_GAIN        = 0.35; // Non-lead loops play at 35% volume when the lead is playing.
 // Wait a few fade time-constants before restarting playback so the old source
 // has decayed enough to avoid an audible click or doubled attack.
@@ -167,6 +168,10 @@ const gamepadButtonStates = new Map();
 // Undo / redo history for delete-style actions
 const undoStack = [];
 const redoStack = [];
+
+// Scene snapshots (setlist)
+const scenes = Array.from({ length: MAX_SCENES }, () => ({ name: '', snapshot: null }));
+let activeSceneIndex = -1;
 
 /**
  * @typedef {Object} Loop
@@ -277,6 +282,8 @@ const btnUndo            = $('btn-undo');
 const btnRedo            = $('btn-redo');
 const btnClearAll        = $('btn-clear-all');
 const masterVolumeInput  = $('master-volume');
+const scenesSection      = $('scenes-section');
+const scenesList         = $('scenes-list');
 const playbackPosition   = $('playback-position');
 const midiControls       = $('midi-controls');
 const midiStatus         = $('midi-status');
@@ -351,6 +358,7 @@ function init() {
   inputControls.classList.add('hidden');
   recordControls.classList.add('hidden');
   masterControls.classList.add('hidden');
+  scenesSection.classList.add('hidden');
   midiControls.classList.add('hidden');
   loopsSection.classList.add('hidden');
   tempoControls.classList.add('hidden');
@@ -418,6 +426,8 @@ function init() {
   updateAllMidiBindingLabels();
   syncMonitoringControls();
   updateHistoryButtons();
+  renderSceneSlots();
+  refreshSceneButtons();
   void restoreSharedSessionFromUrl();
 }
 
@@ -496,6 +506,7 @@ async function requestMicrophoneAccess() {
     drumControls.classList.remove('hidden');
     recordControls.classList.remove('hidden');
     masterControls.classList.remove('hidden');
+    scenesSection.classList.remove('hidden');
     midiControls.classList.remove('hidden');
     loopsSection.classList.remove('hidden');
     updatePlaybackPosition();
@@ -1010,6 +1021,7 @@ function addLoop(audioBuffer, options = {}) {
   updateEmptyState();
   refreshPunchLoopOptions();
   updateHistoryButtons();
+  refreshSceneButtons();
 }
 
 async function addBuiltinSample(sample) {
@@ -1439,6 +1451,7 @@ function deleteLoop(loopId) {
   };
   applyDeleteAction(action);
   rememberUndoAction(action);
+  refreshSceneButtons();
   refreshAllGains();
   refreshPunchLoopOptions();
   showInfo(`Deleted "${loop.name}" – press ↶ Undo (or Ctrl+Z) to restore.`);
@@ -1547,35 +1560,85 @@ function updateHistoryButtons() {
   btnClearAll.disabled = loops.length === 0;
 }
 
-function toggleMute(loop) {
-  loop.muted = !loop.muted;
-  const card = document.getElementById(`loop-card-${loop.id}`);
-  if (card) {
-    card.classList.toggle('muted', loop.muted);
-    const btn = card.querySelector('.btn-mute');
-    if (btn) {
-      btn.textContent = loop.muted ? '🔇' : '🔊';
-      btn.title = loop.muted ? 'Unmute' : 'Mute';
-      btn.setAttribute('aria-label', loop.muted ? 'Unmute loop' : 'Mute loop');
-      btn.classList.toggle('active', loop.muted);
-      btn.setAttribute('aria-pressed', loop.muted ? 'true' : 'false');
-    }
+function getLoopCard(loop) {
+  return document.getElementById(`loop-card-${loop.id}`);
+}
+
+function syncLoopFader(card, key, value, text) {
+  if (!card) return;
+  const fader = card.querySelector(`[data-fader="${key}"]`);
+  if (!fader) return;
+  const input = fader.querySelector('input');
+  const valueEl = fader.querySelector('.fader-value');
+  if (input) input.value = String(value);
+  if (valueEl) valueEl.textContent = text;
+}
+
+function syncLoopCardState(loop) {
+  const card = getLoopCard(loop);
+  if (!card) return;
+
+  card.classList.toggle('playing', loop.playing);
+  card.classList.toggle('muted', loop.muted);
+  card.classList.toggle('soloed', loop.soloed);
+
+  const nameInput = card.querySelector('.loop-name');
+  if (nameInput && nameInput !== document.activeElement) {
+    nameInput.value = loop.name;
   }
+
+  const btnPlay = card.querySelector('.btn-play');
+  if (btnPlay) {
+    btnPlay.textContent = loop.playing ? '⏹' : '▶';
+    btnPlay.classList.toggle('active', loop.playing);
+    btnPlay.title = loop.playing ? 'Stop loop' : 'Play loop';
+    btnPlay.setAttribute('aria-label', loop.playing ? 'Stop loop' : 'Play loop');
+  }
+
+  const btnMute = card.querySelector('.btn-mute');
+  if (btnMute) {
+    btnMute.textContent = loop.muted ? '🔇' : '🔊';
+    btnMute.title = loop.muted ? 'Unmute' : 'Mute';
+    btnMute.setAttribute('aria-label', loop.muted ? 'Unmute loop' : 'Mute loop');
+    btnMute.classList.toggle('active', loop.muted);
+    btnMute.setAttribute('aria-pressed', loop.muted ? 'true' : 'false');
+  }
+
+  const btnSolo = card.querySelector('.btn-solo');
+  if (btnSolo) {
+    btnSolo.classList.toggle('active', loop.soloed);
+    btnSolo.setAttribute('aria-pressed', loop.soloed ? 'true' : 'false');
+  }
+
+  const btnReverse = card.querySelector('.btn-reverse');
+  if (btnReverse) {
+    btnReverse.classList.toggle('active', loop.reversed);
+    btnReverse.setAttribute('aria-pressed', loop.reversed ? 'true' : 'false');
+  }
+
+  syncLoopFader(card, 'volume', loop.volume, `${Math.round(loop.volume * 100)}%`);
+  syncLoopFader(card, 'pan', loop.pan, panText(loop.pan));
+  syncLoopFader(card, 'speed', loop.playbackRate, `${loop.playbackRate.toFixed(2)}×`);
+}
+
+function setLoopMuted(loop, muted) {
+  loop.muted = muted;
+  syncLoopCardState(loop);
+  refreshAllGains();
+}
+
+function toggleMute(loop) {
+  setLoopMuted(loop, !loop.muted);
+}
+
+function setLoopSoloed(loop, soloed) {
+  loop.soloed = soloed;
+  syncLoopCardState(loop);
   refreshAllGains();
 }
 
 function toggleSolo(loop) {
-  loop.soloed = !loop.soloed;
-  const card = document.getElementById(`loop-card-${loop.id}`);
-  if (card) {
-    card.classList.toggle('soloed', loop.soloed);
-    const btn = card.querySelector('.btn-solo');
-    if (btn) {
-      btn.classList.toggle('active', loop.soloed);
-      btn.setAttribute('aria-pressed', loop.soloed ? 'true' : 'false');
-    }
-  }
-  refreshAllGains();
+  setLoopSoloed(loop, !loop.soloed);
 }
 
 function setLoopVolume(loop, value) {
@@ -1601,6 +1664,7 @@ function setLoopEq(loop, band, value) {
   if (filterNode) {
     filterNode.gain.setTargetAtTime(value, audioContext.currentTime, PARAM_TRANSITION);
   }
+  syncLoopCardState(loop);
 }
 
 function setLoopPlaybackRate(loop, value) {
@@ -1665,17 +1729,20 @@ function setLoopPitch(loop, value) {
   restartLoopPlayback(loop);
 }
 
-function toggleReverse(loop) {
-  loop.reversed = !loop.reversed;
-  restartLoopPlayback(loop);
-  const card = document.getElementById(`loop-card-${loop.id}`);
-  if (card) {
-    const btn = card.querySelector('.btn-reverse');
-    if (btn) {
-      btn.classList.toggle('active', loop.reversed);
-      btn.setAttribute('aria-pressed', loop.reversed ? 'true' : 'false');
-    }
+function setLoopReversed(loop, reversed, restartPlayback = true) {
+  if (loop.reversed === reversed) {
+    syncLoopCardState(loop);
+    return;
   }
+  loop.reversed = reversed;
+  if (restartPlayback) {
+    restartLoopPlayback(loop);
+  }
+  syncLoopCardState(loop);
+}
+
+function toggleReverse(loop) {
+  setLoopReversed(loop, !loop.reversed);
 }
 
 function requantizeLoop(loop) {
@@ -1931,6 +1998,145 @@ function onMasterVolumeChange(e) {
   if (masterGainNode) {
     masterGainNode.gain.setTargetAtTime(masterVolume, audioContext.currentTime, 0.01);
   }
+}
+
+function getSceneDefaultName(index) {
+  return `Scene ${index + 1}`;
+}
+
+function renderSceneSlots() {
+  scenesList.innerHTML = '';
+  scenes.forEach((scene, index) => {
+    const slot = document.createElement('div');
+    slot.className = 'scene-slot';
+    slot.id = `scene-slot-${index + 1}`;
+
+    const badge = document.createElement('span');
+    badge.className = 'scene-index';
+    badge.textContent = String(index + 1);
+
+    const nameInput = document.createElement('input');
+    nameInput.className = 'scene-name';
+    nameInput.type = 'text';
+    nameInput.placeholder = getSceneDefaultName(index);
+    nameInput.value = scene.name;
+    nameInput.setAttribute('aria-label', `Scene ${index + 1} name`);
+    nameInput.addEventListener('input', () => {
+      scene.name = nameInput.value.trim();
+    });
+
+    const saveButton = document.createElement('button');
+    saveButton.className = 'btn-secondary scene-save';
+    saveButton.textContent = 'Save';
+    saveButton.type = 'button';
+    saveButton.addEventListener('click', () => saveScene(index));
+
+    const triggerButton = document.createElement('button');
+    triggerButton.className = 'btn-primary scene-trigger';
+    triggerButton.textContent = 'Go';
+    triggerButton.type = 'button';
+    triggerButton.addEventListener('click', () => triggerScene(index));
+
+    slot.append(badge, nameInput, saveButton, triggerButton);
+    scenesList.appendChild(slot);
+  });
+}
+
+function refreshSceneButtons() {
+  scenes.forEach((scene, index) => {
+    const slot = document.getElementById(`scene-slot-${index + 1}`);
+    if (!slot) return;
+    slot.classList.toggle('active', scene.snapshot !== null && activeSceneIndex === index);
+
+    const nameInput = slot.querySelector('.scene-name');
+    const saveButton = slot.querySelector('.scene-save');
+    const triggerButton = slot.querySelector('.scene-trigger');
+
+    if (nameInput && nameInput !== document.activeElement) {
+      nameInput.value = scene.name;
+    }
+    if (saveButton) saveButton.disabled = loops.length === 0;
+    if (triggerButton) triggerButton.disabled = scene.snapshot === null;
+  });
+}
+
+function captureSceneSnapshot() {
+  return {
+    masterVolume,
+    loops: loops.map(loop => ({
+      id: loop.id,
+      muted: loop.muted,
+      soloed: loop.soloed,
+      volume: loop.volume,
+      pan: loop.pan,
+      playbackRate: loop.playbackRate,
+      reversed: loop.reversed,
+      playing: loop.playing,
+    })),
+  };
+}
+
+function saveScene(index) {
+  if (loops.length === 0) {
+    showInfo('Record at least one loop before saving a scene.');
+    return;
+  }
+  const scene = scenes[index];
+  scene.name = scene.name || getSceneDefaultName(index);
+  scene.snapshot = captureSceneSnapshot();
+  activeSceneIndex = index;
+  refreshSceneButtons();
+  setStatus(`Saved ${scene.name}.`);
+}
+
+function triggerScene(index) {
+  const scene = scenes[index];
+  if (!scene || !scene.snapshot) return false;
+
+  const snapshotByLoopId = new Map(scene.snapshot.loops.map(loop => [loop.id, loop]));
+
+  for (const loop of loops) {
+    const snapshot = snapshotByLoopId.get(loop.id);
+    if (!snapshot || !snapshot.playing || snapshot.reversed !== loop.reversed) {
+      stopLoop(loop);
+    }
+  }
+
+  masterVolume = scene.snapshot.masterVolume;
+  masterVolumeInput.value = String(masterVolume);
+  if (masterGainNode) {
+    masterGainNode.gain.setTargetAtTime(masterVolume, audioContext.currentTime, 0.01);
+  }
+
+  for (const loop of loops) {
+    const snapshot = snapshotByLoopId.get(loop.id);
+    if (!snapshot) {
+      setLoopMuted(loop, false);
+      setLoopSoloed(loop, false);
+      continue;
+    }
+    setLoopMuted(loop, snapshot.muted);
+    setLoopSoloed(loop, snapshot.soloed);
+    setLoopVolume(loop, snapshot.volume);
+    setLoopPan(loop, snapshot.pan);
+    setLoopPlaybackRate(loop, snapshot.playbackRate);
+    setLoopReversed(loop, snapshot.reversed, false);
+    syncLoopCardState(loop);
+  }
+
+  refreshAllGains();
+
+  for (const loop of loops) {
+    const snapshot = snapshotByLoopId.get(loop.id);
+    if (snapshot && snapshot.playing) {
+      playLoop(loop);
+    }
+  }
+
+  activeSceneIndex = index;
+  refreshSceneButtons();
+  setStatus(`Triggered ${scene.name || getSceneDefaultName(index)}.`);
+  return true;
 }
 
 // ─── MIDI ─────────────────────────────────────────────────────────────────────
@@ -3075,6 +3281,7 @@ function renderLoop(loop) {
   updateAllMidiBindingLabels();
   updateLoopTempoUi(loop);
   updateLoopEditor();
+  syncLoopCardState(loop);
 }
 
 function updateLoopCard(loop) {
@@ -3392,6 +3599,7 @@ function onGlobalKeydown(e) {
       if (action && action.startsWith('toggleLoop')) {
         e.preventDefault();
         const idx = parseInt(action.slice(-1), 10) - 1;
+        if (triggerScene(idx)) return;
         toggleLoopByIndex(idx);
       }
   }

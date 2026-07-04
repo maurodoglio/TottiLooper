@@ -9,6 +9,19 @@
 
 import { test, expect } from '@playwright/test';
 
+async function recordLoop(page, duration = 600) {
+  await page.click('#btn-record');
+  await page.waitForTimeout(duration);
+  await page.click('#btn-record');
+}
+
+async function setRange(locator, value) {
+  await locator.evaluate((el, nextValue) => {
+    el.value = nextValue;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, String(value));
+}
+
 async function installSyntheticDecode(page) {
   await page.addInitScript(() => {
     globalThis.__testDecodeMidis = [60, 62, 64, 65, 67, 69, 71, 72];
@@ -1070,6 +1083,60 @@ test.describe('MIDI controls', () => {
 
     await page.evaluate(() => globalThis.__dispatchMidi([0xb0, 7, 0]));
     await expect(loopCard.locator('[data-fader="volume"] input')).toHaveValue('0');
+  });
+});
+
+// ─── Scenes ──────────────────────────────────────────────
+
+test.describe('scenes', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.click('#btn-request-mic');
+    await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+
+    await recordLoop(page);
+    await expect(page.locator('.loop-card')).toHaveCount(1, { timeout: 8000 });
+    await recordLoop(page);
+    await expect(page.locator('.loop-card')).toHaveCount(2, { timeout: 8000 });
+  });
+
+  test('number keys still toggle loops when the matching scene slot is empty', async ({ page }) => {
+    const loopCard = page.locator('.loop-card').first();
+    await page.keyboard.press('1');
+    await expect(loopCard).toHaveClass(/playing/);
+    await page.keyboard.press('1');
+    await expect(loopCard).not.toHaveClass(/playing/);
+  });
+
+  test('scene can save and recall active loops plus mixer state with number keys', async ({ page }) => {
+    const firstLoop = page.locator('.loop-card').nth(0);
+    const secondLoop = page.locator('.loop-card').nth(1);
+    const firstScene = page.locator('.scene-slot').nth(0);
+
+    await firstLoop.locator('.btn-play').click();
+    await secondLoop.locator('.btn-play').click();
+    await secondLoop.locator('.btn-mute').click();
+    await setRange(firstLoop.locator('[data-fader="volume"] input'), '0.4');
+    await setRange(page.locator('#master-volume'), '0.73');
+
+    await firstScene.locator('.scene-name').fill('Intro');
+    await firstScene.locator('.scene-save').click();
+    await expect(page.locator('#status-text')).toContainText('Saved Intro.');
+
+    await page.click('#btn-stop-all');
+    await secondLoop.locator('.btn-mute').click();
+    await setRange(firstLoop.locator('[data-fader="volume"] input'), '1');
+    await setRange(page.locator('#master-volume'), '1');
+
+    await page.keyboard.press('1');
+
+    await expect(firstScene).toHaveClass(/active/);
+    await expect(firstLoop).toHaveClass(/playing/);
+    await expect(secondLoop).toHaveClass(/playing/);
+    await expect(secondLoop).toHaveClass(/muted/);
+    await expect.poll(async () => Number(await firstLoop.locator('[data-fader="volume"] input').inputValue())).toBeCloseTo(0.4, 5);
+    await expect(page.locator('#master-volume')).toHaveValue('0.73');
+    await expect(page.locator('#status-text')).toContainText('Triggered Intro.');
   });
 });
 

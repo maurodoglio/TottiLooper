@@ -209,6 +209,13 @@
       <button id="btn-redo" class="btn-secondary" title="Redo delete (Ctrl+Shift+Z / Ctrl+Y)" disabled>↷ Redo</button>
     </div>
 
+    <!-- Scenes / setlist -->
+    <section id="scenes-section">
+      <h2>Scenes / setlist</h2>
+      <p class="section-hint">Save named snapshots of active loops + mixer state, then trigger them instantly with keys <kbd>1</kbd>…<kbd>9</kbd>.</p>
+      <div id="scenes-list"></div>
+    </section>
+
     <!-- MIDI controls -->
     <section id="midi-controls" class="panel hidden" aria-labelledby="midi-title">
       <div class="midi-header">
@@ -322,6 +329,7 @@
         <li><strong>⬇ Export</strong> – render the current mix to a WAV file, and optionally download the matching MIDI click track alongside it.</li>
         <li><strong>🥁 Generate drums</strong> – build a one-bar drum loop from the current BPM and selected style.</li>
         <li><strong>🔗 Share</strong> – encode a small session into the page URL so you can send it as a link.</li>
+        <li><strong>Scenes / setlist</strong> – save named snapshots of which loops are active plus every mixer setting, then fire them live with keys <kbd>1</kbd>…<kbd>9</kbd>.</li>
         <li><strong>✕ Clear All</strong> – remove every loop after confirming, with undo / redo support if you change your mind.</li>
       </ul>
 
@@ -333,6 +341,7 @@
       </ul>
 
       <h3>Keyboard shortcuts</h3>
+      <p class="shortcut-help-text">Press <kbd>1</kbd>…<kbd>9</kbd> to trigger saved scenes 1–9 (or toggle loops 1–9 when that scene slot is empty).</p>
       <ul id="shortcut-list" class="shortcuts"></ul>
 
       <h3>Customize shortcuts</h3>

@@ -40,6 +40,8 @@ them on top of each other – your one-man band for busking starts here.
 - Assign any loop to a group via its **Group** selector; unassign to return it to the ungrouped list
 
 ### Save, share, recover
+- 🎬 **Scenes / setlist** – save named snapshots of active loops + mixer state
+- 🔢 **Trigger scenes instantly** with number keys `1`…`9`
 - ⬇ **Export the full mix as WAV** (rendered via `OfflineAudioContext`)
 - ⬇ **Export any individual loop as WAV**
 - 🔗 **Share small sessions via URL** – encodes loop audio + mixer state into the link fragment
@@ -88,7 +90,7 @@ saved in `localStorage` for the next visit.
 | <kbd>Space</kbd> | Start / stop recording |
 | <kbd>Enter</kbd> | Play all loops |
 | <kbd>Esc</kbd> | Stop all loops |
-| <kbd>1</kbd> … <kbd>9</kbd> | Toggle loops 1 through 9 |
+| <kbd>1</kbd> … <kbd>9</kbd> | Trigger scenes 1 through 9 (or toggle loops 1 through 9 when that scene slot is empty) |
 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>⌘</kbd>+<kbd>Z</kbd> | Undo the last delete |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> | Redo the last undo |
 | <kbd>?</kbd> | Open the Help modal |
