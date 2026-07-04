@@ -43,6 +43,10 @@ test.describe('initial state', () => {
   test('beats-per-bar input defaults to 4', async ({ page }) => {
     await expect(page.locator('#beats-per-bar-input')).toHaveValue('4');
   });
+
+  test('metronome subdivision defaults to quarter notes', async ({ page }) => {
+    await expect(page.locator('#metronome-subdivision-input')).toHaveValue('1');
+  });
 });
 
 // ─── Help modal ───────────────────────────────────────────────────────────────
@@ -283,6 +287,21 @@ test.describe('tempo controls', () => {
   test('metronome toggle can be enabled', async ({ page }) => {
     await page.locator('#metronome-toggle').check();
     await expect(page.locator('#metronome-toggle')).toBeChecked();
+  });
+
+  test('metronome subdivision can be set to 8ths', async ({ page }) => {
+    await page.locator('#metronome-subdivision-input').selectOption('2');
+    await expect(page.locator('#metronome-subdivision-input')).toHaveValue('2');
+  });
+
+  test('metronome subdivision can be set to 16ths', async ({ page }) => {
+    await page.locator('#metronome-subdivision-input').selectOption('4');
+    await expect(page.locator('#metronome-subdivision-input')).toHaveValue('4');
+  });
+
+  test('metronome subdivision can be set to triplets', async ({ page }) => {
+    await page.locator('#metronome-subdivision-input').selectOption('3');
+    await expect(page.locator('#metronome-subdivision-input')).toHaveValue('3');
   });
 
   test('count-in toggle can be enabled', async ({ page }) => {

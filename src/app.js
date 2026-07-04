@@ -48,6 +48,7 @@ let beatsPerBar      = 4;
 let metronomeEnabled = false;
 let countInEnabled   = false;
 let quantizeEnabled  = false;
+let metronomeSubdivision = 1;
 let metronomeInterval = null;
 let metronomeBeatIdx  = 0;
 
@@ -85,6 +86,7 @@ const btnRequestMic      = $('btn-request-mic');
 const tempoControls      = $('tempo-controls');
 const bpmInput           = $('bpm-input');
 const beatsPerBarInput   = $('beats-per-bar-input');
+const metronomeSubdivisionInput = $('metronome-subdivision-input');
 const metronomeToggle    = $('metronome-toggle');
 const countInToggle      = $('count-in-toggle');
 const quantizeToggle     = $('quantize-toggle');
@@ -128,6 +130,7 @@ function init() {
 
   bpmInput.addEventListener('change', onBpmChange);
   beatsPerBarInput.addEventListener('change', onBeatsPerBarChange);
+  metronomeSubdivisionInput.addEventListener('change', onMetronomeSubdivisionChange);
   metronomeToggle.addEventListener('change', onMetronomeToggle);
   countInToggle.addEventListener('change', (e) => { countInEnabled = e.target.checked; });
   quantizeToggle.addEventListener('change', (e) => { quantizeEnabled = e.target.checked; });
@@ -219,7 +222,7 @@ function doCountIn() {
     const intervalMs = 60000 / bpm;
     let beat = 1;
     setStatus(`Count-in… ${beat}`);
-    playClick(true);
+    playClick('downbeat');
     const id = setInterval(() => {
       beat++;
       if (beat > beatsPerBar) {
@@ -227,7 +230,7 @@ function doCountIn() {
         resolve();
         return;
       }
-      playClick(false);
+      playClick('beat');
       setStatus(`Count-in… ${beat}`);
     }, intervalMs);
   });
@@ -604,15 +607,28 @@ function onMetronomeToggle(e) {
   if (metronomeEnabled) startMetronome(); else stopMetronome();
 }
 
+function onMetronomeSubdivisionChange() {
+  let v = parseInt(metronomeSubdivisionInput.value, 10);
+  if (![1, 2, 3, 4].includes(v)) v = 1;
+  metronomeSubdivision = v;
+  metronomeSubdivisionInput.value = String(v);
+  if (metronomeEnabled) {
+    stopMetronome();
+    startMetronome();
+  }
+}
+
 function startMetronome() {
   if (metronomeInterval || !audioContext) return;
+  const subdivisionsPerBar = beatsPerBar * metronomeSubdivision;
   metronomeBeatIdx = 0;
-  playClick(true);
+  playClick('downbeat');
   metronomeBeatIdx = 1;
-  const intervalMs = 60000 / bpm;
+  const intervalMs = 60000 / bpm / metronomeSubdivision;
   metronomeInterval = setInterval(() => {
-    const isDown = metronomeBeatIdx % beatsPerBar === 0;
-    playClick(isDown);
+    const isDownbeat = metronomeBeatIdx % subdivisionsPerBar === 0;
+    const isBeat = metronomeBeatIdx % metronomeSubdivision === 0;
+    playClick(isDownbeat ? 'downbeat' : (isBeat ? 'beat' : 'subdivision'));
     metronomeBeatIdx++;
   }, intervalMs);
 }
@@ -624,21 +640,26 @@ function stopMetronome() {
   }
 }
 
-function playClick(isDownbeat) {
+function playClick(type) {
   if (!audioContext) return;
   const t = audioContext.currentTime;
   const osc = audioContext.createOscillator();
   const gain = audioContext.createGain();
-  osc.frequency.value = isDownbeat ? 1500 : 1000;
+  const isDownbeat = type === 'downbeat';
+  const isSubdivision = type === 'subdivision';
+  osc.type = isDownbeat ? 'square' : 'sine';
+  osc.frequency.value = isDownbeat ? 1760 : (isSubdivision ? 880 : 1175);
+  const peak = isDownbeat ? (METRONOME_VOLUME * 1.5) : (isSubdivision ? (METRONOME_VOLUME * 0.5) : METRONOME_VOLUME);
+  const duration = isDownbeat ? 0.08 : 0.05;
   gain.gain.setValueAtTime(0, t);
-  gain.gain.linearRampToValueAtTime(METRONOME_VOLUME, t + 0.001);
-  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+  gain.gain.linearRampToValueAtTime(peak, t + 0.001);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
   osc.connect(gain);
   // Route clicks directly to the destination so the master volume / mixer
   // can't accidentally silence them and so they're never part of the mixdown.
   gain.connect(audioContext.destination);
   osc.start(t);
-  osc.stop(t + 0.06);
+  osc.stop(t + duration + 0.01);
 }
 
 // ─── Export (mixdown to WAV) ─────────────────────────────────────────────────

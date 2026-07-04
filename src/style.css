@@ -121,7 +121,8 @@ main {
   color: var(--text-muted);
 }
 
-#tempo-controls input[type="number"] {
+#tempo-controls input[type="number"],
+#tempo-controls select {
   width: 64px;
   background: var(--surface-raised);
   color: var(--text);
