@@ -46,6 +46,18 @@
       </label>
     </div>
 
+    <div id="drum-controls" class="panel">
+      <label class="field">
+        <span>Drum style</span>
+        <select id="drum-style" aria-label="Drum style">
+          <option value="rock">Rock</option>
+          <option value="funk">Funk</option>
+          <option value="reggae">Reggae</option>
+        </select>
+      </label>
+      <button id="btn-generate-drums" class="btn-secondary">🥁 Generate drums</button>
+    </div>
+
     <!-- Recording controls -->
     <div id="record-controls">
       <div id="status-dot" class="status-dot"></div>
@@ -90,6 +102,7 @@
       <h3>Getting started</h3>
       <ol>
         <li>Click <strong>🎤 Allow Microphone</strong> and grant permission when prompted.</li>
+        <li>(Optional) Pick a <strong>Drum style</strong> and click <strong>🥁 Generate drums</strong> to add a backing beat that follows your BPM.</li>
         <li>Plug in headphones — without them your mic will re-record whatever is already playing back.</li>
         <li>(Optional) Set your <strong>BPM</strong>, enable <strong>Metronome</strong>, <strong>Count-in</strong> and <strong>Quantize</strong> to keep layered loops locked to a bar.</li>
       </ol>
@@ -119,6 +132,7 @@
         <li><strong>▶ Play All</strong> / <strong>■ Stop All</strong> – start or stop every loop at once.</li>
         <li><strong>Master</strong> slider – sets the overall output level.</li>
         <li><strong>⬇ Export</strong> – render the current mix to a WAV file you can save or share.</li>
+        <li><strong>🥁 Generate drums</strong> – build a one-bar drum loop from the current BPM and selected style.</li>
       </ul>
 
       <h3>Keyboard shortcuts</h3>

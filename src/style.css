@@ -113,7 +113,8 @@ main {
 
 /* ── Tempo controls ── */
 #tempo-controls .field,
-#tempo-controls .toggle {
+#tempo-controls .toggle,
+#drum-controls .field {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -121,7 +122,8 @@ main {
   color: var(--text-muted);
 }
 
-#tempo-controls input[type="number"] {
+#tempo-controls input[type="number"],
+#drum-controls select {
   width: 64px;
   background: var(--surface-raised);
   color: var(--text);
@@ -130,6 +132,10 @@ main {
   padding: 4px 8px;
   font-size: 0.9rem;
   font-variant-numeric: tabular-nums;
+}
+
+#drum-controls select {
+  width: auto;
 }
 
 .toggle input[type="checkbox"] {

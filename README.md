@@ -9,6 +9,7 @@ them on top of each other – your one-man band for busking starts here.
 - 🎤 **Record** audio loops directly from your microphone
 - 📈 **Input level meter** so you can set a healthy recording level
 - 🥁 **Built-in metronome** with adjustable **BPM** and **beats-per-bar**
+- 🥁 **Generate drum backing loops** from BPM + style using built-in one-shot samples
 - ⏱️ **Count-in** before recording so your first note isn't clipped
 - 📐 **Quantize** recorded loops to whole bars for perfectly aligned layers
 - ⏱️ **Live recording timer** + one-click **Discard**
@@ -39,14 +40,16 @@ them on top of each other – your one-man band for busking starts here.
 2. Click **🎤 Allow Microphone** and grant permission when prompted.
 3. (Optional) Set your **BPM**, then enable **Metronome**, **Count-in** and
    **Quantize** if you want bar-locked loops.
-4. Click **● REC** (or press <kbd>Space</kbd>) to start recording a riff.
-5. Click **■ STOP** (or press <kbd>Space</kbd> again) when you're done – the
+4. (Optional) Pick a **Drum style** and click **🥁 Generate drums** to add a
+   backing groove that follows the current BPM.
+5. Click **● REC** (or press <kbd>Space</kbd>) to start recording a riff.
+6. Click **■ STOP** (or press <kbd>Space</kbd> again) when you're done – the
    loop is saved automatically and appears in the list.
-6. Click **▶** on a loop card to start it playing (it will loop continuously).
-7. Drag **Vol / Pan / Speed** sliders to mix, **S** to solo, **⇄** to reverse.
-8. Record more riffs and stack them up to build your sound.
-9. Use **▶ Play All / ■ Stop All** to control everything at once.
-10. Click **⬇ Export** to save the current mix as a WAV file.
+7. Click **▶** on a loop card to start it playing (it will loop continuously).
+8. Drag **Vol / Pan / Speed** sliders to mix, **S** to solo, **⇄** to reverse.
+9. Record more riffs and stack them up to build your sound.
+10. Use **▶ Play All / ■ Stop All** to control everything at once.
+11. Click **⬇ Export** to save the current mix as a WAV file.
 
 Click the **?** button in the top-right corner (or press <kbd>?</kbd>) at any
 time to open the in-app tutorial.

@@ -120,6 +120,11 @@ test.describe('after microphone access', () => {
     await expect(page.locator('#master-controls')).toBeVisible();
   });
 
+  test('shows the drum generator controls', async ({ page }) => {
+    await expect(page.locator('#drum-controls')).toBeVisible();
+    await expect(page.locator('#drum-style')).toHaveValue('rock');
+  });
+
   test('shows the loops section', async ({ page }) => {
     await expect(page.locator('#loops-section')).toBeVisible();
   });
@@ -138,6 +143,13 @@ test.describe('after microphone access', () => {
 
   test('status text shows ready message', async ({ page }) => {
     await expect(page.locator('#status-text')).toContainText('Ready');
+  });
+
+  test('can generate a drum loop from the selected style', async ({ page }) => {
+    await page.selectOption('#drum-style', 'funk');
+    await page.click('#btn-generate-drums');
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('.loop-name')).toHaveValue(/Funk Drums/);
   });
 });
 
