@@ -44,6 +44,14 @@
         <input id="quantize-toggle" type="checkbox" />
         <span>Quantize</span>
       </label>
+      <label class="toggle">
+        <input id="song-mode-toggle" type="checkbox" />
+        <span>Song mode</span>
+      </label>
+      <label class="field">
+        <span>Song bars</span>
+        <input id="song-bars-input" type="number" min="1" max="128" value="8" />
+      </label>
     </div>
 
     <!-- Recording controls -->
@@ -117,6 +125,7 @@
       <h3>Master controls</h3>
       <ul>
         <li><strong>▶ Play All</strong> / <strong>■ Stop All</strong> – start or stop every loop at once.</li>
+        <li><strong>Song mode</strong> – switch Play All into a bar-based song arrangement. Each loop gets its own <strong>Start</strong> and <strong>Bars</strong> timeline fields.</li>
         <li><strong>Master</strong> slider – sets the overall output level.</li>
         <li><strong>⬇ Export</strong> – render the current mix to a WAV file you can save or share.</li>
       </ul>
@@ -134,6 +143,7 @@
       <h3>Tips</h3>
       <ul>
         <li>Enable <strong>Quantize</strong> for tight, bar-aligned layers that never drift.</li>
+        <li>Use <strong>Song mode</strong> plus the per-loop timeline fields to sketch a verse / chorus arrangement without turning loops on and off by hand.</li>
         <li>Use <strong>Count-in</strong> so your first note isn't chopped off.</li>
         <li>Drop <strong>Speed</strong> below 1× for half-time pads, push above 1× for chipmunk leads.</li>
         <li>Use <strong>Pan</strong> to spread rhythm and lead parts across the stereo field — it instantly sounds bigger.</li>

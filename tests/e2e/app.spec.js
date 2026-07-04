@@ -139,6 +139,11 @@ test.describe('after microphone access', () => {
   test('status text shows ready message', async ({ page }) => {
     await expect(page.locator('#status-text')).toContainText('Ready');
   });
+
+  test('shows song controls with sensible defaults', async ({ page }) => {
+    await expect(page.locator('#song-mode-toggle')).not.toBeChecked();
+    await expect(page.locator('#song-bars-input')).toHaveValue('8');
+  });
 });
 
 // ─── Recording flow ───────────────────────────────────────────────────────────
@@ -234,6 +239,11 @@ test.describe('loop controls', () => {
     await expect(page.locator('.loop-duration')).toBeVisible();
   });
 
+  test('loop card exposes song timeline inputs', async ({ page }) => {
+    await expect(page.locator('.loop-song-start')).toHaveValue('1');
+    await expect(page.locator('.loop-song-bars')).toHaveValue('8');
+  });
+
   test('undo button becomes enabled after a loop is deleted', async ({ page }) => {
     await page.locator('.btn-danger').click();
     await expect(page.locator('#btn-undo')).toBeEnabled();
@@ -250,6 +260,43 @@ test.describe('loop controls', () => {
     await page.locator('.btn-danger').click();
     await page.keyboard.press('Control+z');
     await expect(page.locator('.loop-card')).toBeVisible();
+  });
+});
+
+// ─── Song mode ────────────────────────────────────────────────────────────────
+
+test.describe('song mode', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.click('#btn-request-mic');
+    await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+    await page.click('#btn-record');
+    await page.waitForTimeout(600);
+    await page.click('#btn-record');
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+  });
+
+  test('Play All can place a loop later on the song timeline', async ({ page }) => {
+    await page.locator('#bpm-input').fill('240');
+    await page.locator('#bpm-input').press('Tab');
+    await page.locator('#beats-per-bar-input').fill('1');
+    await page.locator('#beats-per-bar-input').press('Tab');
+    await page.locator('#song-bars-input').fill('4');
+    await page.locator('#song-bars-input').press('Tab');
+    await page.locator('#song-mode-toggle').check();
+    await page.locator('.loop-song-start').fill('2');
+    await page.locator('.loop-song-start').press('Tab');
+    await page.locator('.loop-song-bars').fill('1');
+    await page.locator('.loop-song-bars').press('Tab');
+
+    await page.click('#btn-play-all');
+    await expect(page.locator('.btn-play')).toHaveText('▶');
+
+    await page.waitForTimeout(350);
+    await expect(page.locator('.btn-play')).toHaveText('⏹');
+
+    await page.waitForTimeout(350);
+    await expect(page.locator('.btn-play')).toHaveText('▶');
   });
 });
 

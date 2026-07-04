@@ -13,6 +13,7 @@ import {
   audioBufferToWav,
   getSupportedMimeType,
   effectiveGain,
+  normalizeSongTimeline,
   quantizeBuffer,
   reverseBuffer,
 } from '../../src/utils.js';
@@ -126,6 +127,26 @@ describe('effectiveGain', () => {
   it('returns 0 for every loop when volume is 0', () => {
     const loop = { muted: false, soloed: false, volume: 0 };
     expect(effectiveGain(loop, [loop])).toBe(0);
+  });
+});
+
+// ─── normalizeSongTimeline ─────────────────────────────────────────────────────
+
+describe('normalizeSongTimeline', () => {
+  it('defaults invalid values to a one-bar window inside the song', () => {
+    expect(normalizeSongTimeline(0, 0, 0)).toEqual({ startBar: 1, barCount: 1 });
+  });
+
+  it('clamps the start bar to the song length', () => {
+    expect(normalizeSongTimeline(99, 2, 8)).toEqual({ startBar: 8, barCount: 1 });
+  });
+
+  it('keeps a valid range unchanged', () => {
+    expect(normalizeSongTimeline(5, 4, 8)).toEqual({ startBar: 5, barCount: 4 });
+  });
+
+  it('shrinks the bar count when the range would run past the end', () => {
+    expect(normalizeSongTimeline(7, 4, 8)).toEqual({ startBar: 7, barCount: 2 });
   });
 });
 

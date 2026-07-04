@@ -65,6 +65,22 @@ export function effectiveGain(loop, loops) {
   return loop.volume;
 }
 
+/**
+ * Clamp song-timeline settings to a valid bar window inside the song length.
+ *
+ * @param {number} startBar
+ * @param {number} barCount
+ * @param {number} songBars
+ * @returns {{ startBar: number, barCount: number }}
+ */
+export function normalizeSongTimeline(startBar, barCount, songBars) {
+  const totalBars = Math.max(1, Math.floor(songBars || 1));
+  const safeStart = Math.min(totalBars, Math.max(1, Math.floor(startBar || 1)));
+  const maxBarCount = totalBars - safeStart + 1;
+  const safeBars = Math.min(maxBarCount, Math.max(1, Math.floor(barCount || totalBars)));
+  return { startBar: safeStart, barCount: safeBars };
+}
+
 // ─── AudioBuffer utilities ────────────────────────────────────────────────────
 
 /**

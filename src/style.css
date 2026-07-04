@@ -461,6 +461,37 @@ button:disabled {
   accent-color: var(--accent);
 }
 
+.loop-song-fields {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-left: 2px;
+}
+
+.loop-song-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.loop-song-field span {
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.loop-song-field input[type="number"] {
+  width: 64px;
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .fader-value {
   min-width: 42px;
   text-align: right;
