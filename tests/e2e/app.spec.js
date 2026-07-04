@@ -50,6 +50,8 @@ test.describe('initial state', () => {
 test.describe('help modal', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
   });
 
   test('is hidden on page load', async ({ page }) => {
@@ -91,6 +93,25 @@ test.describe('help modal', () => {
     await page.click('#btn-help');
     await expect(page.locator('#help-modal')).toContainText('Getting started');
     await expect(page.locator('#help-modal')).toContainText('Keyboard shortcuts');
+  });
+
+  test('persists remapped help shortcut in localStorage', async ({ page }) => {
+    await page.click('#btn-help');
+    await page.locator('input[aria-label="Open help shortcut"]').click();
+    await page.keyboard.press('h');
+    await expect(page.locator('input[aria-label="Open help shortcut"]')).toHaveValue('H');
+    await page.click('#help-close');
+
+    await page.keyboard.press('?');
+    await expect(page.locator('#help-modal')).toBeHidden();
+
+    await page.keyboard.press('h');
+    await expect(page.locator('#help-modal')).toBeVisible();
+
+    await page.reload();
+    await expect(page.locator('#help-modal')).toBeHidden();
+    await page.keyboard.press('h');
+    await expect(page.locator('#help-modal')).toBeVisible();
   });
 });
 
@@ -164,6 +185,8 @@ test.describe('after microphone access', () => {
 test.describe('recording flow', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
     await page.click('#btn-request-mic');
     await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
   });
@@ -221,6 +244,19 @@ test.describe('recording flow', () => {
     await page.waitForTimeout(600);
     await page.keyboard.press('Space');
     await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+  });
+
+  test('uses a remapped record shortcut', async ({ page }) => {
+    await page.click('#btn-help');
+    await page.locator('input[aria-label="Start / stop recording shortcut"]').click();
+    await page.keyboard.press('r');
+    await page.click('#help-close');
+
+    await page.keyboard.press('Space');
+    await expect(page.locator('#btn-record')).toContainText('REC');
+
+    await page.keyboard.press('r');
+    await expect(page.locator('#btn-record')).toContainText('STOP');
   });
 });
 

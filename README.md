@@ -56,6 +56,9 @@ time to open the in-app tutorial.
 
 ### Keyboard shortcuts
 
+You can remap every shortcut from the Help modal, and your custom bindings are
+saved in `localStorage` for the next visit.
+
 | Key | Action |
 | --- | --- |
 | <kbd>Space</kbd> | Start / stop recording |
