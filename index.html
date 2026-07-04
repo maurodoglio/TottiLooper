@@ -46,6 +46,14 @@
       </label>
     </div>
 
+    <div id="tempo-suggestion" class="panel hidden" aria-live="polite">
+      <span id="tempo-suggestion-text"></span>
+      <div class="tempo-suggestion-actions">
+        <button id="btn-apply-detected-tempo" type="button" class="btn-primary">Use detected BPM</button>
+        <button id="btn-dismiss-detected-tempo" type="button" class="btn-secondary">Keep current</button>
+      </div>
+    </div>
+
     <!-- Recording controls -->
     <div id="record-controls">
       <div id="status-dot" class="status-dot"></div>
@@ -99,6 +107,7 @@
         <li>Press <strong>● REC</strong> (or the <kbd>Space</kbd> key) to start. Watch the input meter to make sure your signal is healthy.</li>
         <li>Play your riff.</li>
         <li>Press <strong>■ STOP</strong> (or <kbd>Space</kbd> again) when finished — the loop appears in the list and is ready to play.</li>
+        <li>After your first loop, TottiLooper can suggest a matching BPM for the session — confirm it if the detection looks right.</li>
         <li>Press <strong>■ DISCARD</strong> to abandon the current take without saving it.</li>
       </ol>
 

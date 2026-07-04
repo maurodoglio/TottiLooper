@@ -294,4 +294,59 @@ test.describe('tempo controls', () => {
     await page.locator('#quantize-toggle').check();
     await expect(page.locator('#quantize-toggle')).toBeChecked();
   });
+
+});
+
+test('detected BPM from the first loop can be accepted', async ({ page }) => {
+  await page.addInitScript(() => {
+    const makeTempoBuffer = () => {
+      const bpm = 120;
+      const sampleRate = 44100;
+      const secondsPerBeat = 60 / bpm;
+      const beats = 8;
+      const length = Math.round((beats * secondsPerBeat + 0.25) * sampleRate);
+      const data = new Float32Array(length);
+
+      for (let beat = 0; beat < beats; beat++) {
+        const start = Math.round(beat * secondsPerBeat * sampleRate);
+        const pulseLength = Math.round(sampleRate * 0.02);
+        for (let i = 0; i < pulseLength; i++) {
+          const idx = start + i;
+          if (idx >= length) break;
+          data[idx] = 0.9 * (1 - i / pulseLength);
+        }
+      }
+
+      return {
+        numberOfChannels: 1,
+        length,
+        sampleRate,
+        duration: length / sampleRate,
+        getChannelData: () => data,
+      };
+    };
+
+    const patchDecodeAudioData = (Ctor) => {
+      if (!Ctor || !Ctor.prototype) return;
+      Ctor.prototype.decodeAudioData = async () => makeTempoBuffer();
+    };
+
+    patchDecodeAudioData(globalThis.AudioContext);
+    patchDecodeAudioData(globalThis.webkitAudioContext);
+  });
+
+  await page.goto('/');
+  await page.click('#btn-request-mic');
+  await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+
+  await page.click('#btn-record');
+  await page.waitForTimeout(600);
+  await page.click('#btn-record');
+
+  await expect(page.locator('#tempo-suggestion')).toBeVisible({ timeout: 8000 });
+  await expect(page.locator('#tempo-suggestion-text')).toContainText('120 BPM');
+
+  await page.click('#btn-apply-detected-tempo');
+  await expect(page.locator('#bpm-input')).toHaveValue('120');
+  await expect(page.locator('#tempo-suggestion')).toBeHidden();
 });

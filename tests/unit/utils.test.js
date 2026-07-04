@@ -13,6 +13,7 @@ import {
   audioBufferToWav,
   getSupportedMimeType,
   effectiveGain,
+  estimateTempo,
   quantizeBuffer,
   reverseBuffer,
 } from '../../src/utils.js';
@@ -318,6 +319,77 @@ describe('quantizeBuffer', () => {
     expect(outData[srcLen - 1]).toBeCloseTo(0.5);
     // Tail that was zero-padded should be 0
     expect(outData[srcLen]).toBe(0);
+  });
+});
+
+// ─── estimateTempo ────────────────────────────────────────────────────────────
+
+describe('estimateTempo', () => {
+  function makePulseBuffer({ bpm = 120, beats = 8, sampleRate = 44100, channels = 1 }) {
+    const secondsPerBeat = 60 / bpm;
+    const length = Math.round((beats * secondsPerBeat + 0.25) * sampleRate);
+    const channelData = Array.from({ length: channels }, () => new Float32Array(length));
+
+    for (let beat = 0; beat < beats; beat++) {
+      const start = Math.round(beat * secondsPerBeat * sampleRate);
+      const pulseLength = Math.round(sampleRate * 0.02);
+      for (let i = 0; i < pulseLength; i++) {
+        const idx = start + i;
+        if (idx >= length) break;
+        const sample = 0.9 * (1 - i / pulseLength);
+        for (const data of channelData) data[idx] = sample;
+      }
+    }
+
+    return {
+      numberOfChannels: channels,
+      length,
+      sampleRate,
+      duration: length / sampleRate,
+      getChannelData: (ch) => channelData[ch],
+    };
+  }
+
+  function expectTempoClose(actual, expected) {
+    expect(actual).toBeGreaterThanOrEqual(expected - 2);
+    expect(actual).toBeLessThanOrEqual(expected + 2);
+  }
+
+  it('detects a 120 BPM pulse train', () => {
+    const detected = estimateTempo(makePulseBuffer({ bpm: 120 }));
+    expectTempoClose(detected, 120);
+  });
+
+  it('detects a slower 90 BPM pulse train', () => {
+    const detected = estimateTempo(makePulseBuffer({ bpm: 90, beats: 10 }));
+    expectTempoClose(detected, 90);
+  });
+
+  it('handles stereo buffers', () => {
+    const detected = estimateTempo(makePulseBuffer({ bpm: 140, channels: 2 }));
+    expectTempoClose(detected, 140);
+  });
+
+  it('returns null for a silent buffer', () => {
+    const silent = {
+      numberOfChannels: 1,
+      length: 44100,
+      sampleRate: 44100,
+      duration: 1,
+      getChannelData: () => new Float32Array(44100),
+    };
+    expect(estimateTempo(silent)).toBeNull();
+  });
+
+  it('returns null for very short buffers', () => {
+    const short = {
+      numberOfChannels: 1,
+      length: 256,
+      sampleRate: 44100,
+      duration: 256 / 44100,
+      getChannelData: () => new Float32Array(256),
+    };
+    expect(estimateTempo(short)).toBeNull();
   });
 });
 

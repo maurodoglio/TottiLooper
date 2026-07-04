@@ -8,6 +8,7 @@ them on top of each other – your one-man band for busking starts here.
 ### Recording & tempo
 - 🎤 **Record** audio loops directly from your microphone
 - 📈 **Input level meter** so you can set a healthy recording level
+- 🎚️ **First-loop tempo detection** to suggest a session BPM from your opening take
 - 🥁 **Built-in metronome** with adjustable **BPM** and **beats-per-bar**
 - ⏱️ **Count-in** before recording so your first note isn't clipped
 - 📐 **Quantize** recorded loops to whole bars for perfectly aligned layers
