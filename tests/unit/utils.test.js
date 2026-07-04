@@ -9,6 +9,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   formatDuration,
   panText,
+  parseMidiMessage,
+  createMidiBinding,
+  matchesMidiBinding,
+  isMidiButtonPress,
+  scaleMidiValue,
+  formatMidiBinding,
   writeString,
   audioBufferToWav,
   getSupportedMimeType,
@@ -90,6 +96,111 @@ describe('panText', () => {
   it('rounds the percentage to the nearest integer', () => {
     expect(panText(0.333)).toBe('R33');
     expect(panText(-0.666)).toBe('L67');
+  });
+});
+
+// ─── MIDI helpers ─────────────────────────────────────────────────────────────
+
+describe('parseMidiMessage', () => {
+  it('parses note-on messages', () => {
+    expect(parseMidiMessage([0x90, 36, 127])).toEqual({
+      kind: 'noteon',
+      channel: 1,
+      number: 36,
+      value: 127,
+    });
+  });
+
+  it('treats note-on with zero velocity as note-off', () => {
+    expect(parseMidiMessage([0x90, 36, 0])).toEqual({
+      kind: 'noteoff',
+      channel: 1,
+      number: 36,
+      value: 0,
+    });
+  });
+
+  it('parses control-change messages', () => {
+    expect(parseMidiMessage([0xb2, 7, 99])).toEqual({
+      kind: 'cc',
+      channel: 3,
+      number: 7,
+      value: 99,
+    });
+  });
+
+  it('returns null for unsupported MIDI messages', () => {
+    expect(parseMidiMessage([0xe0, 0, 64])).toBeNull();
+  });
+});
+
+describe('createMidiBinding', () => {
+  it('creates button bindings from note messages', () => {
+    expect(createMidiBinding({ kind: 'noteon', channel: 2, number: 48, value: 100 }, 'button')).toEqual({
+      source: 'note',
+      channel: 2,
+      number: 48,
+      mode: 'button',
+    });
+  });
+
+  it('creates range bindings only from CC messages', () => {
+    expect(createMidiBinding({ kind: 'cc', channel: 1, number: 11, value: 64 }, 'range')).toEqual({
+      source: 'cc',
+      channel: 1,
+      number: 11,
+      mode: 'range',
+    });
+    expect(createMidiBinding({ kind: 'noteon', channel: 1, number: 11, value: 64 }, 'range')).toBeNull();
+  });
+});
+
+describe('matchesMidiBinding', () => {
+  it('matches note bindings against note-on and note-off messages on the same key and channel', () => {
+    const binding = { source: 'note', channel: 4, number: 60, mode: 'button' };
+    expect(matchesMidiBinding(binding, { kind: 'noteon', channel: 4, number: 60, value: 100 })).toBe(true);
+    expect(matchesMidiBinding(binding, { kind: 'noteoff', channel: 4, number: 60, value: 0 })).toBe(true);
+  });
+
+  it('does not match different channels or controller numbers', () => {
+    const binding = { source: 'cc', channel: 1, number: 7, mode: 'range' };
+    expect(matchesMidiBinding(binding, { kind: 'cc', channel: 2, number: 7, value: 64 })).toBe(false);
+    expect(matchesMidiBinding(binding, { kind: 'cc', channel: 1, number: 10, value: 64 })).toBe(false);
+  });
+});
+
+describe('isMidiButtonPress', () => {
+  it('returns true for note-on and non-zero CC messages', () => {
+    expect(isMidiButtonPress({ kind: 'noteon', channel: 1, number: 36, value: 1 })).toBe(true);
+    expect(isMidiButtonPress({ kind: 'cc', channel: 1, number: 36, value: 1 })).toBe(true);
+  });
+
+  it('returns false for note-off and zero-value CC messages', () => {
+    expect(isMidiButtonPress({ kind: 'noteoff', channel: 1, number: 36, value: 0 })).toBe(false);
+    expect(isMidiButtonPress({ kind: 'cc', channel: 1, number: 36, value: 0 })).toBe(false);
+  });
+});
+
+describe('scaleMidiValue', () => {
+  it('maps the full MIDI range into the requested output range', () => {
+    expect(scaleMidiValue(0, 0, 1.5)).toBe(0);
+    expect(scaleMidiValue(127, 0, 1.5)).toBe(1.5);
+  });
+
+  it('clamps values outside the MIDI range', () => {
+    expect(scaleMidiValue(-10, 0, 1)).toBe(0);
+    expect(scaleMidiValue(200, 0, 1)).toBe(1);
+  });
+});
+
+describe('formatMidiBinding', () => {
+  it('formats note and CC bindings for display', () => {
+    expect(formatMidiBinding({ source: 'note', channel: 1, number: 36, mode: 'button' })).toBe('Note 36 · Ch 1');
+    expect(formatMidiBinding({ source: 'cc', channel: 2, number: 7, mode: 'range' })).toBe('CC 7 · Ch 2');
+  });
+
+  it('formats empty bindings as Unassigned', () => {
+    expect(formatMidiBinding(null)).toBe('Unassigned');
   });
 });
 

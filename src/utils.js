@@ -31,6 +31,111 @@ export function panText(v) {
   return (v < 0 ? 'L' : 'R') + Math.round(Math.abs(v) * 100);
 }
 
+/**
+ * Parse a raw MIDI message into a small normalized descriptor.
+ *
+ * @param {ArrayLike<number>} data
+ * @returns {{ kind: 'noteon' | 'noteoff' | 'cc', channel: number, number: number, value: number } | null}
+ */
+export function parseMidiMessage(data) {
+  if (!data || data.length < 2) return null;
+  const status = data[0];
+  const number = data[1];
+  const value = data[2] ?? 0;
+  const command = status & 0xf0;
+  const channel = (status & 0x0f) + 1;
+
+  if (command === 0x90) {
+    return { kind: value > 0 ? 'noteon' : 'noteoff', channel, number, value };
+  }
+  if (command === 0x80) {
+    return { kind: 'noteoff', channel, number, value };
+  }
+  if (command === 0xb0) {
+    return { kind: 'cc', channel, number, value };
+  }
+  return null;
+}
+
+/**
+ * Build a binding descriptor from a parsed MIDI message.
+ *
+ * @param {{ kind: 'noteon' | 'noteoff' | 'cc', channel: number, number: number, value: number } | null} message
+ * @param {'button' | 'range'} mode
+ * @returns {{ source: 'note' | 'cc', channel: number, number: number, mode: 'button' | 'range' } | null}
+ */
+export function createMidiBinding(message, mode) {
+  if (!message) return null;
+  if (mode === 'range') {
+    return message.kind === 'cc'
+      ? { source: 'cc', channel: message.channel, number: message.number, mode }
+      : null;
+  }
+  if (message.kind === 'cc') {
+    return { source: 'cc', channel: message.channel, number: message.number, mode };
+  }
+  if (message.kind === 'noteon' || message.kind === 'noteoff') {
+    return { source: 'note', channel: message.channel, number: message.number, mode };
+  }
+  return null;
+}
+
+/**
+ * Check whether a parsed MIDI message matches a stored binding.
+ *
+ * @param {{ source: 'note' | 'cc', channel: number, number: number, mode: 'button' | 'range' } | null} binding
+ * @param {{ kind: 'noteon' | 'noteoff' | 'cc', channel: number, number: number, value: number } | null} message
+ * @returns {boolean}
+ */
+export function matchesMidiBinding(binding, message) {
+  if (!binding || !message) return false;
+  if (binding.source === 'note') {
+    return (message.kind === 'noteon' || message.kind === 'noteoff')
+      && binding.channel === message.channel
+      && binding.number === message.number;
+  }
+  return message.kind === 'cc'
+    && binding.channel === message.channel
+    && binding.number === message.number;
+}
+
+/**
+ * Whether a MIDI message should trigger a button-style action.
+ *
+ * @param {{ kind: 'noteon' | 'noteoff' | 'cc', channel: number, number: number, value: number } | null} message
+ * @returns {boolean}
+ */
+export function isMidiButtonPress(message) {
+  return !!message && (
+    (message.kind === 'noteon' && message.value > 0)
+    || (message.kind === 'cc' && message.value > 0)
+  );
+}
+
+/**
+ * Scale a MIDI 0-127 value into an arbitrary range.
+ *
+ * @param {number} value
+ * @param {number} min
+ * @param {number} max
+ * @returns {number}
+ */
+export function scaleMidiValue(value, min, max) {
+  const clamped = Math.max(0, Math.min(127, value));
+  return min + (clamped / 127) * (max - min);
+}
+
+/**
+ * Format a MIDI binding for display in the learn UI.
+ *
+ * @param {{ source: 'note' | 'cc', channel: number, number: number, mode: 'button' | 'range' } | null} binding
+ * @returns {string}
+ */
+export function formatMidiBinding(binding) {
+  if (!binding) return 'Unassigned';
+  return `${binding.source === 'note' ? 'Note' : 'CC'} ${binding.number} · Ch ${binding.channel}`;
+}
+
 // ─── MIME type detection ──────────────────────────────────────────────────────
 
 /**
