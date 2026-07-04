@@ -12,6 +12,7 @@ import {
   panText,
   audioBufferToWav,
   getSupportedMimeType,
+  getBeatSeconds,
   effectiveGain as computeEffectiveGain,
   quantizeBuffer as _quantizeBuffer,
   reverseBuffer as _reverseBuffer,
@@ -45,6 +46,7 @@ let inputAnalyser  = null;
 // Tempo / metronome
 let bpm              = DEFAULT_BPM;
 let beatsPerBar      = 4;
+let beatUnit         = 4;
 let metronomeEnabled = false;
 let countInEnabled   = false;
 let quantizeEnabled  = false;
@@ -85,6 +87,7 @@ const btnRequestMic      = $('btn-request-mic');
 const tempoControls      = $('tempo-controls');
 const bpmInput           = $('bpm-input');
 const beatsPerBarInput   = $('beats-per-bar-input');
+const beatUnitInput      = $('beat-unit-input');
 const metronomeToggle    = $('metronome-toggle');
 const countInToggle      = $('count-in-toggle');
 const quantizeToggle     = $('quantize-toggle');
@@ -128,6 +131,7 @@ function init() {
 
   bpmInput.addEventListener('change', onBpmChange);
   beatsPerBarInput.addEventListener('change', onBeatsPerBarChange);
+  beatUnitInput.addEventListener('change', onBeatUnitChange);
   metronomeToggle.addEventListener('change', onMetronomeToggle);
   countInToggle.addEventListener('change', (e) => { countInEnabled = e.target.checked; });
   quantizeToggle.addEventListener('change', (e) => { quantizeEnabled = e.target.checked; });
@@ -216,7 +220,7 @@ async function beginRecording() {
 
 function doCountIn() {
   return new Promise((resolve) => {
-    const intervalMs = 60000 / bpm;
+    const intervalMs = getBeatIntervalMs();
     let beat = 1;
     setStatus(`Count-in… ${beat}`);
     playClick(true);
@@ -315,7 +319,7 @@ async function onRecordingStop() {
 // ─── Quantize (snap loop length to whole bars) ───────────────────────────────
 
 function quantizeBuffer(buffer) {
-  return _quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext });
+  return _quantizeBuffer(buffer, { bpm, beatsPerBar, beatUnit, audioContext });
 }
 
 // ─── Loop management ──────────────────────────────────────────────────────────
@@ -597,6 +601,21 @@ function onBeatsPerBarChange() {
   if (v > 12) v = 12;
   beatsPerBar = v;
   beatsPerBarInput.value = String(v);
+  if (metronomeEnabled) {
+    stopMetronome();
+    startMetronome();
+  }
+}
+
+function onBeatUnitChange() {
+  let v = parseInt(beatUnitInput.value, 10);
+  if (![2, 4, 8, 16].includes(v)) v = 4;
+  beatUnit = v;
+  beatUnitInput.value = String(v);
+  if (metronomeEnabled) {
+    stopMetronome();
+    startMetronome();
+  }
 }
 
 function onMetronomeToggle(e) {
@@ -609,7 +628,7 @@ function startMetronome() {
   metronomeBeatIdx = 0;
   playClick(true);
   metronomeBeatIdx = 1;
-  const intervalMs = 60000 / bpm;
+  const intervalMs = getBeatIntervalMs();
   metronomeInterval = setInterval(() => {
     const isDown = metronomeBeatIdx % beatsPerBar === 0;
     playClick(isDown);
@@ -622,6 +641,10 @@ function stopMetronome() {
     clearInterval(metronomeInterval);
     metronomeInterval = null;
   }
+}
+
+function getBeatIntervalMs() {
+  return getBeatSeconds(bpm, beatUnit) * 1000;
 }
 
 function playClick(isDownbeat) {

@@ -43,6 +43,10 @@ test.describe('initial state', () => {
   test('beats-per-bar input defaults to 4', async ({ page }) => {
     await expect(page.locator('#beats-per-bar-input')).toHaveValue('4');
   });
+
+  test('beat-unit input defaults to 4', async ({ page }) => {
+    await expect(page.locator('#beat-unit-input')).toHaveValue('4');
+  });
 });
 
 // ─── Help modal ───────────────────────────────────────────────────────────────
@@ -283,6 +287,11 @@ test.describe('tempo controls', () => {
   test('metronome toggle can be enabled', async ({ page }) => {
     await page.locator('#metronome-toggle').check();
     await expect(page.locator('#metronome-toggle')).toBeChecked();
+  });
+
+  test('beat unit can be updated via the select', async ({ page }) => {
+    await page.locator('#beat-unit-input').selectOption('8');
+    await expect(page.locator('#beat-unit-input')).toHaveValue('8');
   });
 
   test('count-in toggle can be enabled', async ({ page }) => {
