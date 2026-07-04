@@ -26,6 +26,8 @@ import {
   clickTrackToMidi,
   getSupportedMimeType,
   getBeatSeconds,
+  getSwingDelaySeconds,
+  MAX_SWING,
   estimateTempo,
   packSharedSession,
   effectiveGain as computeEffectiveGain,
@@ -169,6 +171,8 @@ let songEndTimeout    = null;
 let metronomeSubdivision = 1;
 let metronomeInterval = null;
 let metronomeBeatIdx  = 0;
+// Swing/shuffle depth as a fraction 0..MAX_SWING (0 = straight timing).
+let swingAmount = 0;
 let sceneCrossfadeBars = DEFAULT_SCENE_CROSSFADE_BARS;
 let sceneTransitionToken = 0;
 let tapTempoTimes     = [];
@@ -293,6 +297,7 @@ const beatsPerBarInput   = $('beats-per-bar-input');
 const loopLengthBarsInput = $('loop-length-bars');
 const beatUnitInput      = $('beat-unit-input');
 const metronomeSubdivisionInput = $('metronome-subdivision-input');
+const swingInput         = $('swing-input');
 const drumStyleSelect    = $('drum-style');
 const btnGenerateDrums   = $('btn-generate-drums');
 const metronomeToggle    = $('metronome-toggle');
@@ -442,6 +447,7 @@ function init() {
   compressorToggle.addEventListener('change', onCompressorToggle);
   sceneCrossfadeBarsInput.addEventListener('change', onSceneCrossfadeBarsChange);
   setRangeValueText(masterVolumeInput, formatPercentValueText(masterVolume));
+  setRangeValueText(swingInput, formatPercentValueText(swingAmount));
 
   bpmInput.addEventListener('change', onBpmChange);
   btnTapTempo.addEventListener('click', onTapTempo);
@@ -449,6 +455,7 @@ function init() {
   loopLengthBarsInput.addEventListener('change', onLoopLengthBarsChange);
   beatUnitInput.addEventListener('change', onBeatUnitChange);
   metronomeSubdivisionInput.addEventListener('change', onMetronomeSubdivisionChange);
+  swingInput.addEventListener('input', onSwingChange);
   metronomeToggle.addEventListener('change', onMetronomeToggle);
   countInToggle.addEventListener('change', (e) => { countInEnabled = e.target.checked; });
   quantizeToggle.addEventListener('change', (e) => { quantizeEnabled = e.target.checked; });
@@ -2917,6 +2924,16 @@ function onMetronomeSubdivisionChange() {
   }
 }
 
+function onSwingChange(e) {
+  // Slider is 0–75 (percent); store as a 0..MAX_SWING fraction.
+  let pct = parseInt(e.target.value, 10);
+  if (isNaN(pct)) pct = 0;
+  swingAmount = clamp(pct / 100, 0, MAX_SWING);
+  setRangeValueText(e.target, formatPercentValueText(swingAmount));
+  // No metronome restart needed: the running scheduler reads swingAmount live
+  // each tick, so the groove updates immediately without rebuilding the timer.
+}
+
 function startMetronome() {
   if (metronomeInterval || !audioContext) return;
   const subdivisionsPerBar = beatsPerBar * metronomeSubdivision;
@@ -2924,10 +2941,16 @@ function startMetronome() {
   playClick('downbeat');
   metronomeBeatIdx = 1;
   const intervalMs = getBeatIntervalMs() / metronomeSubdivision;
+  // Length of one subdivision in seconds, used to compute the swing offset.
+  const subdivisionIntervalSec = intervalMs / 1000;
   metronomeInterval = setInterval(() => {
     const isDownbeat = metronomeBeatIdx % subdivisionsPerBar === 0;
     const isBeat = metronomeBeatIdx % metronomeSubdivision === 0;
-    playClick(isDownbeat ? 'downbeat' : (isBeat ? 'beat' : 'subdivision'));
+    // Swing pushes off-beat subdivisions later within their slot; on-beats and
+    // the downbeat stay straight. swingAmount is read live so the groove can be
+    // adjusted while the metronome is running.
+    const swingDelay = getSwingDelaySeconds(metronomeBeatIdx, swingAmount, subdivisionIntervalSec);
+    playClick(isDownbeat ? 'downbeat' : (isBeat ? 'beat' : 'subdivision'), swingDelay);
     metronomeBeatIdx++;
   }, intervalMs);
 }
@@ -3055,9 +3078,12 @@ async function generateDrumLoop() {
   }
 }
 
-function playClick(type) {
+function playClick(type, delaySeconds = 0) {
   if (!audioContext) return;
-  const t = audioContext.currentTime;
+  // Swing offsets the click a fraction of a subdivision later; the delay is
+  // always shorter than one slot, so scheduler timing is unchanged. Metronome
+  // clicks are excluded from the mixdown, so swing needs no export mirroring.
+  const t = audioContext.currentTime + Math.max(0, delaySeconds || 0);
   const osc = audioContext.createOscillator();
   const gain = audioContext.createGain();
   const isDownbeat = type === 'downbeat';
