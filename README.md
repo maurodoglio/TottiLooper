@@ -19,7 +19,7 @@ them on top of each other – your one-man band for busking starts here.
 ### Mixer
 - 🎵 **Layer** as many loops as you like, playing simultaneously
 - 🎼 **Likely key detection** on recorded loops, with a warning when a new layer may clash
-- 🎚️ **Per-loop volume, pan and playback-speed (pitch)** sliders
+- 🎚️ **Per-loop volume, pan, 3-band EQ, and playback-speed (pitch)** sliders
 - 🎚️ **Master volume** for overall level
 - 🎛️ **Web MIDI learn** for record/play controls, loop toggles, and per-loop volume faders
 - 🔇 **Mute**, **S** Solo, and **⇄ Reverse** toggles on every loop
@@ -55,7 +55,7 @@ them on top of each other – your one-man band for busking starts here.
 6. Click **■ STOP** (or press <kbd>Space</kbd> again) when you're done – the
    loop is saved automatically and appears in the list.
 7. Click **▶** on a loop card to start it playing (it will loop continuously).
-8. Drag **Vol / Pan / Speed** sliders to mix, **S** to solo, **⇄** to reverse.
+8. Drag **Vol / Pan / Low / Mid / High / Speed** sliders to mix, shape tone, **S** to solo, **⇄** to reverse.
 9. Record more riffs and stack them up to build your sound.
 10. Use **▶ Play All / ■ Stop All** to control everything at once.
 11. Click **Enable MIDI** and use **Learn** if you want to map controller pads, buttons, or faders.

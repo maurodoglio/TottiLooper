@@ -639,6 +639,33 @@ test.describe('loop controls', () => {
     await expect(page.locator('.loop-duration')).toBeVisible();
   });
 
+  test('loop card exposes 3-band EQ controls with neutral defaults', async ({ page }) => {
+    await expect(page.locator('input[aria-label="Loop low EQ"]')).toHaveValue('0');
+    await expect(page.locator('input[aria-label="Loop mid EQ"]')).toHaveValue('0');
+    await expect(page.locator('input[aria-label="Loop high EQ"]')).toHaveValue('0');
+
+    await expect(
+      page.locator('.fader[data-fader="low"] .fader-value'),
+    ).toHaveText('0dB');
+    await expect(
+      page.locator('.fader[data-fader="mid"] .fader-value'),
+    ).toHaveText('0dB');
+    await expect(
+      page.locator('.fader[data-fader="high"] .fader-value'),
+    ).toHaveText('0dB');
+  });
+
+  test('EQ slider updates its displayed gain', async ({ page }) => {
+    await page.locator('input[aria-label="Loop mid EQ"]').evaluate((input) => {
+      input.value = '6';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    await expect(
+      page.locator('.fader[data-fader="mid"] .fader-value'),
+    ).toHaveText('+6dB');
+  });
+
   test('loop card exposes independent speed and pitch sliders', async ({ page }) => {
     await expect(page.locator('.fader:has-text("Speed") input[aria-label="Loop speed"]')).toBeVisible();
     await expect(page.locator('.fader:has-text("Pitch") input[aria-label="Loop pitch"]')).toBeVisible();
@@ -646,9 +673,9 @@ test.describe('loop controls', () => {
 
   test('loop controls expose descriptive slider labels and value text', async ({ page }) => {
     const nameInput = page.locator('.loop-name');
-    const volumeSlider = page.locator('.loop-faders input[type="range"]').nth(0);
-    const panSlider = page.locator('.loop-faders input[type="range"]').nth(1);
-    const speedSlider = page.locator('.loop-faders input[type="range"]').nth(2);
+    const volumeSlider = page.locator('input[aria-label="Loop volume"]');
+    const panSlider = page.locator('input[aria-label="Loop pan"]');
+    const speedSlider = page.locator('input[aria-label="Loop speed"]');
 
     await expect(nameInput).toHaveAttribute('aria-label', 'Loop name for Loop 1');
     await expect(page.locator('.loop-waveform')).toHaveAttribute('aria-hidden', 'true');

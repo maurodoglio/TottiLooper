@@ -754,7 +754,7 @@ button:disabled {
 }
 
 .fader-value {
-  min-width: 42px;
+  min-width: 52px;
   text-align: right;
   color: var(--text);
   font-variant-numeric: tabular-nums;
