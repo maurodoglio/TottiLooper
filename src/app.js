@@ -287,6 +287,10 @@ function buildRecordingStream(stream, channelCount) {
 }
 
 function teardownInputRouting() {
+  if (inputMeterFrameId) {
+    cancelAnimationFrame(inputMeterFrameId);
+    inputMeterFrameId = 0;
+  }
   try { inputSourceNode && inputSourceNode.disconnect(); } catch { /* ignore */ }
   try { inputChannelSplitter && inputChannelSplitter.disconnect(); } catch { /* ignore */ }
   try { inputChannelGainNode && inputChannelGainNode.disconnect(); } catch { /* ignore */ }
@@ -295,6 +299,7 @@ function teardownInputRouting() {
   inputChannelSplitter = null;
   inputChannelGainNode = null;
   inputAnalyser = null;
+  if (inputMeterFill) inputMeterFill.style.width = '0%';
 }
 
 function setInputAnalyserSource(sourceNode) {
