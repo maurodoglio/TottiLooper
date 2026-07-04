@@ -54,6 +54,8 @@ const METRONOME_VOLUME = 0.3;
 const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
+const TAP_TEMPO_TIMEOUT_MS = 2000;
+const TAP_TEMPO_MAX_TAPS = 8;
 const MAX_UNDO         = 20;
 const DUCK_GAIN        = 0.35; // Non-lead loops play at 35% volume when the lead is playing.
 // Wait a few fade time-constants before restarting playback so the old source
@@ -125,6 +127,7 @@ let countInEnabled   = false;
 let quantizeEnabled  = false;
 let metronomeInterval = null;
 let metronomeBeatIdx  = 0;
+let tapTempoTimes     = [];
 let leadLoopId        = null;
 let firstLoopTempoHandled = false;
 let pendingDetectedBpm = null;
@@ -199,6 +202,7 @@ const inputChannelSelect = $('input-channel-select');
 const tempoControls      = $('tempo-controls');
 const drumControls       = $('drum-controls');
 const bpmInput           = $('bpm-input');
+const btnTapTempo        = $('btn-tap-tempo');
 const beatsPerBarInput   = $('beats-per-bar-input');
 const drumStyleSelect    = $('drum-style');
 const btnGenerateDrums   = $('btn-generate-drums');
@@ -338,6 +342,7 @@ function init() {
   setRangeValueText(masterVolumeInput, formatPercentValueText(masterVolume));
 
   bpmInput.addEventListener('change', onBpmChange);
+  btnTapTempo.addEventListener('click', onTapTempo);
   beatsPerBarInput.addEventListener('change', onBeatsPerBarChange);
   metronomeToggle.addEventListener('change', onMetronomeToggle);
   countInToggle.addEventListener('change', (e) => { countInEnabled = e.target.checked; });
@@ -1782,6 +1787,32 @@ function onBpmChange() {
   hideTempoSuggestion();
   applyBpmValue(bpmInput.value);
   syncPunchBarInputs();
+}
+
+function setBpm(v) {
+  applyBpmValue(String(v));
+  syncPunchBarInputs();
+}
+
+function onTapTempo() {
+  const now = performance.now();
+  const lastTap = tapTempoTimes[tapTempoTimes.length - 1];
+  if (lastTap && now - lastTap > TAP_TEMPO_TIMEOUT_MS) {
+    // Timeout starts a brand-new tap sequence from the current tap.
+    tapTempoTimes = [];
+  }
+  tapTempoTimes.push(now);
+  if (tapTempoTimes.length > TAP_TEMPO_MAX_TAPS) {
+    tapTempoTimes = tapTempoTimes.slice(-TAP_TEMPO_MAX_TAPS);
+  }
+  if (tapTempoTimes.length < 2) return;
+
+  let totalInterval = 0;
+  for (let i = 1; i < tapTempoTimes.length; i++) {
+    totalInterval += tapTempoTimes[i] - tapTempoTimes[i - 1];
+  }
+  const averageInterval = totalInterval / (tapTempoTimes.length - 1);
+  setBpm(Math.round(60000 / averageInterval));
 }
 
 function onBeatsPerBarChange() {

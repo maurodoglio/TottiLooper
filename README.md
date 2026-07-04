@@ -10,7 +10,7 @@ them on top of each other – your one-man band for busking starts here.
 - 📈 **Input level meter** so you can set a healthy recording level
 - 🎚️ **First-loop tempo detection** to suggest a session BPM from your opening take
 - 🎧 **Input monitoring toggle** with **latency offset** trim for live self-monitoring
-- 🥁 **Built-in metronome** with adjustable **BPM** and **beats-per-bar**
+- 🥁 **Built-in metronome** with adjustable **BPM**, **tap tempo**, and **beats-per-bar**
 - 🥁 **Generate drum backing loops** from BPM + style using built-in one-shot samples
 - ⏱️ **Count-in** before recording so your first note isn't clipped
 - 📐 **Quantize** recorded loops to whole bars for perfectly aligned layers
@@ -49,7 +49,7 @@ them on top of each other – your one-man band for busking starts here.
 2. Click **🎤 Allow Microphone** and grant permission when prompted.
 3. (Optional) Enable **Monitor input** if you want to hear yourself live, then
    adjust **Latency offset** to compensate if overdubs land slightly early or late.
-4. (Optional) Set your **BPM**, then enable **Metronome**, **Count-in** and
+4. (Optional) Set your **BPM** (manually or with **Tap Tempo**), then enable **Metronome**, **Count-in** and
    **Quantize** if you want bar-locked loops.
 4. (Optional) Pick a **Drum style** and click **🥁 Generate drums** to add a
    backing groove that follows the current BPM.

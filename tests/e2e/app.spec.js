@@ -1070,6 +1070,10 @@ test.describe('tempo controls', () => {
     await expect(page.locator('#bpm-input')).toHaveValue('140');
   });
 
+  test('tap tempo button is visible', async ({ page }) => {
+    await expect(page.locator('#btn-tap-tempo')).toBeVisible();
+  });
+
   test('BPM is clamped to the minimum (40)', async ({ page }) => {
     await page.locator('#bpm-input').fill('10');
     await page.locator('#bpm-input').press('Tab');
@@ -1080,6 +1084,37 @@ test.describe('tempo controls', () => {
     await page.locator('#bpm-input').fill('999');
     await page.locator('#bpm-input').press('Tab');
     await expect(page.locator('#bpm-input')).toHaveValue('240');
+  });
+
+  test('tap tempo updates BPM from inter-tap timing', async ({ page }) => {
+    const tapTimes = [];
+    await page.locator('#btn-tap-tempo').click();
+    tapTimes.push(Date.now());
+    await page.waitForTimeout(300);
+    await page.locator('#btn-tap-tempo').click();
+    tapTimes.push(Date.now());
+    await page.waitForTimeout(300);
+    await page.locator('#btn-tap-tempo').click();
+    tapTimes.push(Date.now());
+
+    const avgIntervalMs = ((tapTimes[1] - tapTimes[0]) + (tapTimes[2] - tapTimes[1])) / 2;
+    const expectedBpm = Math.round(60000 / avgIntervalMs);
+    const tappedBpm = Number(await page.locator('#bpm-input').inputValue());
+    // Keep tolerance wide enough for timer jitter in shared CI workers.
+    expect(Math.abs(tappedBpm - expectedBpm)).toBeLessThanOrEqual(20);
+  });
+
+  test('tap tempo ignores a single tap and resets after timeout', async ({ page }) => {
+    await page.locator('#bpm-input').fill('123');
+    await page.locator('#bpm-input').press('Tab');
+    await expect(page.locator('#bpm-input')).toHaveValue('123');
+
+    await page.locator('#btn-tap-tempo').click();
+    await expect(page.locator('#bpm-input')).toHaveValue('123');
+
+    await page.waitForTimeout(2100); // TAP_TEMPO_TIMEOUT_MS is 2000ms in src/app.js.
+    await page.locator('#btn-tap-tempo').click();
+    await expect(page.locator('#bpm-input')).toHaveValue('123');
   });
 
   test('metronome toggle can be enabled', async ({ page }) => {
