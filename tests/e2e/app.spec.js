@@ -811,6 +811,31 @@ test.describe('loop controls', () => {
     await expect(page.locator('.loop-card')).toBeVisible();
   });
 
+  test('lead button toggles on a loop', async ({ page }) => {
+    const leadButton = page.locator('.btn-lead').first();
+    await expect(leadButton).toHaveAttribute('aria-pressed', 'false');
+    await leadButton.click();
+    await expect(leadButton).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('only one loop can be marked as lead at a time', async ({ page }) => {
+    // Record a second loop.
+    await page.click('#btn-record');
+    await page.waitForTimeout(600);
+    await page.click('#btn-record');
+    await expect(page.locator('.loop-card')).toHaveCount(2, { timeout: 8000 });
+
+    const firstLeadButton = page.locator('.loop-card').nth(0).locator('.btn-lead');
+    const secondLeadButton = page.locator('.loop-card').nth(1).locator('.btn-lead');
+
+    await firstLeadButton.click();
+    await expect(firstLeadButton).toHaveAttribute('aria-pressed', 'true');
+
+    await secondLeadButton.click();
+    await expect(firstLeadButton).toHaveAttribute('aria-pressed', 'false');
+    await expect(secondLeadButton).toHaveAttribute('aria-pressed', 'true');
+  });
+
   test('punch-in overdubs a selected bar range without creating another loop', async ({ page }) => {
     const punchBpm = 240;
     const punchBarDurationMs = (60000 / punchBpm) * 4;

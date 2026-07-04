@@ -309,6 +309,24 @@ describe('effectiveGain', () => {
     const loop = { muted: false, soloed: false, volume: 0 };
     expect(effectiveGain(loop, [loop])).toBe(0);
   });
+
+  it('ducks non-lead loops when a lead loop is currently playing', () => {
+    const lead = { id: 1, muted: false, soloed: false, volume: 1, playing: true };
+    const backing = { id: 2, muted: false, soloed: false, volume: 0.8, playing: true };
+    expect(effectiveGain(backing, [lead, backing], { leadLoopId: 1, duckGain: 0.25 })).toBeCloseTo(0.2, 6);
+  });
+
+  it('does not duck the designated lead loop itself', () => {
+    const lead = { id: 1, muted: false, soloed: false, volume: 0.9, playing: true };
+    const backing = { id: 2, muted: false, soloed: false, volume: 1, playing: true };
+    expect(effectiveGain(lead, [lead, backing], { leadLoopId: 1, duckGain: 0.25 })).toBe(0.9);
+  });
+
+  it('does not duck other loops when the lead is not playing', () => {
+    const lead = { id: 1, muted: false, soloed: false, volume: 1, playing: false };
+    const backing = { id: 2, muted: false, soloed: false, volume: 0.7, playing: true };
+    expect(effectiveGain(backing, [lead, backing], { leadLoopId: 1, duckGain: 0.25 })).toBe(0.7);
+  });
 });
 
 // ─── key detection ─────────────────────────────────────────────────────────────
