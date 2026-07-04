@@ -308,14 +308,15 @@ async function onRecordingStop() {
   try {
     const arrayBuffer = await blob.arrayBuffer();
     let audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    let suggestedTempo = false;
     if (loops.length === 0 && !firstLoopTempoHandled) {
-      maybeSuggestTempo(audioBuffer);
+      suggestedTempo = maybeSuggestTempo(audioBuffer);
     }
     if (quantizeEnabled) {
       audioBuffer = quantizeBuffer(audioBuffer);
     }
     addLoop(audioBuffer);
-    if (pendingDetectedBpm === null) {
+    if (!suggestedTempo) {
       setStatus('Loop added! Press ● REC to record another.');
     }
   } catch (err) {
@@ -367,16 +368,16 @@ function effectiveGain(loop) {
 function maybeSuggestTempo(audioBuffer) {
   firstLoopTempoHandled = true;
   const detectedBpm = estimateTempo(audioBuffer, { minBpm: MIN_BPM, maxBpm: MAX_BPM });
-  if (!detectedBpm) return;
+  if (!detectedBpm) return false;
   if (detectedBpm === bpm) {
-    setStatus(`Loop added! Detected tempo matches the current ${bpm} BPM.`);
-    return;
+    return false;
   }
 
   pendingDetectedBpm = detectedBpm;
   tempoSuggestionText.textContent = `Detected ${detectedBpm} BPM from your first loop. Use it for this session?`;
   tempoSuggestion.classList.remove('hidden');
-  setStatus(`Detected ${detectedBpm} BPM from your first loop. Confirm to update the session tempo.`);
+  setStatus('Review the suggested BPM for your first loop.');
+  return true;
 }
 
 function refreshAllGains() {
