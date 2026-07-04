@@ -210,6 +210,14 @@
         <input id="export-midi-toggle" type="checkbox" />
         <span>MIDI click</span>
       </label>
+      <label class="field">
+        <span>Reverb</span>
+        <input id="reverb-send" type="range" min="0" max="1" step="0.01" value="0" aria-label="Reverb send" />
+      </label>
+      <label class="toggle">
+        <input id="compressor-toggle" type="checkbox" checked />
+        <span>Compressor</span>
+      </label>
       <button id="btn-export-mix" class="btn-secondary" title="Export mix as WAV">⬇ Export</button>
       <button id="btn-clear-all" class="btn-danger" title="Clear all loops" disabled>✕ Clear All</button>
       <button id="btn-share-session" class="btn-secondary" title="Copy a shareable link">🔗 Share</button>
@@ -346,8 +354,10 @@
         <li><strong>Song mode</strong> – switch Play All into a bar-based song arrangement. Each loop gets its own <strong>Start</strong> and <strong>Bars</strong> timeline fields.</li>
         <li><strong>Now playing</strong> – shows the current bar and beat shared by the active loops.</li>
         <li><strong>Master</strong> slider – sets the overall output level.</li>
+        <li><strong>Reverb</strong> slider – adds global room reverb to the master bus (0 = dry, 1 = fully wet send).</li>
+        <li><strong>Compressor</strong> toggle – enables a dynamics compressor to glue layers and prevent clipping.</li>
         <li><strong>MIDI click</strong> – optionally export a click-track MIDI file at the current tempo for easy DAW alignment.</li>
-        <li><strong>⬇ Export</strong> – render the current mix to a WAV file, and optionally download the matching MIDI click track alongside it.</li>
+        <li><strong>⬇ Export</strong> – render the current mix (with all master bus effects) to a WAV file, and optionally download the matching MIDI click track alongside it.</li>
         <li><strong>🥁 Generate drums</strong> – build a one-bar drum loop from the current BPM and selected style.</li>
         <li><strong>🔗 Share</strong> – encode a small session into the page URL so you can send it as a link.</li>
         <li><strong>Scenes / setlist</strong> – save named snapshots of which loops are active plus every mixer setting, then fire them live with keys <kbd>1</kbd>…<kbd>9</kbd>.</li>
