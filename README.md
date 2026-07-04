@@ -10,6 +10,7 @@ them on top of each other – your one-man band for busking starts here.
 - 📈 **Input level meter** so you can set a healthy recording level
 - 🎧 **Input monitoring toggle** with **latency offset** trim for live self-monitoring
 - 🥁 **Built-in metronome** with adjustable **BPM** and **beats-per-bar**
+- 🥁 **Generate drum backing loops** from BPM + style using built-in one-shot samples
 - ⏱️ **Count-in** before recording so your first note isn't clipped
 - 📐 **Quantize** recorded loops to whole bars for perfectly aligned layers
 - ⏱️ **Live recording timer** + one-click **Discard**
@@ -46,6 +47,8 @@ them on top of each other – your one-man band for busking starts here.
    adjust **Latency offset** to compensate if overdubs land slightly early or late.
 4. (Optional) Set your **BPM**, then enable **Metronome**, **Count-in** and
    **Quantize** if you want bar-locked loops.
+4. (Optional) Pick a **Drum style** and click **🥁 Generate drums** to add a
+   backing groove that follows the current BPM.
 5. Click **● REC** (or press <kbd>Space</kbd>) to start recording a riff.
 6. Click **■ STOP** (or press <kbd>Space</kbd> again) when you're done – the
    loop is saved automatically and appears in the list.

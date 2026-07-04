@@ -99,6 +99,18 @@
       </label>
     </div>
 
+    <div id="drum-controls" class="panel">
+      <label class="field">
+        <span>Drum style</span>
+        <select id="drum-style" aria-label="Drum style">
+          <option value="rock">Rock</option>
+          <option value="funk">Funk</option>
+          <option value="reggae">Reggae</option>
+        </select>
+      </label>
+      <button id="btn-generate-drums" class="btn-secondary">🥁 Generate drums</button>
+    </div>
+
     <!-- Recording controls -->
     <div id="record-controls">
       <div id="status-dot" class="status-dot"></div>
@@ -196,6 +208,7 @@
         <li>Plug in headphones — without them your mic will re-record whatever is already playing back.</li>
         <li>(Optional) Turn on <strong>Monitor input</strong> if you want to hear yourself live, then nudge <strong>Latency offset</strong> if your overdubs land a little early or late.</li>
         <li>(Optional) Set your <strong>BPM</strong>, enable <strong>Metronome</strong>, <strong>Count-in</strong> and <strong>Quantize</strong> to keep layered loops locked to a bar.</li>
+        <li>(Optional) Pick a <strong>Drum style</strong> and click <strong>🥁 Generate drums</strong> to add a backing beat that follows your BPM.</li>
       </ol>
 
       <h3>Recording a loop</h3>
@@ -226,6 +239,7 @@
         <li><strong>Master</strong> slider – sets the overall output level.</li>
         <li><strong>MIDI click</strong> – optionally export a click-track MIDI file at the current tempo for easy DAW alignment.</li>
         <li><strong>⬇ Export</strong> – render the current mix to a WAV file, and optionally download the matching MIDI click track alongside it.</li>
+        <li><strong>🥁 Generate drums</strong> – build a one-bar drum loop from the current BPM and selected style.</li>
         <li><strong>🔗 Share</strong> – encode a small session into the page URL so you can send it as a link.</li>
         <li><strong>✕ Clear All</strong> – remove every loop after confirming, with undo / redo support if you change your mind.</li>
       </ul>

@@ -28,6 +28,11 @@ import {
   unpackSharedSession,
 } from './utils.js';
 import {
+  DRUM_SAMPLE_FILES,
+  buildDrumLoopPlan,
+  getDrumStyleLabel,
+} from './drums.js';
+import {
   DEFAULT_SHORTCUTS,
   eventToShortcut,
   loadShortcutMappings,
@@ -91,6 +96,8 @@ let countInEnabled   = false;
 let quantizeEnabled  = false;
 let metronomeInterval = null;
 let metronomeBeatIdx  = 0;
+let drumSampleBytes = null;
+let generatingDrums = false;
 
 let midiAccess = null;
 let midiLearnTarget = null;
@@ -144,8 +151,11 @@ const inputControls      = $('input-controls');
 const inputDeviceSelect  = $('input-device-select');
 const inputChannelSelect = $('input-channel-select');
 const tempoControls      = $('tempo-controls');
+const drumControls       = $('drum-controls');
 const bpmInput           = $('bpm-input');
 const beatsPerBarInput   = $('beats-per-bar-input');
+const drumStyleSelect    = $('drum-style');
+const btnGenerateDrums   = $('btn-generate-drums');
 const metronomeToggle    = $('metronome-toggle');
 const countInToggle      = $('count-in-toggle');
 const quantizeToggle     = $('quantize-toggle');
@@ -233,6 +243,7 @@ function init() {
   midiControls.classList.add('hidden');
   loopsSection.classList.add('hidden');
   tempoControls.classList.add('hidden');
+  drumControls.classList.add('hidden');
   updatePlaybackPosition();
 
   btnThemeToggle.addEventListener('click', toggleTheme);
@@ -246,6 +257,7 @@ function init() {
   btnExportMix.addEventListener('click', exportMix);
   btnShareSession.addEventListener('click', shareSession);
   btnUndo.addEventListener('click', undoDelete);
+  btnGenerateDrums.addEventListener('click', generateDrumLoop);
   btnRedo.addEventListener('click', redoDelete);
   btnClearAll.addEventListener('click', clearAllLoops);
   btnEnableMidi.addEventListener('click', enableMidi);
@@ -354,6 +366,7 @@ async function requestMicrophoneAccess() {
     permissionBanner.classList.add('hidden');
     inputControls.classList.remove('hidden');
     tempoControls.classList.remove('hidden');
+    drumControls.classList.remove('hidden');
     recordControls.classList.remove('hidden');
     masterControls.classList.remove('hidden');
     midiControls.classList.remove('hidden');
@@ -1434,6 +1447,77 @@ function stopMetronome() {
   if (metronomeInterval) {
     clearInterval(metronomeInterval);
     metronomeInterval = null;
+  }
+}
+
+async function loadDrumSampleLibrary() {
+  if (drumSampleBytes) return drumSampleBytes;
+
+  const entries = await Promise.all(
+    Object.entries(DRUM_SAMPLE_FILES).map(async ([name, url]) => {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Could not load ${name} sample.`);
+      }
+      return [name, await response.arrayBuffer()];
+    }),
+  );
+
+  drumSampleBytes = Object.fromEntries(entries);
+  return drumSampleBytes;
+}
+
+async function renderDrumLoop(style) {
+  const plan = buildDrumLoopPlan({ style, bpm, beatsPerBar });
+  const sampleRate = audioContext.sampleRate;
+  const offline = new OfflineAudioContext(2, Math.ceil(plan.barDuration * sampleRate), sampleRate);
+  const sampleBytes = await loadDrumSampleLibrary();
+  const samples = Object.fromEntries(
+    await Promise.all(
+      Object.entries(sampleBytes).map(async ([name, bytes]) => (
+        [name, await offline.decodeAudioData(bytes.slice(0))]
+      )),
+    ),
+  );
+
+  for (const hit of plan.hits) {
+    const source = offline.createBufferSource();
+    source.buffer = samples[hit.sample];
+
+    const gain = offline.createGain();
+    gain.gain.value = hit.gain;
+
+    source.connect(gain);
+    gain.connect(offline.destination);
+    source.start(hit.time);
+  }
+
+  return {
+    audioBuffer: await offline.startRendering(),
+    plan,
+  };
+}
+
+async function generateDrumLoop() {
+  if (!audioContext || generatingDrums) return;
+
+  generatingDrums = true;
+  btnGenerateDrums.disabled = true;
+  setStatus('Generating drum loop…');
+
+  try {
+    if (audioContext.state === 'suspended') await audioContext.resume();
+
+    const { audioBuffer, plan } = await renderDrumLoop(drumStyleSelect.value);
+    const label = getDrumStyleLabel(plan.style);
+    addLoop(audioBuffer, { name: `${label} Drums · ${bpm} BPM` });
+    setStatus(`${label} drum loop added.`);
+  } catch (err) {
+    showError('Could not generate drums: ' + err.message);
+    setStatus('Ready. Press ● REC to start recording.');
+  } finally {
+    generatingDrums = false;
+    btnGenerateDrums.disabled = false;
   }
 }
 
