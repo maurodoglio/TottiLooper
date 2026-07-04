@@ -3,23 +3,88 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Browser-based audio looper for solo musicians." />
+  <meta name="theme-color" content="#1a1f2b" />
   <title>TottiLooper</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <script>
+    (() => {
+      const storageKey = 'tottilooper-theme';
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light';
+
+      try {
+        const savedTheme = localStorage.getItem(storageKey);
+        document.documentElement.dataset.theme =
+          savedTheme === 'dark' || savedTheme === 'light'
+            ? savedTheme
+            : systemTheme;
+      } catch {
+        document.documentElement.dataset.theme = systemTheme;
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="src/style.css" />
 </head>
 <body>
 
   <header>
-    <button id="btn-help" class="btn-help" title="Help (press ?)" aria-label="Open help">?</button>
-    <h1>🎸 TottiLooper</h1>
-    <p>Record riffs, layer them live – your one-man band starts here.</p>
-  </header>
+  <button id="btn-theme-toggle" class="btn-theme-toggle" type="button" aria-label="Toggle theme">
+    <span class="theme-toggle-icon" aria-hidden="true"></span>
+    <span class="sr-only theme-toggle-label"></span>
+  </button>
+  <script>
+    (() => {
+      const button = document.getElementById('btn-theme-toggle');
+      const icon = button.querySelector('.theme-toggle-icon');
+      const label = button.querySelector('.theme-toggle-label');
+      const theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+      const buttonLabel = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
 
-  <main>
+      icon.textContent = theme === 'dark' ? '☀️' : '🌙';
+      label.textContent = buttonLabel;
+      button.setAttribute('title', buttonLabel);
+      button.setAttribute('aria-label', buttonLabel);
+    })();
+  </script>
+  <button id="btn-help" class="btn-help" title="Help (press ?)" aria-label="Open help">?</button>
+  <h1>🎸 TottiLooper</h1>
+  <p>Record riffs, layer them live – your one-man band starts here.</p>
+</header>
+
+<main>
 
     <!-- Microphone permission -->
     <div id="permission-banner">
-      <p>TottiLooper needs access to your microphone to record loops.</p>
+      <p>TottiLooper needs access to your microphone to record your own loops.</p>
       <button id="btn-request-mic" class="btn-primary">🎤 Allow Microphone</button>
+    </div>
+
+    <div id="sample-library" class="panel">
+      <div class="sample-library-copy">
+        <strong>No mic?</strong>
+        <span>Try the built-in one-shot sample library to build a quick drum pattern.</span>
+      </div>
+      <div class="sample-library-actions">
+        <button type="button" class="btn-secondary" data-builtin-sample="kick">🥁 Add Kick</button>
+        <button type="button" class="btn-secondary" data-builtin-sample="snare">🥁 Add Snare</button>
+        <button type="button" class="btn-secondary" data-builtin-sample="clap">👏 Add Clap</button>
+      </div>
+    </div>
+
+    <!-- Input selection -->
+    <div id="input-controls" class="panel hidden">
+      <label class="field">
+        <span>Input</span>
+        <select id="input-device-select" aria-label="Input device"></select>
+      </label>
+      <label class="field">
+        <span>Channel</span>
+        <select id="input-channel-select" aria-label="Input channel"></select>
+      </label>
     </div>
 
     <!-- Tempo / metronome controls -->
@@ -47,27 +112,111 @@
       </label>
     </div>
 
+    <div id="tempo-suggestion" class="panel hidden" aria-live="polite">
+      <span id="tempo-suggestion-text"></span>
+      <div class="tempo-suggestion-actions">
+        <button id="btn-apply-detected-tempo" type="button" class="btn-primary">Use detected BPM</button>
+        <button id="btn-dismiss-detected-tempo" type="button" class="btn-secondary">Keep current</button>
+      </div>
+    </div>
+
+    <div id="drum-controls" class="panel">
+      <label class="field">
+        <span>Drum style</span>
+        <select id="drum-style" aria-label="Drum style">
+          <option value="rock">Rock</option>
+          <option value="funk">Funk</option>
+          <option value="reggae">Reggae</option>
+        </select>
+      </label>
+      <button id="btn-generate-drums" class="btn-secondary">🥁 Generate drums</button>
+    </div>
+
     <!-- Recording controls -->
     <div id="record-controls">
       <div id="status-dot" class="status-dot"></div>
       <span id="record-timer">0:00</span>
       <div id="input-meter" aria-hidden="true"><div id="input-meter-fill"></div></div>
+      <div class="record-monitoring">
+        <label class="toggle">
+          <input id="monitoring-toggle" type="checkbox" />
+          <span>Monitor input</span>
+        </label>
+        <label class="monitor-offset-field" for="monitor-latency-offset">
+          <span>Latency offset (ms)</span>
+          <input id="monitor-latency-offset" type="number" min="-250" max="250" step="5" value="0" disabled />
+        </label>
+      </div>
       <span id="status-text">Press ● REC to start recording.</span>
       <button id="btn-record" class="btn-record">● REC</button>
       <button id="btn-stop-record" class="btn-stop" disabled>■ DISCARD</button>
+      <label class="toggle">
+        <input id="punch-toggle" type="checkbox" disabled />
+        <span>Punch-in</span>
+      </label>
+      <label class="field">
+        <span>Loop</span>
+        <select id="punch-loop-select" disabled aria-label="Punch-in loop"></select>
+      </label>
+      <label class="field field-bars">
+        <span>Bars</span>
+        <input id="punch-start-bar" type="number" min="1" value="1" disabled aria-label="Punch-in start bar" />
+        <span>–</span>
+        <input id="punch-end-bar" type="number" min="1" value="1" disabled aria-label="Punch-in end bar" />
+        <span id="punch-bars-total">/ 1 bar</span>
+      </label>
     </div>
 
     <!-- Master playback -->
     <div id="master-controls" class="panel">
       <button id="btn-play-all" class="btn-primary">▶ Play All</button>
       <button id="btn-stop-all" class="btn-stop">■ Stop All</button>
+      <span id="playback-position" aria-live="polite"></span>
       <label class="field master-volume-field">
         <span>Master</span>
-        <input id="master-volume" type="range" min="0" max="1.5" step="0.01" value="1" aria-label="Master volume" />
+        <input id="master-volume" type="range" min="0" max="1.5" step="0.01" value="1" aria-label="Master volume" aria-valuetext="100 percent" />
+      </label>
+      <label class="toggle" title="Also export a MIDI click track at the current tempo">
+        <input id="export-midi-toggle" type="checkbox" />
+        <span>MIDI click</span>
       </label>
       <button id="btn-export-mix" class="btn-secondary" title="Export mix as WAV">⬇ Export</button>
+      <button id="btn-clear-all" class="btn-danger" title="Clear all loops" disabled>✕ Clear All</button>
+      <button id="btn-share-session" class="btn-secondary" title="Copy a shareable link">🔗 Share</button>
       <button id="btn-undo" class="btn-secondary" title="Undo delete (Ctrl+Z)" disabled>↶ Undo</button>
+      <button id="btn-redo" class="btn-secondary" title="Redo delete (Ctrl+Shift+Z / Ctrl+Y)" disabled>↷ Redo</button>
     </div>
+
+    <!-- MIDI controls -->
+    <section id="midi-controls" class="panel hidden" aria-labelledby="midi-title">
+      <div class="midi-header">
+        <div>
+          <h2 id="midi-title">MIDI controller</h2>
+          <p id="midi-status">Connect a controller, then click Learn to map pads, buttons, or faders.</p>
+        </div>
+        <button id="btn-enable-midi" class="btn-secondary">Enable MIDI</button>
+      </div>
+      <div class="midi-bindings">
+        <div class="midi-binding-row" data-midi-action="record">
+          <span class="midi-binding-label">Record toggle</span>
+          <span class="midi-binding-value">Unassigned</span>
+          <button class="btn-secondary btn-midi-learn" data-midi-target="record">Learn</button>
+          <button class="btn-secondary btn-midi-clear" data-midi-target="record">Clear</button>
+        </div>
+        <div class="midi-binding-row" data-midi-action="play-all">
+          <span class="midi-binding-label">Play all</span>
+          <span class="midi-binding-value">Unassigned</span>
+          <button class="btn-secondary btn-midi-learn" data-midi-target="play-all">Learn</button>
+          <button class="btn-secondary btn-midi-clear" data-midi-target="play-all">Clear</button>
+        </div>
+        <div class="midi-binding-row" data-midi-action="stop-all">
+          <span class="midi-binding-label">Stop all</span>
+          <span class="midi-binding-value">Unassigned</span>
+          <button class="btn-secondary btn-midi-learn" data-midi-target="stop-all">Learn</button>
+          <button class="btn-secondary btn-midi-clear" data-midi-target="stop-all">Clear</button>
+        </div>
+      </div>
+    </section>
 
     <!-- Loops list -->
     <section id="loops-section">
@@ -75,7 +224,7 @@
       <div id="loops-list">
         <div id="empty-state">
           <div class="icon">🎵</div>
-          <p>No loops yet. Hit <strong>● REC</strong> to record your first loop!</p>
+          <p>No loops yet. Hit <strong>● REC</strong> or add a built-in sample to get started.</p>
         </div>
       </div>
     </section>
@@ -91,52 +240,84 @@
       <h3>Getting started</h3>
       <ol>
         <li>Click <strong>🎤 Allow Microphone</strong> and grant permission when prompted.</li>
+        <li>No microphone? Use the <strong>sample library</strong> to add built-in kick, snare and clap loops.</li>
+        <li>If you have multiple audio inputs or are using an audio interface, choose the right <strong>Input</strong> and <strong>Channel</strong>.</li>
         <li>Plug in headphones — without them your mic will re-record whatever is already playing back.</li>
-        <li>(Optional) Set your <strong>BPM</strong> manually or with <strong>Tap Tempo</strong>, then enable <strong>Metronome</strong>, <strong>Count-in</strong> and <strong>Quantize</strong> to keep layered loops locked to a bar.</li>
+        <li>(Optional) Turn on <strong>Monitor input</strong> if you want to hear yourself live, then nudge <strong>Latency offset</strong> if your overdubs land a little early or late.</li>
+        <li>(Optional) Set your <strong>BPM</strong> manually or with <strong>Tap Tempo</strong>, enable <strong>Metronome</strong>, <strong>Count-in</strong> and <strong>Quantize</strong> to keep layered loops locked to a bar.</li>
+        <li>(Optional) Pick a <strong>Drum style</strong> and click <strong>🥁 Generate drums</strong> to add a backing beat that follows your BPM.</li>
       </ol>
 
       <h3>Recording a loop</h3>
       <ol>
-        <li>Press <strong>● REC</strong> (or the <kbd>Space</kbd> key) to start. Watch the input meter to make sure your signal is healthy.</li>
+        <li>Press <strong>● REC</strong> (or <span id="shortcut-record-inline"></span>) to start. Watch the input meter to make sure your signal is healthy.</li>
         <li>Play your riff.</li>
-        <li>Press <strong>■ STOP</strong> (or <kbd>Space</kbd> again) when finished — the loop appears in the list and is ready to play.</li>
+        <li>Press <strong>■ STOP</strong> (or the same shortcut again) when finished — the loop appears in the list and is ready to play.</li>
+        <li>After your first loop, TottiLooper can suggest a matching BPM for the session — confirm it if the detection looks right.</li>
         <li>Press <strong>■ DISCARD</strong> to abandon the current take without saving it.</li>
+        <li>To punch in on an existing loop, enable <strong>Punch-in</strong>, choose the target loop and bar range, then record — the take is overdubbed onto that section instead of creating a new loop.</li>
       </ol>
 
       <h3>Per-loop controls</h3>
       <ul>
         <li><strong>▶ / ⏹</strong> – start or stop this loop.</li>
+        <li><strong>Key label</strong> – shows the loop's detected key, when TottiLooper can infer one.</li>
         <li><strong>🔊 / 🔇</strong> – mute or unmute.</li>
         <li><strong>S</strong> – solo this loop (everything not soloed is silenced).</li>
+        <li><strong>L</strong> – set this loop as lead; other loops become quieter while the lead is playing (ducking).</li>
         <li><strong>⇄</strong> – play the loop in reverse.</li>
         <li><strong>⬇</strong> – download this loop as a WAV file.</li>
-        <li><strong>✕</strong> – delete the loop. Use <strong>↶ Undo</strong> or <kbd>Ctrl</kbd>+<kbd>Z</kbd> to bring it back.</li>
-        <li><strong>Vol / Pan / Speed</strong> sliders – mix each loop and warp its pitch via playback rate.</li>
+        <li><strong>✕</strong> – delete the loop. Use <strong>↶ Undo</strong> / <strong>↷ Redo</strong> or <span id="shortcut-undo-inline"></span> to step backward and forward through deletions.</li>
+        <li><strong>½× / 2×</strong> – toggle half-time or double-time playback for a loop.</li>
+        <li><strong>Trim handles</strong> on the waveform – drag the left and right markers to tighten the loop without re-recording.</li>
+        <li><strong>Vol / Pan / Low / Mid / High / Speed / Pitch / Fade In / Fade Out</strong> sliders – mix each loop, carve out frequency space with a 3-band EQ, time-stretch it, transpose it independently, and smooth loop boundaries.</li>
+        <li>Click or drag the <strong>waveform</strong> to scrub to a new playback position.</li>
         <li>Click the <strong>loop name</strong> field to rename it (e.g. "Bass", "Chords", "Beatbox").</li>
       </ul>
 
       <h3>Master controls</h3>
       <ul>
         <li><strong>▶ Play All</strong> / <strong>■ Stop All</strong> – start or stop every loop at once.</li>
+        <li><strong>Now playing</strong> – shows the current bar and beat shared by the active loops.</li>
         <li><strong>Master</strong> slider – sets the overall output level.</li>
-        <li><strong>⬇ Export</strong> – render the current mix to a WAV file you can save or share.</li>
+        <li><strong>MIDI click</strong> – optionally export a click-track MIDI file at the current tempo for easy DAW alignment.</li>
+        <li><strong>⬇ Export</strong> – render the current mix to a WAV file, and optionally download the matching MIDI click track alongside it.</li>
+        <li><strong>🥁 Generate drums</strong> – build a one-bar drum loop from the current BPM and selected style.</li>
+        <li><strong>🔗 Share</strong> – encode a small session into the page URL so you can send it as a link.</li>
+        <li><strong>✕ Clear All</strong> – remove every loop after confirming, with undo / redo support if you change your mind.</li>
+      </ul>
+
+      <h3>MIDI learn</h3>
+      <ul>
+        <li>Click <strong>Enable MIDI</strong> after plugging in your controller.</li>
+        <li>Use <strong>Learn</strong> on Record / Play All / Stop All, then press a pad or button.</li>
+        <li>Each loop card also has <strong>Learn toggle</strong> and <strong>Learn volume</strong> so you can map pads and faders per loop.</li>
       </ul>
 
       <h3>Keyboard shortcuts</h3>
-      <ul class="shortcuts">
-        <li><kbd>Space</kbd> – start / stop recording</li>
-        <li><kbd>Enter</kbd> – play all loops</li>
-        <li><kbd>Esc</kbd> – stop all loops</li>
-        <li><kbd>1</kbd>…<kbd>9</kbd> – toggle loops 1 through 9</li>
-        <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> (or <kbd>⌘</kbd>+<kbd>Z</kbd>) – undo the last delete</li>
-        <li><kbd>?</kbd> – open this help</li>
+      <ul id="shortcut-list" class="shortcuts"></ul>
+
+      <h3>Customize shortcuts</h3>
+      <p class="shortcut-help-text">Click a field, then press the shortcut you want to use. Press Backspace or Delete to clear a binding.</p>
+      <div id="shortcut-editor" class="shortcut-editor"></div>
+      <button id="btn-reset-shortcuts" type="button" class="btn-secondary shortcut-reset">Reset defaults</button>
+
+      <h3>Gamepad / foot switch</h3>
+      <ul>
+        <li>If your browser exposes a connected controller via the <strong>Gamepad API</strong>, the first four buttons (indices 0–3) work hands-free.</li>
+        <li><strong>Button 1</strong> – start / stop recording</li>
+        <li><strong>Button 2</strong> – play all loops</li>
+        <li><strong>Button 3</strong> – stop all loops</li>
+        <li><strong>Button 4</strong> – toggle the next loop, cycling through your recorded loops</li>
       </ul>
 
       <h3>Tips</h3>
       <ul>
         <li>Enable <strong>Quantize</strong> for tight, bar-aligned layers that never drift.</li>
         <li>Use <strong>Count-in</strong> so your first note isn't chopped off.</li>
+        <li>If a new loop may be in a clashing key, TottiLooper will warn you as soon as it finishes processing.</li>
         <li>Drop <strong>Speed</strong> below 1× for half-time pads, push above 1× for chipmunk leads.</li>
+        <li>Use <strong>Pitch</strong> to transpose loops up or down without changing tempo.</li>
         <li>Use <strong>Pan</strong> to spread rhythm and lead parts across the stereo field — it instantly sounds bigger.</li>
       </ul>
     </div>
