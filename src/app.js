@@ -509,7 +509,7 @@ function stopLoop(loop) {
 function refreshLoopPlayback(loop) {
   if (!loop.playing) return;
   stopLoop(loop);
-  setTimeout(() => playLoop(loop), Math.ceil(FADE_TIME * 1000 * FADE_SETTLE_MULTIPLIER));
+  setTimeout(() => playLoop(loop), getFadeSettleDelayMs());
 }
 
 function deleteLoop(loopId) {
@@ -607,7 +607,7 @@ function toggleReverse(loop) {
   const wasPlaying = loop.playing;
   if (wasPlaying) {
     stopLoop(loop);
-    setTimeout(() => playLoop(loop), Math.ceil(FADE_TIME * 1000 * FADE_SETTLE_MULTIPLIER));
+    setTimeout(() => playLoop(loop), getFadeSettleDelayMs());
   }
   const card = document.getElementById(`loop-card-${loop.id}`);
   if (card) {
@@ -774,7 +774,11 @@ function getLoopBarCount(loop) {
   return Math.max(1, Math.round(loop.duration / getBarDurationSeconds()));
 }
 
-function clampBar(value, min, max) {
+function getFadeSettleDelayMs() {
+  return Math.ceil(FADE_TIME * 1000 * FADE_SETTLE_MULTIPLIER);
+}
+
+function clampValue(value, min, max) {
   const numericValue = typeof value === 'number' ? value : parseInt(value, 10);
   if (Number.isNaN(numericValue)) return min;
   return Math.max(min, Math.min(max, numericValue));
@@ -782,8 +786,8 @@ function clampBar(value, min, max) {
 
 function getPunchBarRange(loop) {
   const totalBars = getLoopBarCount(loop);
-  const startBar = clampBar(punchStartBarInput.value, 1, totalBars);
-  const endBar = clampBar(punchEndBarInput.value, startBar, totalBars);
+  const startBar = clampValue(punchStartBarInput.value, 1, totalBars);
+  const endBar = clampValue(punchEndBarInput.value, startBar, totalBars);
   return { totalBars, startBar, endBar };
 }
 

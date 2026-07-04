@@ -263,8 +263,9 @@ test.describe('loop controls', () => {
     await expect(page.locator('#punch-loop-select')).toBeEnabled();
     await page.click('#btn-record');
     await expect(page.locator('#btn-record')).toContainText('STOP');
-    await page.waitForTimeout(punchBarDurationMs + processingBufferMs);
-    await expect(page.locator('#btn-record')).toContainText('REC');
+    await expect(page.locator('#btn-record')).toContainText('REC', {
+      timeout: punchBarDurationMs + processingBufferMs,
+    });
     await expect(page.locator('.loop-card')).toHaveCount(1);
     await expect(page.locator('#status-text')).toContainText('Punch-in applied');
   });
