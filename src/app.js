@@ -13,6 +13,7 @@ import {
   audioBufferToWav,
   getSupportedMimeType,
   effectiveGain as computeEffectiveGain,
+  getLoopPlaybackRate as computeLoopPlaybackRate,
   quantizeBuffer as _quantizeBuffer,
   reverseBuffer as _reverseBuffer,
 } from './utils.js';
@@ -70,6 +71,8 @@ const deletedStack = [];
  * @property {number} volume
  * @property {number} pan
  * @property {number} playbackRate
+ * @property {boolean} followTempo
+ * @property {number} tempoBaseBpm
  * @property {boolean} reversed
  */
 
@@ -338,6 +341,8 @@ function addLoop(audioBuffer) {
     volume: 1,
     pan: 0,
     playbackRate: 1,
+    followTempo: false,
+    tempoBaseBpm: bpm,
     reversed: false,
   };
   loops.push(loop);
@@ -372,6 +377,31 @@ function reverseBuffer(buffer) {
   return _reverseBuffer(buffer, audioContext);
 }
 
+function getLoopPlaybackRate(loop) {
+  return computeLoopPlaybackRate(loop, bpm);
+}
+
+function updateLoopPlaybackRate(loop) {
+  if (loop.node) {
+    loop.node.playbackRate.setTargetAtTime(getLoopPlaybackRate(loop), audioContext.currentTime, 0.01);
+  }
+}
+
+function updateLoopTempoUi(loop) {
+  const card = document.getElementById(`loop-card-${loop.id}`);
+  if (!card) return;
+
+  const toggle = card.querySelector('.follow-tempo-toggle input');
+  if (toggle) toggle.checked = loop.followTempo;
+
+  const valueEl = card.querySelector('.loop-tempo-factor');
+  if (valueEl) {
+    valueEl.textContent = loop.followTempo
+      ? `Tempo ${getLoopPlaybackRate(loop).toFixed(2)}×`
+      : 'Tempo off';
+  }
+}
+
 function playLoop(loop) {
   if (!audioContext || loop.playing) return;
   if (audioContext.state === 'suspended') audioContext.resume();
@@ -389,7 +419,7 @@ function playLoop(loop) {
   const sourceNode = audioContext.createBufferSource();
   sourceNode.buffer = getPlaybackBuffer(loop);
   sourceNode.loop = true;
-  sourceNode.playbackRate.value = loop.playbackRate;
+  sourceNode.playbackRate.value = getLoopPlaybackRate(loop);
 
   if (pannerNode) {
     sourceNode.connect(pannerNode);
@@ -535,9 +565,14 @@ function setLoopPan(loop, value) {
 
 function setLoopPlaybackRate(loop, value) {
   loop.playbackRate = value;
-  if (loop.node) {
-    loop.node.playbackRate.setTargetAtTime(value, audioContext.currentTime, 0.01);
-  }
+  updateLoopPlaybackRate(loop);
+  updateLoopTempoUi(loop);
+}
+
+function toggleFollowTempo(loop, enabled) {
+  loop.followTempo = enabled;
+  updateLoopPlaybackRate(loop);
+  updateLoopTempoUi(loop);
 }
 
 function toggleReverse(loop) {
@@ -580,11 +615,19 @@ function onMasterVolumeChange(e) {
 // ─── Metronome ────────────────────────────────────────────────────────────────
 
 function onBpmChange() {
+  const prevBpm = bpm;
   let v = parseInt(bpmInput.value, 10);
   if (isNaN(v)) v = DEFAULT_BPM;
   v = Math.max(MIN_BPM, Math.min(MAX_BPM, v));
   bpm = v;
   bpmInput.value = String(v);
+  if (prevBpm !== bpm) {
+    loops.forEach((loop) => {
+      if (!loop.followTempo) return;
+      updateLoopPlaybackRate(loop);
+      updateLoopTempoUi(loop);
+    });
+  }
   if (metronomeEnabled) {
     stopMetronome();
     startMetronome();
@@ -652,7 +695,7 @@ async function exportMix() {
 
   const sampleRate = audioContext.sampleRate;
   // Render a chunk that's long enough to hear every loop repeat a few times.
-  const maxLoopDur = loops.reduce((m, l) => Math.max(m, l.duration / l.playbackRate), 0);
+  const maxLoopDur = loops.reduce((m, l) => Math.max(m, l.duration / getLoopPlaybackRate(l)), 0);
   const duration   = Math.max(4, Math.min(60, Math.ceil(maxLoopDur * 4)));
 
   const offline = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
@@ -667,7 +710,7 @@ async function exportMix() {
     const src = offline.createBufferSource();
     src.buffer = getPlaybackBuffer(l);
     src.loop = true;
-    src.playbackRate.value = l.playbackRate;
+    src.playbackRate.value = getLoopPlaybackRate(l);
 
     const gNode = offline.createGain();
     gNode.gain.value = g;
@@ -804,11 +847,31 @@ function renderLoop(loop) {
       (v) => setLoopPlaybackRate(loop, v)),
   );
 
+  const followTempoToggle = document.createElement('label');
+  followTempoToggle.className = 'fader loop-follow-tempo follow-tempo-toggle';
+
+  const followTempoLabel = document.createElement('span');
+  followTempoLabel.className = 'fader-label';
+  followTempoLabel.textContent = 'Follow tempo';
+
+  const followTempoInput = document.createElement('input');
+  followTempoInput.type = 'checkbox';
+  followTempoInput.checked = loop.followTempo;
+  followTempoInput.setAttribute('aria-label', 'Follow tempo');
+  followTempoInput.addEventListener('change', () => toggleFollowTempo(loop, followTempoInput.checked));
+
+  const followTempoValue = document.createElement('span');
+  followTempoValue.className = 'fader-value loop-tempo-factor';
+
+  followTempoToggle.append(followTempoLabel, followTempoInput, followTempoValue);
+  faderRow.appendChild(followTempoToggle);
+
   card.appendChild(topRow);
   card.appendChild(faderRow);
 
   // Canvas sizing requires the element be in the DOM to measure offsetWidth.
   loopsList.appendChild(card);
+  updateLoopTempoUi(loop);
   drawWaveform(canvas, loop.audioBuffer);
 }
 

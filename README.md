@@ -11,6 +11,7 @@ them on top of each other – your one-man band for busking starts here.
 - 🥁 **Built-in metronome** with adjustable **BPM** and **beats-per-bar**
 - ⏱️ **Count-in** before recording so your first note isn't clipped
 - 📐 **Quantize** recorded loops to whole bars for perfectly aligned layers
+- 🔁 **Follow tempo** per loop so BPM changes can stretch selected loops to match
 - ⏱️ **Live recording timer** + one-click **Discard**
 
 ### Mixer

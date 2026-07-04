@@ -65,6 +65,21 @@ export function effectiveGain(loop, loops) {
   return loop.volume;
 }
 
+/**
+ * Compute the effective playback-rate multiplier for a loop at the current
+ * tempo, optionally preserving the loop's original tempo as an anchor.
+ *
+ * @param {{ playbackRate: number, followTempo?: boolean, tempoBaseBpm?: number }} loop
+ * @param {number} bpm
+ * @returns {number}
+ */
+export function getLoopPlaybackRate(loop, bpm) {
+  if (!loop.followTempo) return loop.playbackRate;
+  const baseBpm = loop.tempoBaseBpm;
+  if (!Number.isFinite(baseBpm) || baseBpm <= 0) return loop.playbackRate;
+  return loop.playbackRate * (bpm / baseBpm);
+}
+
 // ─── AudioBuffer utilities ────────────────────────────────────────────────────
 
 /**

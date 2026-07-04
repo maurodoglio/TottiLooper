@@ -468,6 +468,27 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+.loop-follow-tempo {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.loop-follow-tempo .fader-label {
+  min-width: 0;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.loop-follow-tempo input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+
+.loop-tempo-factor {
+  min-width: 84px;
+}
+
 /* ── Empty state ── */
 #empty-state {
   text-align: center;
