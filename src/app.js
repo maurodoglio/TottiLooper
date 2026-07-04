@@ -376,34 +376,38 @@ function playLoop(loop) {
   if (!audioContext || loop.playing) return;
   if (audioContext.state === 'suspended') audioContext.resume();
 
-  const gainNode = audioContext.createGain();
-  const targetGain = effectiveGain(loop);
-  gainNode.gain.value = 0;
-  gainNode.gain.setTargetAtTime(targetGain, audioContext.currentTime, FADE_TIME);
+  // Reuse persistent gain/panner nodes across play/stop cycles to avoid
+  // accumulating unused AudioNodes when loop counts grow large (node pooling).
+  if (!loop.gainNode) {
+    const gainNode = audioContext.createGain();
+    gainNode.gain.value = 0;
+    const pannerNode = audioContext.createStereoPanner
+      ? audioContext.createStereoPanner()
+      : null;
+    if (pannerNode) {
+      pannerNode.pan.value = loop.pan;
+      pannerNode.connect(gainNode);
+    }
+    gainNode.connect(masterGainNode);
+    loop.gainNode = gainNode;
+    loop.pannerNode = pannerNode;
+  }
 
-  const pannerNode = audioContext.createStereoPanner
-    ? audioContext.createStereoPanner()
-    : null;
-  if (pannerNode) pannerNode.pan.value = loop.pan;
+  // Fade gain in. AudioBufferSourceNode is inherently one-shot per the Web
+  // Audio spec, so a new source is always required for each play.
+  const targetGain = effectiveGain(loop);
+  const t = audioContext.currentTime;
+  loop.gainNode.gain.cancelScheduledValues(t);
+  loop.gainNode.gain.setTargetAtTime(targetGain, t, FADE_TIME);
 
   const sourceNode = audioContext.createBufferSource();
   sourceNode.buffer = getPlaybackBuffer(loop);
   sourceNode.loop = true;
   sourceNode.playbackRate.value = loop.playbackRate;
-
-  if (pannerNode) {
-    sourceNode.connect(pannerNode);
-    pannerNode.connect(gainNode);
-  } else {
-    sourceNode.connect(gainNode);
-  }
-  gainNode.connect(masterGainNode);
-
+  sourceNode.connect(loop.pannerNode || loop.gainNode);
   sourceNode.start();
 
   loop.node = sourceNode;
-  loop.gainNode = gainNode;
-  loop.pannerNode = pannerNode;
   loop.playing = true;
 
   const card = document.getElementById(`loop-card-${loop.id}`);
@@ -434,9 +438,9 @@ function stopLoop(loop) {
   const stopAt = audioContext.currentTime + FADE_TIME * 5;
   try { node && node.stop(stopAt); } catch { /* already stopped */ }
 
+  // Null only the one-shot source; gainNode and pannerNode are reused on
+  // the next playLoop call so they remain connected to the graph.
   loop.node = null;
-  loop.gainNode = null;
-  loop.pannerNode = null;
   loop.playing = false;
 
   const card = document.getElementById(`loop-card-${loop.id}`);
@@ -457,6 +461,11 @@ function deleteLoop(loopId) {
   if (idx === -1) return;
   const loop = loops[idx];
   stopLoop(loop);
+
+  // Disconnect and discard the persistent nodes now that the loop is gone.
+  if (loop.gainNode) { loop.gainNode.disconnect(); loop.gainNode = null; }
+  if (loop.pannerNode) { loop.pannerNode.disconnect(); loop.pannerNode = null; }
+
   loops.splice(idx, 1);
 
   deletedStack.push(loop);
