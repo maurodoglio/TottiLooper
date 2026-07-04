@@ -25,7 +25,7 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const TAP_TEMPO_TIMEOUT_MS = 2000;
-const TAP_TEMPO_MAX_TAPS   = 8;
+const TAP_TEMPO_MAX_TAPS = 8;
 const MAX_UNDO         = 20;
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -604,6 +604,7 @@ function onTapTempo() {
   const now = performance.now();
   const lastTap = tapTempoTimes[tapTempoTimes.length - 1];
   if (lastTap && now - lastTap > TAP_TEMPO_TIMEOUT_MS) {
+    // Timeout starts a brand-new tap sequence from the current tap.
     tapTempoTimes = [];
   }
   tapTempoTimes.push(now);
@@ -617,7 +618,6 @@ function onTapTempo() {
     totalInterval += tapTempoTimes[i] - tapTempoTimes[i - 1];
   }
   const averageInterval = totalInterval / (tapTempoTimes.length - 1);
-  if (averageInterval <= 0) return;
   setBpm(Math.round(60000 / averageInterval));
 }
 
