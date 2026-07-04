@@ -11,6 +11,7 @@ them on top of each other – your one-man band for busking starts here.
 - 🎚️ **First-loop tempo detection** to suggest a session BPM from your opening take
 - 🎧 **Input monitoring toggle** with **latency offset** trim for live self-monitoring
 - 🥁 **Built-in metronome** with adjustable **BPM**, **tap tempo**, and **beats-per-bar**
+- 📏 **Pre-set loop length in bars** with hands-free auto-stop at the bar boundary
 - 🥁 **Generate drum backing loops** from BPM + style using built-in one-shot samples
 - ⏱️ **Count-in** before recording so your first note isn't clipped
 - 📐 **Quantize** recorded loops to whole bars for perfectly aligned layers
@@ -49,22 +50,22 @@ them on top of each other – your one-man band for busking starts here.
 2. Click **🎤 Allow Microphone** and grant permission when prompted.
 3. (Optional) Enable **Monitor input** if you want to hear yourself live, then
    adjust **Latency offset** to compensate if overdubs land slightly early or late.
-4. (Optional) Set your **BPM** (manually or with **Tap Tempo**), then enable **Metronome**, **Count-in** and
-   **Quantize** if you want bar-locked loops.
-4. (Optional) Pick a **Drum style** and click **🥁 Generate drums** to add a
+4. (Optional) Set your **BPM** (manually or with **Tap Tempo**) and **Loop bars**,
+   then enable **Metronome**, **Count-in** and **Quantize** if you want bar-locked loops.
+5. (Optional) Pick a **Drum style** and click **🥁 Generate drums** to add a
    backing groove that follows the current BPM.
-5. Click **● REC** (or press <kbd>Space</kbd>) to start recording a riff.
-6. Click **■ STOP** (or press <kbd>Space</kbd> again) when you're done – the
+6. Click **● REC** (or press <kbd>Space</kbd>) to start recording a riff.
+7. Click **■ STOP** (or press <kbd>Space</kbd> again) when you're done – the
    loop is saved automatically and appears in the list.
-6. To overdub part of an existing loop, enable **Punch-in**, choose the target
+8. To overdub part of an existing loop, enable **Punch-in**, choose the target
    loop and bar range, then record — the take is merged into that section
    instead of creating a new loop.
-7. Click **▶** on a loop card to start it playing (it will loop continuously).
-8. Drag **Vol / Pan / Low / Mid / High / Speed** sliders to mix, shape tone, **S** to solo, **⇄** to reverse.
-9. Record more riffs and stack them up to build your sound.
-10. Use **▶ Play All / ■ Stop All** to control everything at once.
-11. Click **Enable MIDI** and use **Learn** if you want to map controller pads, buttons, or faders.
-12. Click **🔗 Share** to copy a URL for a small session, or **⬇ Export** to save the current mix as a WAV file.
+9. Click **▶** on a loop card to start it playing (it will loop continuously).
+10. Drag **Vol / Pan / Low / Mid / High / Speed** sliders to mix, shape tone, **S** to solo, **⇄** to reverse.
+11. Record more riffs and stack them up to build your sound.
+12. Use **▶ Play All / ■ Stop All** to control everything at once.
+13. Click **Enable MIDI** and use **Learn** if you want to map controller pads, buttons, or faders.
+14. Click **🔗 Share** to copy a URL for a small session, or **⬇ Export** to save the current mix as a WAV file.
 
 Click the **?** button in the top-right corner (or press <kbd>?</kbd>) at any
 time to open the in-app tutorial.

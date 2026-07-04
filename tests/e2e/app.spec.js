@@ -235,6 +235,10 @@ test.describe('initial state', () => {
     await expect(page.locator('#beats-per-bar-input')).toHaveValue('4');
   });
 
+  test('loop bars input defaults to manual', async ({ page }) => {
+    await expect(page.locator('#loop-length-bars')).toHaveValue('');
+  });
+
   test('beat-unit input defaults to 4', async ({ page }) => {
     await expect(page.locator('#beat-unit-input')).toHaveValue('4');
   });
@@ -1160,6 +1164,52 @@ test.describe('tempo controls', () => {
     await expect(page.locator('#quantize-toggle')).toBeChecked();
   });
 
+  test('loop bars can be updated via the input', async ({ page }) => {
+    await page.locator('#loop-length-bars').fill('4');
+    await page.locator('#loop-length-bars').press('Tab');
+    await expect(page.locator('#loop-length-bars')).toHaveValue('4');
+  });
+
+  test('loop bars are clamped to the maximum (32)', async ({ page }) => {
+    await page.locator('#loop-length-bars').fill('99');
+    await page.locator('#loop-length-bars').press('Tab');
+    await expect(page.locator('#loop-length-bars')).toHaveValue('32');
+  });
+
+  test('loop bars can be cleared back to manual', async ({ page }) => {
+    await page.locator('#loop-length-bars').fill('2');
+    await page.locator('#loop-length-bars').press('Tab');
+    await expect(page.locator('#loop-length-bars')).toHaveValue('2');
+    await page.locator('#loop-length-bars').fill('');
+    await page.locator('#loop-length-bars').press('Tab');
+    await expect(page.locator('#loop-length-bars')).toHaveValue('');
+  });
+});
+
+test.describe('preset loop length', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.click('#btn-request-mic');
+    await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('recording auto-stops at the selected bar count', async ({ page }) => {
+    const oneBarDurationMs = 1000;
+
+    await page.locator('#bpm-input').fill('240');
+    await page.locator('#bpm-input').press('Tab');
+    await page.locator('#loop-length-bars').fill('1');
+    await page.locator('#loop-length-bars').press('Tab');
+
+    await page.click('#btn-record');
+    await expect(page.locator('#btn-record')).toContainText('STOP');
+    await expect(page.locator('#loop-length-bars')).toBeDisabled();
+
+    await expect(page.locator('#btn-record')).toContainText('REC', { timeout: oneBarDurationMs + 1500 });
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('.loop-duration')).toHaveText('0:01');
+    await expect(page.locator('#loop-length-bars')).toBeEnabled();
+  });
 });
 
 test('detected BPM from the first loop can be accepted', async ({ page }) => {

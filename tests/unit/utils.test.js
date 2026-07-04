@@ -23,6 +23,7 @@ import {
   clickTrackToMidi,
   getSupportedMimeType,
   effectiveGain,
+  fitBufferToBars,
   getBeatSeconds,
   applyLoopEdits,
   detectKey,
@@ -736,6 +737,68 @@ describe('offsetBuffer', () => {
     };
     const out = offsetBuffer(src, -0.002, ctx);
     expect(Array.from(out.getChannelData(0))).toEqual([3, 4, 0, 0]);
+  });
+});
+
+// ─── fitBufferToBars ──────────────────────────────────────────────────────────
+
+describe('fitBufferToBars', () => {
+  const ctx = makeMockAudioContext();
+  const sampleRate = ctx.sampleRate;
+  const bpm = 120;
+  const beatsPerBar = 4;
+  const barSamples = Math.round(2 * sampleRate);
+
+  function makeBuffer(samples) {
+    const data = new Float32Array(samples);
+    data.fill(0.25);
+    return {
+      numberOfChannels: 1,
+      length: samples,
+      sampleRate,
+      duration: samples / sampleRate,
+      getChannelData: () => data,
+    };
+  }
+
+  it('pads a short recording to the requested bar count', () => {
+    const src = makeBuffer(Math.round(1.5 * barSamples));
+    const out = fitBufferToBars(src, { bars: 2, bpm, beatsPerBar, audioContext: ctx });
+    const outData = out.getChannelData(0);
+
+    expect(out.length).toBe(barSamples * 2);
+    expect(outData[src.length - 1]).toBeCloseTo(0.25);
+    expect(outData[src.length]).toBe(0);
+  });
+
+  it('trims a long recording down to the requested bar count', () => {
+    const src = makeBuffer(Math.round(2.5 * barSamples));
+    const out = fitBufferToBars(src, { bars: 2, bpm, beatsPerBar, audioContext: ctx });
+
+    expect(out.length).toBe(barSamples * 2);
+    expect(out.getChannelData(0)[out.length - 1]).toBeCloseTo(0.25);
+  });
+
+  it('rejects invalid bar counts', () => {
+    const src = makeBuffer(barSamples);
+
+    expect(() => fitBufferToBars(src, {
+      bars: 0,
+      bpm,
+      beatsPerBar,
+      audioContext: ctx,
+    })).toThrow('bars must be a whole number >= 1, got 0');
+  });
+
+  it('rejects fractional bar counts', () => {
+    const src = makeBuffer(barSamples);
+
+    expect(() => fitBufferToBars(src, {
+      bars: 1.5,
+      bpm,
+      beatsPerBar,
+      audioContext: ctx,
+    })).toThrow('bars must be a whole number >= 1, got 1.5');
   });
 });
 

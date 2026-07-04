@@ -99,6 +99,10 @@
         <input id="beats-per-bar-input" type="number" min="1" max="12" value="4" />
       </label>
       <label class="field">
+        <span>Loop bars</span>
+        <input id="loop-length-bars" type="number" min="1" max="32" placeholder="Manual" inputmode="numeric" aria-label="Loop length in bars" />
+      </label>
+      <label class="field">
         <span>Beat unit</span>
         <select id="beat-unit-input" aria-label="Beat unit">
           <option value="2">2</option>
@@ -262,7 +266,7 @@
         <li>If you have multiple audio inputs or are using an audio interface, choose the right <strong>Input</strong> and <strong>Channel</strong>.</li>
         <li>Plug in headphones — without them your mic will re-record whatever is already playing back.</li>
         <li>(Optional) Turn on <strong>Monitor input</strong> if you want to hear yourself live, then nudge <strong>Latency offset</strong> if your overdubs land a little early or late.</li>
-        <li>(Optional) Set your <strong>BPM</strong> manually or with <strong>Tap Tempo</strong>, choose your <strong>Beats/bar</strong>, <strong>Beat unit</strong> and <strong>Subdivision</strong>, then enable <strong>Metronome</strong>, <strong>Count-in</strong> and <strong>Quantize</strong> to keep layered loops locked to the selected time signature.</li>
+        <li>(Optional) Set your <strong>BPM</strong> manually or with <strong>Tap Tempo</strong>, choose your <strong>Beats/bar</strong>, <strong>Beat unit</strong>, <strong>Subdivision</strong> and optional <strong>Loop bars</strong>, then enable <strong>Metronome</strong>, <strong>Count-in</strong> and <strong>Quantize</strong> to keep layered loops locked to the selected time signature.</li>
         <li>(Optional) Pick a <strong>Drum style</strong> and click <strong>🥁 Generate drums</strong> to add a backing beat that follows your BPM.</li>
       </ol>
 
@@ -270,7 +274,7 @@
       <ol>
         <li>Press <strong>● REC</strong> (or <span id="shortcut-record-inline"></span>) to start. Watch the input meter to make sure your signal is healthy.</li>
         <li>Play your riff.</li>
-        <li>Press <strong>■ STOP</strong> (or the same shortcut again) when finished — the loop appears in the list and is ready to play.</li>
+        <li>Press <strong>■ STOP</strong> (or the same shortcut again) when finished — or let <strong>Loop bars</strong> auto-stop exactly at the chosen bar count. The loop appears in the list and is ready to play.</li>
         <li>After your first loop, TottiLooper can suggest a matching BPM for the session — confirm it if the detection looks right.</li>
         <li>Press <strong>■ DISCARD</strong> to abandon the current take without saving it.</li>
         <li>To punch in on an existing loop, enable <strong>Punch-in</strong>, choose the target loop and bar range, then record — the take is overdubbed onto that section instead of creating a new loop.</li>
@@ -332,6 +336,7 @@
       <h3>Tips</h3>
       <ul>
         <li>Enable <strong>Quantize</strong> for tight, bar-aligned layers that never drift.</li>
+        <li>Set <strong>Loop bars</strong> to 1, 2, 4, or more when you want hands-free, bar-perfect takes.</li>
         <li>Use <strong>Count-in</strong> so your first note isn't chopped off.</li>
         <li>If a new loop may be in a clashing key, TottiLooper will warn you as soon as it finishes processing.</li>
         <li>Drop <strong>Speed</strong> below 1× for half-time pads, push above 1× for chipmunk leads.</li>

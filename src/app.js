@@ -18,6 +18,7 @@ import {
   scaleMidiValue,
   formatMidiBinding,
   audioBufferToWav,
+  barsToDurationSeconds as _barsToDurationSeconds,
   applyLoopEdits as buildLoopBuffer,
   createBuiltinSampleLoop,
   detectKey as detectLoopKey,
@@ -28,6 +29,7 @@ import {
   estimateTempo,
   packSharedSession,
   effectiveGain as computeEffectiveGain,
+  fitBufferToBars as _fitBufferToBars,
   quantizeBuffer as _quantizeBuffer,
   offsetBuffer as _offsetBuffer,
   reverseBuffer as _reverseBuffer,
@@ -61,6 +63,8 @@ const VALID_METRONOME_SUBDIVISIONS = [1, 2, 3, 4];
 const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
+const MIN_LOOP_LENGTH_BARS = 1;
+const MAX_LOOP_LENGTH_BARS = 32;
 const TAP_TEMPO_TIMEOUT_MS = 2000;
 const TAP_TEMPO_MAX_TAPS = 8;
 const MAX_UNDO         = 20;
@@ -106,6 +110,12 @@ let isRecording    = false;
 let timerInterval  = null;
 let recordStartTime = 0;
 let loopCounter    = 0;
+let loopLengthBars = 0;
+let currentRecordingTargetBars = 0;
+let currentRecordingBpm = DEFAULT_BPM;
+let currentRecordingBeatsPerBar = 4;
+let shouldNormalizeToTargetBars = false;
+let recordAutoStopTimeout = null;
 let currentPunchIn = null;
 let punchStopTimeout = null;
 let playbackPositionInterval = null;
@@ -214,6 +224,7 @@ const drumControls       = $('drum-controls');
 const bpmInput           = $('bpm-input');
 const btnTapTempo        = $('btn-tap-tempo');
 const beatsPerBarInput   = $('beats-per-bar-input');
+const loopLengthBarsInput = $('loop-length-bars');
 const beatUnitInput      = $('beat-unit-input');
 const metronomeSubdivisionInput = $('metronome-subdivision-input');
 const drumStyleSelect    = $('drum-style');
@@ -356,6 +367,7 @@ function init() {
   bpmInput.addEventListener('change', onBpmChange);
   btnTapTempo.addEventListener('click', onTapTempo);
   beatsPerBarInput.addEventListener('change', onBeatsPerBarChange);
+  loopLengthBarsInput.addEventListener('change', onLoopLengthBarsChange);
   beatUnitInput.addEventListener('change', onBeatUnitChange);
   metronomeSubdivisionInput.addEventListener('change', onMetronomeSubdivisionChange);
   metronomeToggle.addEventListener('change', onMetronomeToggle);
@@ -766,13 +778,19 @@ function startRecording(punchIn = null) {
   mediaRecorder.onstop = onRecordingStop;
   mediaRecorder.start(100);
 
+  currentRecordingTargetBars = loopLengthBars;
+  currentRecordingBpm = bpm;
+  currentRecordingBeatsPerBar = beatsPerBar;
+  shouldNormalizeToTargetBars = false;
   isRecording = true;
   currentPunchIn = punchIn;
   recordStartTime = Date.now();
+  scheduleRecordingAutoStop();
 
   btnRecord.textContent = '■ STOP';
   btnRecord.classList.add('recording');
   btnStopRecord.disabled = false;
+  loopLengthBarsInput.disabled = true;
   statusDot.classList.add('recording');
   clearPunchStopTimer();
   if (punchIn) {
@@ -780,6 +798,8 @@ function startRecording(punchIn = null) {
     punchStopTimeout = setTimeout(() => {
       if (isRecording) stopRecording();
     }, punchIn.durationSeconds * 1000);
+  } else if (currentRecordingTargetBars > 0) {
+    setStatus(`Recording… auto-stop at ${formatBars(currentRecordingTargetBars)}.`);
   } else {
     setStatus('Recording…');
   }
@@ -788,6 +808,7 @@ function startRecording(punchIn = null) {
 
 function stopRecording() {
   if (!isRecording || !mediaRecorder) return;
+  clearRecordingAutoStop();
   mediaRecorder.stop();
   isRecording = false;
   clearPunchStopTimer();
@@ -796,12 +817,14 @@ function stopRecording() {
   btnRecord.textContent = '● REC';
   btnRecord.classList.remove('recording');
   btnStopRecord.disabled = true;
+  loopLengthBarsInput.disabled = false;
   statusDot.classList.remove('recording');
   setStatus('Processing loop…');
 }
 
 function discardRecording() {
   if (!isRecording || !mediaRecorder) return;
+  clearRecordingAutoStop();
   mediaRecorder.onstop = null;
   try { mediaRecorder.stop(); } catch { /* ignore */ }
   recordedChunks = [];
@@ -809,10 +832,12 @@ function discardRecording() {
   currentPunchIn = null;
   clearPunchStopTimer();
   clearInterval(timerInterval);
+  resetRecordingTarget();
 
   btnRecord.textContent = '● REC';
   btnRecord.classList.remove('recording');
   btnStopRecord.disabled = true;
+  loopLengthBarsInput.disabled = false;
   statusDot.classList.remove('recording');
   resetTimer();
   setStatus('Recording discarded. Press ● REC to try again.');
@@ -842,16 +867,20 @@ async function onRecordingStop() {
       if (loops.length === 0 && !firstLoopTempoHandled) {
         suggestedTempo = maybeSuggestTempo(audioBuffer);
       }
-      if (quantizeEnabled) {
+      const normalizeToBars = shouldNormalizeToTargetBars && currentRecordingTargetBars > 0;
+      if (normalizeToBars) {
+        audioBuffer = fitBufferToBars(audioBuffer, currentRecordingTargetBars);
+      } else if (quantizeEnabled) {
         audioBuffer = quantizeBuffer(audioBuffer);
       }
+      const bufferTransformed = normalizeToBars || quantizeEnabled;
       const detectedKey = detectLoopKey(audioBuffer);
       const shouldWarn = shouldWarnAboutKeyClash(
         detectedKey,
         loops.map((loop) => loop.detectedKey),
       );
       addLoop(audioBuffer, {
-        sourceBlob: quantizeEnabled ? audioBufferToWav(audioBuffer) : blob,
+        sourceBlob: bufferTransformed ? audioBufferToWav(audioBuffer) : blob,
         detectedKey,
       });
       if (shouldWarn && detectedKey) {
@@ -868,6 +897,7 @@ async function onRecordingStop() {
     console.error('decodeAudioData error:', err);
     setStatus('Ready. Press ● REC to start recording.');
   }
+  resetRecordingTarget();
   resetTimer();
 }
 
@@ -890,6 +920,22 @@ function applyPunchInToLoop(loop, takeBuffer, punchIn) {
   updateLoopCard(loop);
   refreshLoopPlayback(loop);
   syncPunchBarInputs();
+}
+
+function fitBufferToBars(buffer, bars) {
+  return _fitBufferToBars(buffer, {
+    bars,
+    bpm: currentRecordingBpm,
+    beatsPerBar: currentRecordingBeatsPerBar,
+    audioContext,
+  });
+}
+
+function barsToDurationMs(bars, currentBpm, currentBeatsPerBar) {
+  return Math.round(_barsToDurationSeconds(bars, {
+    bpm: currentBpm,
+    beatsPerBar: currentBeatsPerBar,
+  }) * 1000);
 }
 
 // ─── Loop management ──────────────────────────────────────────────────────────
@@ -1854,6 +1900,20 @@ function onBeatUnitChange() {
   }
   syncPunchBarInputs();
   updatePlaybackPosition();
+}
+
+function onLoopLengthBarsChange() {
+  const raw = loopLengthBarsInput.value.trim();
+  if (raw === '') {
+    loopLengthBars = 0;
+    return;
+  }
+
+  let v = parseInt(raw, 10);
+  if (isNaN(v)) v = 0;
+  v = Math.max(MIN_LOOP_LENGTH_BARS, Math.min(MAX_LOOP_LENGTH_BARS, v));
+  loopLengthBars = v;
+  loopLengthBarsInput.value = String(v);
 }
 
 function onMetronomeToggle(e) {
@@ -3146,6 +3206,40 @@ function getShortcutLabel(action) {
 
 function setStatus(msg) {
   statusText.textContent = msg;
+}
+
+function scheduleRecordingAutoStop() {
+  clearRecordingAutoStop();
+  if (currentRecordingTargetBars < 1) return;
+
+  const durationMs = barsToDurationMs(
+    currentRecordingTargetBars,
+    currentRecordingBpm,
+    currentRecordingBeatsPerBar,
+  );
+  recordAutoStopTimeout = setTimeout(() => {
+    recordAutoStopTimeout = null;
+    shouldNormalizeToTargetBars = true;
+    stopRecording();
+  }, durationMs);
+}
+
+function clearRecordingAutoStop() {
+  if (recordAutoStopTimeout) {
+    clearTimeout(recordAutoStopTimeout);
+    recordAutoStopTimeout = null;
+  }
+}
+
+function resetRecordingTarget() {
+  currentRecordingTargetBars = 0;
+  currentRecordingBpm = bpm;
+  currentRecordingBeatsPerBar = beatsPerBar;
+  shouldNormalizeToTargetBars = false;
+}
+
+function formatBars(bars) {
+  return `${bars} bar${bars === 1 ? '' : 's'}`;
 }
 
 let toastTimeout = null;

@@ -407,12 +407,43 @@ export function getBeatSeconds(bpm, beatUnit = 4) {
  * @returns {AudioBuffer}
  */
 export function quantizeBuffer(buffer, { bpm, beatsPerBar, beatUnit = 4, audioContext }) {
-  const beatSeconds = getBeatSeconds(bpm, beatUnit);
-  const barSeconds  = beatSeconds * beatsPerBar;
+  const barSeconds  = barsToDurationSeconds(1, { bpm, beatsPerBar, beatUnit });
   const numBars     = Math.max(1, Math.round(buffer.duration / barSeconds));
-  const targetDur   = numBars * barSeconds;
+  return fitBufferToBars(buffer, { bars: numBars, bpm, beatsPerBar, beatUnit, audioContext });
+}
+
+/**
+ * Convert a whole number of bars to seconds for the current tempo grid.
+ *
+ * @param {number} bars
+ * @param {{ bpm: number, beatsPerBar: number }} opts
+ * @returns {number}
+ */
+export function barsToDurationSeconds(bars, { bpm, beatsPerBar, beatUnit = 4 }) {
+  return bars * getBeatSeconds(bpm, beatUnit) * beatsPerBar;
+}
+
+/**
+ * Resize a recorded AudioBuffer to an exact number of bars by trimming or
+ * zero-padding the tail as needed.
+ *
+ * @param {AudioBuffer} buffer
+ * @param {{ bars: number, bpm: number, beatsPerBar: number, audioContext: AudioContext }} opts
+ * @returns {AudioBuffer}
+ */
+export function fitBufferToBars(buffer, { bars, bpm, beatsPerBar, beatUnit = 4, audioContext }) {
+  const wholeBars = Math.round(bars);
+  if (!Number.isFinite(bars) || wholeBars < 1 || wholeBars !== bars) {
+    throw new Error(`bars must be a whole number >= 1, got ${bars}`);
+  }
+
+  const targetDur   = barsToDurationSeconds(wholeBars, { bpm, beatsPerBar, beatUnit });
   const targetLen   = Math.round(targetDur * buffer.sampleRate);
 
+  return resizeBuffer(buffer, targetLen, audioContext);
+}
+
+function resizeBuffer(buffer, targetLen, audioContext) {
   const out = audioContext.createBuffer(
     buffer.numberOfChannels,
     targetLen,
