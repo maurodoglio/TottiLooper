@@ -295,3 +295,25 @@ test.describe('tempo controls', () => {
     await expect(page.locator('#quantize-toggle')).toBeChecked();
   });
 });
+
+// ─── Share via URL ────────────────────────────────────────────────────────────
+
+test.describe('share via URL', () => {
+  test('creates a shareable hash and restores loops after reload', async ({ page }) => {
+    await page.goto('/');
+    await page.click('#btn-request-mic');
+    await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+
+    await page.click('#btn-record');
+    await page.waitForTimeout(600);
+    await page.click('#btn-record');
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+
+    await page.click('#btn-share-session');
+    await expect.poll(() => page.url()).toContain('#share=');
+
+    await page.reload();
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('#master-controls')).toBeVisible();
+  });
+});

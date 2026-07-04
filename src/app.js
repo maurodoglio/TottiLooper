@@ -12,9 +12,11 @@ import {
   panText,
   audioBufferToWav,
   getSupportedMimeType,
+  packSharedSession,
   effectiveGain as computeEffectiveGain,
   quantizeBuffer as _quantizeBuffer,
   reverseBuffer as _reverseBuffer,
+  unpackSharedSession,
 } from './utils.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -25,6 +27,7 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
+const MAX_SHARE_FRAGMENT_LENGTH = 12000;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -71,6 +74,7 @@ const deletedStack = [];
  * @property {number} pan
  * @property {number} playbackRate
  * @property {boolean} reversed
+ * @property {Blob|null} sourceBlob
  */
 
 /** @type {Array<Loop>} */
@@ -99,6 +103,7 @@ const masterControls     = $('master-controls');
 const btnPlayAll         = $('btn-play-all');
 const btnStopAll         = $('btn-stop-all');
 const btnExportMix       = $('btn-export-mix');
+const btnShareSession    = $('btn-share-session');
 const btnUndo            = $('btn-undo');
 const masterVolumeInput  = $('master-volume');
 const loopsSection       = $('loops-section');
@@ -122,6 +127,7 @@ function init() {
   btnPlayAll.addEventListener('click', playAllLoops);
   btnStopAll.addEventListener('click', stopAllLoops);
   btnExportMix.addEventListener('click', exportMix);
+  btnShareSession.addEventListener('click', shareSession);
   btnUndo.addEventListener('click', undoDelete);
 
   masterVolumeInput.addEventListener('input', onMasterVolumeChange);
@@ -139,6 +145,7 @@ function init() {
   document.addEventListener('keydown', onGlobalKeydown);
 
   updateUndoButton();
+  void restoreSharedSessionFromUrl();
 }
 
 // ─── Microphone access ────────────────────────────────────────────────────────
@@ -153,11 +160,7 @@ async function requestMicrophoneAccess() {
       },
       video: false,
     });
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-    masterGainNode = audioContext.createGain();
-    masterGainNode.gain.value = masterVolume;
-    masterGainNode.connect(audioContext.destination);
+    ensureAudioEngine();
 
     // Input analyser for level meter
     const inputSource = audioContext.createMediaStreamSource(mediaStream);
@@ -175,6 +178,17 @@ async function requestMicrophoneAccess() {
   } catch (err) {
     showError('Microphone access denied. Please allow microphone access and reload.');
     console.error('getUserMedia error:', err);
+  }
+}
+
+function ensureAudioEngine() {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (!masterGainNode) {
+    masterGainNode = audioContext.createGain();
+    masterGainNode.gain.value = masterVolume;
+    masterGainNode.connect(audioContext.destination);
   }
 }
 
@@ -302,7 +316,9 @@ async function onRecordingStop() {
     if (quantizeEnabled) {
       audioBuffer = quantizeBuffer(audioBuffer);
     }
-    addLoop(audioBuffer);
+    addLoop(audioBuffer, {
+      sourceBlob: quantizeEnabled ? audioBufferToWav(audioBuffer) : blob,
+    });
     setStatus('Loop added! Press ● REC to record another.');
   } catch (err) {
     showError('Could not decode audio: ' + err.message);
@@ -320,12 +336,13 @@ function quantizeBuffer(buffer) {
 
 // ─── Loop management ──────────────────────────────────────────────────────────
 
-function addLoop(audioBuffer) {
+function addLoop(audioBuffer, options = {}) {
   loopCounter++;
+  const name = (options.name || '').trim() || `Loop ${loopCounter}`;
   /** @type {Loop} */
   const loop = {
     id: loopCounter,
-    name: `Loop ${loopCounter}`,
+    name,
     audioBuffer,
     reversedBuffer: null,
     duration: audioBuffer.duration,
@@ -333,12 +350,13 @@ function addLoop(audioBuffer) {
     gainNode: null,
     pannerNode: null,
     playing: false,
-    muted: false,
-    soloed: false,
-    volume: 1,
-    pan: 0,
-    playbackRate: 1,
-    reversed: false,
+    muted: !!options.muted,
+    soloed: !!options.soloed,
+    volume: options.volume ?? 1,
+    pan: options.pan ?? 0,
+    playbackRate: options.playbackRate ?? 1,
+    reversed: !!options.reversed,
+    sourceBlob: options.sourceBlob || null,
   };
   loops.push(loop);
   renderLoop(loop);
@@ -695,6 +713,43 @@ async function exportMix() {
   }
 }
 
+async function shareSession() {
+  if (loops.length === 0) {
+    showInfo('Nothing to share – record a loop first.');
+    return;
+  }
+
+  try {
+    const payload = await buildSharedSessionPayload();
+    const shareUrl = new URL(window.location.href);
+    shareUrl.hash = `share=${payload}`;
+
+    if (shareUrl.hash.length > MAX_SHARE_FRAGMENT_LENGTH) {
+      showError('This session is too large to fit in a shareable URL.');
+      return;
+    }
+
+    history.replaceState(null, '', shareUrl);
+
+    let copied = false;
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(shareUrl.toString());
+        copied = true;
+      } catch {
+        copied = false;
+      }
+    }
+
+    setStatus('Share link ready.');
+    showInfo(copied
+      ? 'Share link copied to your clipboard.'
+      : 'Share link saved in the URL bar. Copy it from there to share it.');
+  } catch (err) {
+    showError('Could not create share link: ' + err.message);
+  }
+}
+
 function exportLoop(loop) {
   const wavBlob = audioBufferToWav(getPlaybackBuffer(loop));
   const safeName = loop.name.replace(/[^a-z0-9_-]+/gi, '_') || `loop-${loop.id}`;
@@ -710,6 +765,82 @@ function downloadBlob(blob, filename) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function buildSharedSessionPayload() {
+  const packed = packSharedSession({
+    bpm,
+    beatsPerBar,
+    masterVolume,
+    loops: await Promise.all(loops.map(async (loop) => {
+      const shareBlob = getLoopShareBlob(loop);
+      return {
+        name: loop.name,
+        volume: loop.volume,
+        pan: loop.pan,
+        playbackRate: loop.playbackRate,
+        muted: loop.muted,
+        soloed: loop.soloed,
+        reversed: loop.reversed,
+        mimeType: shareBlob.type || 'audio/wav',
+        audioBytes: new Uint8Array(await shareBlob.arrayBuffer()),
+      };
+    })),
+  });
+
+  return packed;
+}
+
+function getLoopShareBlob(loop) {
+  return loop.sourceBlob || audioBufferToWav(loop.audioBuffer);
+}
+
+async function restoreSharedSessionFromUrl() {
+  const sharePayload = new URLSearchParams(window.location.hash.slice(1)).get('share');
+  if (!sharePayload) return;
+
+  try {
+    const sharedSession = unpackSharedSession(sharePayload);
+    ensureAudioEngine();
+    applySharedSessionSettings(sharedSession);
+
+    for (const sharedLoop of sharedSession.loops) {
+      const sourceBlob = new Blob([sharedLoop.audioBytes], { type: sharedLoop.mimeType || 'audio/webm' });
+      const arrayBuffer = await sourceBlob.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      addLoop(audioBuffer, {
+        name: sharedLoop.name,
+        volume: sharedLoop.volume,
+        pan: sharedLoop.pan,
+        playbackRate: sharedLoop.playbackRate,
+        muted: sharedLoop.muted,
+        soloed: sharedLoop.soloed,
+        reversed: sharedLoop.reversed,
+        sourceBlob,
+      });
+    }
+
+    tempoControls.classList.remove('hidden');
+    masterControls.classList.remove('hidden');
+    loopsSection.classList.remove('hidden');
+    updateEmptyState();
+    setStatus(`Loaded shared session with ${sharedSession.loops.length} loop${sharedSession.loops.length === 1 ? '' : 's'}.`);
+    showInfo('Shared session loaded from the URL.');
+  } catch (err) {
+    showError('Could not load shared session: ' + err.message);
+  }
+}
+
+function applySharedSessionSettings(sharedSession) {
+  bpm = sharedSession.bpm;
+  beatsPerBar = sharedSession.beatsPerBar;
+  masterVolume = sharedSession.masterVolume;
+  bpmInput.value = String(bpm);
+  beatsPerBarInput.value = String(beatsPerBar);
+  masterVolumeInput.value = String(masterVolume);
+  if (masterGainNode) {
+    masterGainNode.gain.value = masterVolume;
+  }
 }
 
 // ─── Rendering ────────────────────────────────────────────────────────────────

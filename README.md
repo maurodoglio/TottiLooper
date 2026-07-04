@@ -26,6 +26,7 @@ them on top of each other – your one-man band for busking starts here.
 ### Save, share, recover
 - ⬇ **Export the full mix as WAV** (rendered via `OfflineAudioContext`)
 - ⬇ **Export any individual loop as WAV**
+- 🔗 **Share small sessions via URL** – encodes loop audio + mixer state into the link fragment
 - ↶ **Undo delete** – last 20 deleted loops can be restored (also `Ctrl`+`Z`)
 
 ### Accessibility & UX
@@ -46,7 +47,7 @@ them on top of each other – your one-man band for busking starts here.
 7. Drag **Vol / Pan / Speed** sliders to mix, **S** to solo, **⇄** to reverse.
 8. Record more riffs and stack them up to build your sound.
 9. Use **▶ Play All / ■ Stop All** to control everything at once.
-10. Click **⬇ Export** to save the current mix as a WAV file.
+10. Click **🔗 Share** to copy a URL for a small session, or **⬇ Export** to save the current mix as a WAV file.
 
 Click the **?** button in the top-right corner (or press <kbd>?</kbd>) at any
 time to open the in-app tutorial.

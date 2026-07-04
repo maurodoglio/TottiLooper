@@ -13,8 +13,10 @@ import {
   audioBufferToWav,
   getSupportedMimeType,
   effectiveGain,
+  packSharedSession,
   quantizeBuffer,
   reverseBuffer,
+  unpackSharedSession,
 } from '../../src/utils.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -388,5 +390,75 @@ describe('reverseBuffer', () => {
     const once = reverseBuffer(src, ctx);
     const twice = reverseBuffer(once, ctx);
     expect(Array.from(twice.getChannelData(0))).toEqual(Array.from(samples));
+  });
+});
+
+// ─── shared-session packing ───────────────────────────────────────────────────
+
+describe('packSharedSession / unpackSharedSession', () => {
+  it('round-trips mixer state and loop audio bytes', () => {
+    const session = {
+      bpm: 128,
+      beatsPerBar: 3,
+      masterVolume: 0.85,
+      loops: [
+        {
+          name: 'Bass',
+          volume: 0.75,
+          pan: -0.2,
+          playbackRate: 1.1,
+          muted: false,
+          soloed: true,
+          reversed: true,
+          mimeType: 'audio/webm',
+          audioBytes: new Uint8Array([1, 2, 3, 4]),
+        },
+        {
+          name: 'Lead',
+          volume: 1.2,
+          pan: 0.4,
+          playbackRate: 0.9,
+          muted: true,
+          soloed: false,
+          reversed: false,
+          mimeType: 'audio/ogg',
+          audioBytes: new Uint8Array([9, 8, 7]),
+        },
+      ],
+    };
+
+    const packed = packSharedSession(session);
+    const unpacked = unpackSharedSession(packed);
+
+    expect(unpacked.bpm).toBe(128);
+    expect(unpacked.beatsPerBar).toBe(3);
+    expect(unpacked.masterVolume).toBe(0.85);
+    expect(unpacked.loops).toHaveLength(2);
+    expect(unpacked.loops[0]).toMatchObject({
+      name: 'Bass',
+      volume: 0.75,
+      pan: -0.2,
+      playbackRate: 1.1,
+      muted: false,
+      soloed: true,
+      reversed: true,
+      mimeType: 'audio/webm',
+    });
+    expect(Array.from(unpacked.loops[0].audioBytes)).toEqual([1, 2, 3, 4]);
+    expect(Array.from(unpacked.loops[1].audioBytes)).toEqual([9, 8, 7]);
+  });
+
+  it('rejects truncated payloads', () => {
+    expect(() => unpackSharedSession('AQID')).toThrow(/truncated/i);
+  });
+
+  it('rejects unsupported versions', () => {
+    const manifest = new TextEncoder().encode(JSON.stringify({ v: 2, l: [] }));
+    const out = new Uint8Array(4 + manifest.length);
+    new DataView(out.buffer).setUint32(0, manifest.length, true);
+    out.set(manifest, 4);
+    const packed = Buffer.from(out).toString('base64url');
+
+    expect(() => unpackSharedSession(packed)).toThrow(/not supported/i);
   });
 });

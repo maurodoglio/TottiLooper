@@ -177,3 +177,155 @@ export function audioBufferToWav(buffer) {
   }
   return new Blob([ab], { type: 'audio/wav' });
 }
+
+// ─── Shared-session encoding ──────────────────────────────────────────────────
+
+function toBase64(bytes) {
+  if (typeof globalThis.Buffer !== 'undefined') {
+    return globalThis.Buffer.from(bytes).toString('base64');
+  }
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function fromBase64(base64) {
+  if (typeof globalThis.Buffer !== 'undefined') {
+    return Uint8Array.from(globalThis.Buffer.from(base64, 'base64'));
+  }
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function toBase64Url(bytes) {
+  return toBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function fromBase64Url(base64Url) {
+  const padded = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+  const base64 = padded + '='.repeat((4 - (padded.length % 4 || 4)) % 4);
+  return fromBase64(base64);
+}
+
+/**
+ * Encode a shareable session payload into a compact URL-safe string.
+ *
+ * @param {{
+ *   bpm: number,
+ *   beatsPerBar: number,
+ *   masterVolume: number,
+ *   loops: Array<{
+ *     name: string,
+ *     volume: number,
+ *     pan: number,
+ *     playbackRate: number,
+ *     muted: boolean,
+ *     soloed: boolean,
+ *     reversed: boolean,
+ *     mimeType: string,
+ *     audioBytes: Uint8Array
+ *   }>
+ * }} session
+ * @returns {string}
+ */
+export function packSharedSession(session) {
+  const manifest = {
+    v: 1,
+    b: session.bpm,
+    bb: session.beatsPerBar,
+    mv: session.masterVolume,
+    l: session.loops.map((loop) => ({
+      n: loop.name,
+      v: loop.volume,
+      p: loop.pan,
+      r: loop.playbackRate,
+      m: loop.muted ? 1 : 0,
+      s: loop.soloed ? 1 : 0,
+      x: loop.reversed ? 1 : 0,
+      t: loop.mimeType,
+      z: loop.audioBytes.length,
+    })),
+  };
+
+  const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest));
+  const totalAudioBytes = session.loops.reduce((sum, loop) => sum + loop.audioBytes.length, 0);
+  const out = new Uint8Array(4 + manifestBytes.length + totalAudioBytes);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, manifestBytes.length, true);
+  out.set(manifestBytes, 4);
+
+  let offset = 4 + manifestBytes.length;
+  for (const loop of session.loops) {
+    out.set(loop.audioBytes, offset);
+    offset += loop.audioBytes.length;
+  }
+
+  return toBase64Url(out);
+}
+
+/**
+ * Decode a shared-session payload from a URL-safe string.
+ *
+ * @param {string} packed
+ * @returns {{
+ *   bpm: number,
+ *   beatsPerBar: number,
+ *   masterVolume: number,
+ *   loops: Array<{
+ *     name: string,
+ *     volume: number,
+ *     pan: number,
+ *     playbackRate: number,
+ *     muted: boolean,
+ *     soloed: boolean,
+ *     reversed: boolean,
+ *     mimeType: string,
+ *     audioBytes: Uint8Array
+ *   }>
+ * }}
+ */
+export function unpackSharedSession(packed) {
+  const bytes = fromBase64Url(packed);
+  if (bytes.length < 5) throw new Error('Shared session is truncated.');
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const manifestLength = view.getUint32(0, true);
+  const manifestEnd = 4 + manifestLength;
+  if (manifestEnd > bytes.length) throw new Error('Shared session manifest is invalid.');
+
+  const manifestText = new TextDecoder().decode(bytes.subarray(4, manifestEnd));
+  const manifest = JSON.parse(manifestText);
+  if (manifest.v !== 1 || !Array.isArray(manifest.l)) {
+    throw new Error('Shared session version is not supported.');
+  }
+
+  let offset = manifestEnd;
+  const loops = manifest.l.map((loop) => {
+    const end = offset + loop.z;
+    if (end > bytes.length) throw new Error('Shared session audio data is incomplete.');
+    const audioBytes = bytes.slice(offset, end);
+    offset = end;
+    return {
+      name: loop.n,
+      volume: loop.v,
+      pan: loop.p,
+      playbackRate: loop.r,
+      muted: !!loop.m,
+      soloed: !!loop.s,
+      reversed: !!loop.x,
+      mimeType: loop.t,
+      audioBytes,
+    };
+  });
+
+  if (offset !== bytes.length) throw new Error('Shared session payload has unexpected trailing data.');
+
+  return {
+    bpm: manifest.b,
+    beatsPerBar: manifest.bb,
+    masterVolume: manifest.mv,
+    loops,
+  };
+}
