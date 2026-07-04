@@ -11,6 +11,7 @@ import {
   formatDuration,
   panText,
   audioBufferToWav,
+  createBuiltinSampleLoop,
   getSupportedMimeType,
   effectiveGain as computeEffectiveGain,
   quantizeBuffer as _quantizeBuffer,
@@ -82,6 +83,7 @@ const $ = (id) => document.getElementById(id);
 
 const permissionBanner   = $('permission-banner');
 const btnRequestMic      = $('btn-request-mic');
+const sampleLibrary      = $('sample-library');
 const tempoControls      = $('tempo-controls');
 const bpmInput           = $('bpm-input');
 const beatsPerBarInput   = $('beats-per-bar-input');
@@ -104,6 +106,9 @@ const masterVolumeInput  = $('master-volume');
 const loopsSection       = $('loops-section');
 const loopsList          = $('loops-list');
 const emptyState         = $('empty-state');
+const sampleButtons      = sampleLibrary
+  ? Array.from(sampleLibrary.querySelectorAll('[data-builtin-sample]'))
+  : [];
 const btnHelp            = $('btn-help');
 const helpModal          = $('help-modal');
 const helpCloseButton    = $('help-close');
@@ -117,6 +122,9 @@ function init() {
   tempoControls.classList.add('hidden');
 
   btnRequestMic.addEventListener('click', requestMicrophoneAccess);
+  for (const button of sampleButtons) {
+    button.addEventListener('click', () => addBuiltinSample(button.dataset.builtinSample));
+  }
   btnRecord.addEventListener('click', handleRecordButton);
   btnStopRecord.addEventListener('click', discardRecording);
   btnPlayAll.addEventListener('click', playAllLoops);
@@ -145,6 +153,7 @@ function init() {
 
 async function requestMicrophoneAccess() {
   try {
+    await ensureAudioEngine();
     mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: false,
@@ -153,11 +162,6 @@ async function requestMicrophoneAccess() {
       },
       video: false,
     });
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-    masterGainNode = audioContext.createGain();
-    masterGainNode.gain.value = masterVolume;
-    masterGainNode.connect(audioContext.destination);
 
     // Input analyser for level meter
     const inputSource = audioContext.createMediaStreamSource(mediaStream);
@@ -167,10 +171,7 @@ async function requestMicrophoneAccess() {
     startInputMeter();
 
     permissionBanner.classList.add('hidden');
-    tempoControls.classList.remove('hidden');
-    recordControls.classList.remove('hidden');
-    masterControls.classList.remove('hidden');
-    loopsSection.classList.remove('hidden');
+    showLoopWorkspace(true);
     setStatus('Ready. Press ● REC to start recording.');
   } catch (err) {
     showError('Microphone access denied. Please allow microphone access and reload.');
@@ -321,11 +322,15 @@ function quantizeBuffer(buffer) {
 // ─── Loop management ──────────────────────────────────────────────────────────
 
 function addLoop(audioBuffer) {
+  addLoopWithName(audioBuffer);
+}
+
+function addLoopWithName(audioBuffer, name = '') {
   loopCounter++;
   /** @type {Loop} */
   const loop = {
     id: loopCounter,
-    name: `Loop ${loopCounter}`,
+    name: name || `Loop ${loopCounter}`,
     audioBuffer,
     reversedBuffer: null,
     duration: audioBuffer.duration,
@@ -343,6 +348,20 @@ function addLoop(audioBuffer) {
   loops.push(loop);
   renderLoop(loop);
   updateEmptyState();
+}
+
+async function addBuiltinSample(sample) {
+  try {
+    await ensureAudioEngine();
+    const label = sampleLabel(sample);
+    const loop = createBuiltinSampleLoop(audioContext, { sample, bpm, beatsPerBar });
+    addLoopWithName(loop, label);
+    showLoopWorkspace(false);
+    showInfo(`Added ${label} loop from the sample library.`);
+  } catch (err) {
+    showError('Could not add sample: ' + err.message);
+    console.error('sample library error:', err);
+  }
 }
 
 /** Effective gain for a loop accounting for mute/solo/volume. */
@@ -961,6 +980,40 @@ function openHelp()  { helpModal.classList.remove('hidden'); }
 function closeHelp() { helpModal.classList.add('hidden'); }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function ensureAudioEngine() {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (!masterGainNode) {
+    masterGainNode = audioContext.createGain();
+    masterGainNode.gain.value = masterVolume;
+    masterGainNode.connect(audioContext.destination);
+  }
+  if (audioContext.state === 'suspended') {
+    await audioContext.resume();
+  }
+}
+
+function showLoopWorkspace(withRecordingControls) {
+  tempoControls.classList.remove('hidden');
+  masterControls.classList.remove('hidden');
+  loopsSection.classList.remove('hidden');
+  if (withRecordingControls) recordControls.classList.remove('hidden');
+}
+
+function sampleLabel(sample) {
+  switch (sample) {
+    case 'kick':
+      return 'Kick';
+    case 'snare':
+      return 'Snare';
+    case 'clap':
+      return 'Clap';
+    default:
+      return 'Sample';
+  }
+}
 
 function setStatus(msg) {
   statusText.textContent = msg;

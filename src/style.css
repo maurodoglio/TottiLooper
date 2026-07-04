@@ -93,6 +93,26 @@ main {
   color: var(--text-muted);
 }
 
+.sample-library-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-muted);
+  flex: 1;
+  min-width: 220px;
+}
+
+.sample-library-copy strong {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.sample-library-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .hidden {
   display: none !important;
 }
