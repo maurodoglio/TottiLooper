@@ -71,6 +71,10 @@ const deletedStack = [];
  * @property {number} pan
  * @property {number} playbackRate
  * @property {boolean} reversed
+ * @property {number} playStartTime
+ * @property {number} playOffset
+ * @property {number} playheadFrame
+ * @property {HTMLDivElement|null} waveformPlayhead
  */
 
 /** @type {Array<Loop>} */
@@ -339,6 +343,10 @@ function addLoop(audioBuffer) {
     pan: 0,
     playbackRate: 1,
     reversed: false,
+    playStartTime: 0,
+    playOffset: 0,
+    playheadFrame: 0,
+    waveformPlayhead: null,
   };
   loops.push(loop);
   renderLoop(loop);
@@ -368,11 +376,48 @@ function getPlaybackBuffer(loop) {
   return loop.reversedBuffer;
 }
 
+function normalizeLoopOffset(loop, offset) {
+  if (!Number.isFinite(loop.duration) || loop.duration <= 0) return 0;
+  const normalized = offset % loop.duration;
+  return normalized < 0 ? normalized + loop.duration : normalized;
+}
+
+function getLoopPlaybackPosition(loop) {
+  const baseOffset = normalizeLoopOffset(loop, loop.playOffset);
+  if (!loop.playing || !audioContext) return baseOffset;
+  const elapsed = Math.max(0, audioContext.currentTime - loop.playStartTime);
+  return normalizeLoopOffset(loop, baseOffset + elapsed * loop.playbackRate);
+}
+
+function updateLoopPlayhead(loop, offset = getLoopPlaybackPosition(loop)) {
+  if (!loop.waveformPlayhead) return;
+  const progress = loop.duration > 0 ? normalizeLoopOffset(loop, offset) / loop.duration : 0;
+  loop.waveformPlayhead.style.left = `${(progress * 100).toFixed(3)}%`;
+  loop.waveformPlayhead.classList.toggle('active', loop.playing || progress > 0);
+}
+
+function stopLoopPlayheadAnimation(loop) {
+  if (loop.playheadFrame) {
+    cancelAnimationFrame(loop.playheadFrame);
+    loop.playheadFrame = 0;
+  }
+}
+
+function startLoopPlayheadAnimation(loop) {
+  stopLoopPlayheadAnimation(loop);
+  const tick = () => {
+    if (!loop.playing) return;
+    updateLoopPlayhead(loop);
+    loop.playheadFrame = requestAnimationFrame(tick);
+  };
+  loop.playheadFrame = requestAnimationFrame(tick);
+}
+
 function reverseBuffer(buffer) {
   return _reverseBuffer(buffer, audioContext);
 }
 
-function playLoop(loop) {
+function playLoop(loop, startOffset = loop.playOffset) {
   if (!audioContext || loop.playing) return;
   if (audioContext.state === 'suspended') audioContext.resume();
 
@@ -399,12 +444,15 @@ function playLoop(loop) {
   }
   gainNode.connect(masterGainNode);
 
-  sourceNode.start();
+  const offset = normalizeLoopOffset(loop, startOffset);
+  sourceNode.start(audioContext.currentTime, offset);
 
   loop.node = sourceNode;
   loop.gainNode = gainNode;
   loop.pannerNode = pannerNode;
   loop.playing = true;
+  loop.playStartTime = audioContext.currentTime;
+  loop.playOffset = offset;
 
   const card = document.getElementById(`loop-card-${loop.id}`);
   if (card) {
@@ -417,27 +465,38 @@ function playLoop(loop) {
       btn.setAttribute('aria-label', 'Stop loop');
     }
   }
+  updateLoopPlayhead(loop, offset);
+  startLoopPlayheadAnimation(loop);
   refreshAllGains();
 }
 
-function stopLoop(loop) {
-  if (!loop.playing) return;
+function stopLoop(loop, options = {}) {
+  const { immediate = false, preserveOffset = false } = options;
+  if (!loop.playing) {
+    loop.playOffset = preserveOffset ? loop.playOffset : 0;
+    updateLoopPlayhead(loop, loop.playOffset);
+    return;
+  }
   const node = loop.node;
   const gain = loop.gainNode;
+  const nextOffset = preserveOffset ? getLoopPlaybackPosition(loop) : 0;
 
-  if (gain) {
+  if (gain && !immediate) {
     const t = audioContext.currentTime;
     gain.gain.cancelScheduledValues(t);
     gain.gain.setTargetAtTime(0, t, FADE_TIME);
   }
-  // Give the fade a few time-constants to decay before killing the source.
-  const stopAt = audioContext.currentTime + FADE_TIME * 5;
+  const stopAt = immediate ? audioContext.currentTime : audioContext.currentTime + FADE_TIME * 5;
   try { node && node.stop(stopAt); } catch { /* already stopped */ }
 
   loop.node = null;
   loop.gainNode = null;
   loop.pannerNode = null;
   loop.playing = false;
+  loop.playStartTime = 0;
+  loop.playOffset = nextOffset;
+  stopLoopPlayheadAnimation(loop);
+  updateLoopPlayhead(loop, nextOffset);
 
   const card = document.getElementById(`loop-card-${loop.id}`);
   if (card) {
@@ -534,18 +593,22 @@ function setLoopPan(loop, value) {
 }
 
 function setLoopPlaybackRate(loop, value) {
+  const position = loop.playing ? getLoopPlaybackPosition(loop) : loop.playOffset;
   loop.playbackRate = value;
   if (loop.node) {
+    loop.playOffset = position;
+    loop.playStartTime = audioContext.currentTime;
     loop.node.playbackRate.setTargetAtTime(value, audioContext.currentTime, 0.01);
   }
+  updateLoopPlayhead(loop, position);
 }
 
 function toggleReverse(loop) {
   loop.reversed = !loop.reversed;
   const wasPlaying = loop.playing;
   if (wasPlaying) {
-    stopLoop(loop);
-    setTimeout(() => playLoop(loop), Math.ceil(FADE_TIME * 1000 * 6));
+    stopLoop(loop, { preserveOffset: true });
+    setTimeout(() => playLoop(loop, loop.playOffset), Math.ceil(FADE_TIME * 1000 * 6));
   }
   const card = document.getElementById(`loop-card-${loop.id}`);
   if (card) {
@@ -742,7 +805,47 @@ function renderLoop(loop) {
   const waveformEl = document.createElement('div');
   waveformEl.className = 'loop-waveform';
   const canvas = document.createElement('canvas');
-  waveformEl.appendChild(canvas);
+  const playhead = document.createElement('div');
+  playhead.className = 'loop-playhead';
+  playhead.setAttribute('aria-hidden', 'true');
+  waveformEl.title = 'Click or drag to scrub';
+  waveformEl.append(canvas, playhead);
+  loop.waveformPlayhead = playhead;
+
+  const scrubLoopFromPointer = (event) => {
+    const rect = waveformEl.getBoundingClientRect();
+    if (!rect.width) return;
+    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const offset = ratio * loop.duration;
+    if (loop.playing) {
+      stopLoop(loop, { immediate: true, preserveOffset: true });
+      playLoop(loop, offset);
+    } else {
+      loop.playOffset = normalizeLoopOffset(loop, offset);
+      updateLoopPlayhead(loop, loop.playOffset);
+    }
+  };
+
+  let isScrubbing = false;
+  waveformEl.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    isScrubbing = true;
+    waveformEl.setPointerCapture?.(event.pointerId);
+    scrubLoopFromPointer(event);
+  });
+  waveformEl.addEventListener('pointermove', (event) => {
+    if (!isScrubbing) return;
+    scrubLoopFromPointer(event);
+  });
+  const endScrub = (event) => {
+    if (!isScrubbing) return;
+    isScrubbing = false;
+    if (waveformEl.hasPointerCapture?.(event.pointerId)) {
+      waveformEl.releasePointerCapture(event.pointerId);
+    }
+  };
+  waveformEl.addEventListener('pointerup', endScrub);
+  waveformEl.addEventListener('pointercancel', endScrub);
 
   const durationEl = document.createElement('span');
   durationEl.className = 'loop-duration';
@@ -810,6 +913,7 @@ function renderLoop(loop) {
   // Canvas sizing requires the element be in the DOM to measure offsetWidth.
   loopsList.appendChild(card);
   drawWaveform(canvas, loop.audioBuffer);
+  updateLoopPlayhead(loop, loop.playOffset);
 }
 
 function iconButton(cls, text, title, onClick) {
