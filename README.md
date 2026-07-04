@@ -24,6 +24,8 @@ them on top of each other – your one-man band for busking starts here.
 - ✨ Click-free start/stop with short automatic fades
 
 ### Save, share, recover
+- 🎬 **Scenes / setlist** – save named snapshots of active loops + mixer state
+- 🔢 **Trigger scenes instantly** with number keys `1`…`9`
 - ⬇ **Export the full mix as WAV** (rendered via `OfflineAudioContext`)
 - ⬇ **Export any individual loop as WAV**
 - ↶ **Undo delete** – last 20 deleted loops can be restored (also `Ctrl`+`Z`)
@@ -58,7 +60,7 @@ time to open the in-app tutorial.
 | <kbd>Space</kbd> | Start / stop recording |
 | <kbd>Enter</kbd> | Play all loops |
 | <kbd>Esc</kbd> | Stop all loops |
-| <kbd>1</kbd> … <kbd>9</kbd> | Toggle loops 1 through 9 |
+| <kbd>1</kbd> … <kbd>9</kbd> | Trigger scenes 1 through 9 (or toggle loops 1 through 9 when that scene slot is empty) |
 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>⌘</kbd>+<kbd>Z</kbd> | Undo the last delete |
 | <kbd>?</kbd> | Open the Help modal |
 

@@ -68,6 +68,13 @@
       <button id="btn-undo" class="btn-secondary" title="Undo delete (Ctrl+Z)" disabled>↶ Undo</button>
     </div>
 
+    <!-- Scenes / setlist -->
+    <section id="scenes-section">
+      <h2>Scenes / setlist</h2>
+      <p class="section-hint">Save named snapshots of active loops + mixer state, then trigger them instantly with keys <kbd>1</kbd>…<kbd>9</kbd>.</p>
+      <div id="scenes-list"></div>
+    </section>
+
     <!-- Loops list -->
     <section id="loops-section">
       <h2>Loops</h2>
@@ -119,6 +126,7 @@
         <li><strong>▶ Play All</strong> / <strong>■ Stop All</strong> – start or stop every loop at once.</li>
         <li><strong>Master</strong> slider – sets the overall output level.</li>
         <li><strong>⬇ Export</strong> – render the current mix to a WAV file you can save or share.</li>
+        <li><strong>Scenes / setlist</strong> – save named snapshots of which loops are active plus every mixer setting, then fire them live.</li>
       </ul>
 
       <h3>Keyboard shortcuts</h3>
@@ -126,7 +134,7 @@
         <li><kbd>Space</kbd> – start / stop recording</li>
         <li><kbd>Enter</kbd> – play all loops</li>
         <li><kbd>Esc</kbd> – stop all loops</li>
-        <li><kbd>1</kbd>…<kbd>9</kbd> – toggle loops 1 through 9</li>
+        <li><kbd>1</kbd>…<kbd>9</kbd> – trigger scenes 1 through 9 (or toggle loops 1 through 9 when that scene slot is empty)</li>
         <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> (or <kbd>⌘</kbd>+<kbd>Z</kbd>) – undo the last delete</li>
         <li><kbd>?</kbd> – open this help</li>
       </ul>

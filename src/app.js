@@ -25,6 +25,7 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
+const MAX_SCENES       = 9;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -53,6 +54,8 @@ let metronomeBeatIdx  = 0;
 
 // Undo stack for deleted loops
 const deletedStack = [];
+const scenes = Array.from({ length: MAX_SCENES }, () => ({ name: '', snapshot: null }));
+let activeSceneIndex = -1;
 
 /**
  * @typedef {Object} Loop
@@ -101,6 +104,8 @@ const btnStopAll         = $('btn-stop-all');
 const btnExportMix       = $('btn-export-mix');
 const btnUndo            = $('btn-undo');
 const masterVolumeInput  = $('master-volume');
+const scenesSection      = $('scenes-section');
+const scenesList         = $('scenes-list');
 const loopsSection       = $('loops-section');
 const loopsList          = $('loops-list');
 const emptyState         = $('empty-state');
@@ -113,6 +118,7 @@ const helpCloseButton    = $('help-close');
 function init() {
   recordControls.classList.add('hidden');
   masterControls.classList.add('hidden');
+  scenesSection.classList.add('hidden');
   loopsSection.classList.add('hidden');
   tempoControls.classList.add('hidden');
 
@@ -138,7 +144,9 @@ function init() {
 
   document.addEventListener('keydown', onGlobalKeydown);
 
+  renderSceneSlots();
   updateUndoButton();
+  refreshSceneButtons();
 }
 
 // ─── Microphone access ────────────────────────────────────────────────────────
@@ -170,6 +178,7 @@ async function requestMicrophoneAccess() {
     tempoControls.classList.remove('hidden');
     recordControls.classList.remove('hidden');
     masterControls.classList.remove('hidden');
+    scenesSection.classList.remove('hidden');
     loopsSection.classList.remove('hidden');
     setStatus('Ready. Press ● REC to start recording.');
   } catch (err) {
@@ -343,6 +352,7 @@ function addLoop(audioBuffer) {
   loops.push(loop);
   renderLoop(loop);
   updateEmptyState();
+  refreshSceneButtons();
 }
 
 /** Effective gain for a loop accounting for mute/solo/volume. */
@@ -405,18 +415,7 @@ function playLoop(loop) {
   loop.gainNode = gainNode;
   loop.pannerNode = pannerNode;
   loop.playing = true;
-
-  const card = document.getElementById(`loop-card-${loop.id}`);
-  if (card) {
-    card.classList.add('playing');
-    const btn = card.querySelector('.btn-play');
-    if (btn) {
-      btn.textContent = '⏹';
-      btn.classList.add('active');
-      btn.title = 'Stop loop';
-      btn.setAttribute('aria-label', 'Stop loop');
-    }
-  }
+  syncLoopCardState(loop);
   refreshAllGains();
 }
 
@@ -438,18 +437,7 @@ function stopLoop(loop) {
   loop.gainNode = null;
   loop.pannerNode = null;
   loop.playing = false;
-
-  const card = document.getElementById(`loop-card-${loop.id}`);
-  if (card) {
-    card.classList.remove('playing');
-    const btn = card.querySelector('.btn-play');
-    if (btn) {
-      btn.textContent = '▶';
-      btn.classList.remove('active');
-      btn.title = 'Play loop';
-      btn.setAttribute('aria-label', 'Play loop');
-    }
-  }
+  syncLoopCardState(loop);
 }
 
 function deleteLoop(loopId) {
@@ -467,6 +455,7 @@ function deleteLoop(loopId) {
 
   updateEmptyState();
   updateUndoButton();
+  refreshSceneButtons();
   refreshAllGains();
   showInfo(`Deleted "${loop.name}" – press ↶ Undo (or Ctrl+Z) to restore.`);
 }
@@ -482,6 +471,7 @@ function undoDelete() {
   renderLoop(loop);
   updateEmptyState();
   updateUndoButton();
+  refreshSceneButtons();
   refreshAllGains();
   setStatus(`Restored "${loop.name}".`);
 }
@@ -490,39 +480,90 @@ function updateUndoButton() {
   btnUndo.disabled = deletedStack.length === 0;
 }
 
-function toggleMute(loop) {
-  loop.muted = !loop.muted;
-  const card = document.getElementById(`loop-card-${loop.id}`);
-  if (card) {
-    card.classList.toggle('muted', loop.muted);
-    const btn = card.querySelector('.btn-mute');
-    if (btn) {
-      btn.textContent = loop.muted ? '🔇' : '🔊';
-      btn.title = loop.muted ? 'Unmute' : 'Mute';
-      btn.setAttribute('aria-label', loop.muted ? 'Unmute loop' : 'Mute loop');
-      btn.classList.toggle('active', loop.muted);
-      btn.setAttribute('aria-pressed', loop.muted ? 'true' : 'false');
-    }
+function getLoopCard(loop) {
+  return document.getElementById(`loop-card-${loop.id}`);
+}
+
+function syncLoopFader(card, key, value, text) {
+  if (!card) return;
+  const fader = card.querySelector(`[data-fader="${key}"]`);
+  if (!fader) return;
+  const input = fader.querySelector('input');
+  const valueEl = fader.querySelector('.fader-value');
+  if (input) input.value = String(value);
+  if (valueEl) valueEl.textContent = text;
+}
+
+function syncLoopCardState(loop) {
+  const card = getLoopCard(loop);
+  if (!card) return;
+
+  card.classList.toggle('playing', loop.playing);
+  card.classList.toggle('muted', loop.muted);
+  card.classList.toggle('soloed', loop.soloed);
+
+  const nameInput = card.querySelector('.loop-name');
+  if (nameInput && nameInput !== document.activeElement) {
+    nameInput.value = loop.name;
   }
+
+  const btnPlay = card.querySelector('.btn-play');
+  if (btnPlay) {
+    btnPlay.textContent = loop.playing ? '⏹' : '▶';
+    btnPlay.classList.toggle('active', loop.playing);
+    btnPlay.title = loop.playing ? 'Stop loop' : 'Play loop';
+    btnPlay.setAttribute('aria-label', loop.playing ? 'Stop loop' : 'Play loop');
+  }
+
+  const btnMute = card.querySelector('.btn-mute');
+  if (btnMute) {
+    btnMute.textContent = loop.muted ? '🔇' : '🔊';
+    btnMute.title = loop.muted ? 'Unmute' : 'Mute';
+    btnMute.setAttribute('aria-label', loop.muted ? 'Unmute loop' : 'Mute loop');
+    btnMute.classList.toggle('active', loop.muted);
+    btnMute.setAttribute('aria-pressed', loop.muted ? 'true' : 'false');
+  }
+
+  const btnSolo = card.querySelector('.btn-solo');
+  if (btnSolo) {
+    btnSolo.classList.toggle('active', loop.soloed);
+    btnSolo.setAttribute('aria-pressed', loop.soloed ? 'true' : 'false');
+  }
+
+  const btnReverse = card.querySelector('.btn-reverse');
+  if (btnReverse) {
+    btnReverse.classList.toggle('active', loop.reversed);
+    btnReverse.setAttribute('aria-pressed', loop.reversed ? 'true' : 'false');
+  }
+
+  syncLoopFader(card, 'vol', loop.volume, `${Math.round(loop.volume * 100)}%`);
+  syncLoopFader(card, 'pan', loop.pan, panText(loop.pan));
+  syncLoopFader(card, 'speed', loop.playbackRate, `${loop.playbackRate.toFixed(2)}×`);
+}
+
+function setLoopMuted(loop, muted) {
+  loop.muted = muted;
+  syncLoopCardState(loop);
+  refreshAllGains();
+}
+
+function toggleMute(loop) {
+  setLoopMuted(loop, !loop.muted);
+}
+
+function setLoopSoloed(loop, soloed) {
+  loop.soloed = soloed;
+  syncLoopCardState(loop);
   refreshAllGains();
 }
 
 function toggleSolo(loop) {
-  loop.soloed = !loop.soloed;
-  const card = document.getElementById(`loop-card-${loop.id}`);
-  if (card) {
-    card.classList.toggle('soloed', loop.soloed);
-    const btn = card.querySelector('.btn-solo');
-    if (btn) {
-      btn.classList.toggle('active', loop.soloed);
-      btn.setAttribute('aria-pressed', loop.soloed ? 'true' : 'false');
-    }
-  }
-  refreshAllGains();
+  setLoopSoloed(loop, !loop.soloed);
 }
 
 function setLoopVolume(loop, value) {
   loop.volume = value;
+  syncLoopCardState(loop);
   refreshAllGains();
 }
 
@@ -531,6 +572,7 @@ function setLoopPan(loop, value) {
   if (loop.pannerNode) {
     loop.pannerNode.pan.setTargetAtTime(value, audioContext.currentTime, 0.01);
   }
+  syncLoopCardState(loop);
 }
 
 function setLoopPlaybackRate(loop, value) {
@@ -538,23 +580,27 @@ function setLoopPlaybackRate(loop, value) {
   if (loop.node) {
     loop.node.playbackRate.setTargetAtTime(value, audioContext.currentTime, 0.01);
   }
+  syncLoopCardState(loop);
+}
+
+function setLoopReversed(loop, reversed, restartPlayback = true) {
+  if (loop.reversed === reversed) {
+    syncLoopCardState(loop);
+    return;
+  }
+  const wasPlaying = loop.playing;
+  if (wasPlaying && restartPlayback) {
+    stopLoop(loop);
+  }
+  loop.reversed = reversed;
+  syncLoopCardState(loop);
+  if (wasPlaying && restartPlayback) {
+    setTimeout(() => playLoop(loop), Math.ceil(FADE_TIME * 1000 * 6));
+  }
 }
 
 function toggleReverse(loop) {
-  loop.reversed = !loop.reversed;
-  const wasPlaying = loop.playing;
-  if (wasPlaying) {
-    stopLoop(loop);
-    setTimeout(() => playLoop(loop), Math.ceil(FADE_TIME * 1000 * 6));
-  }
-  const card = document.getElementById(`loop-card-${loop.id}`);
-  if (card) {
-    const btn = card.querySelector('.btn-reverse');
-    if (btn) {
-      btn.classList.toggle('active', loop.reversed);
-      btn.setAttribute('aria-pressed', loop.reversed ? 'true' : 'false');
-    }
-  }
+  setLoopReversed(loop, !loop.reversed);
 }
 
 function renameLoop(loop, newName) {
@@ -575,6 +621,145 @@ function onMasterVolumeChange(e) {
   if (masterGainNode) {
     masterGainNode.gain.setTargetAtTime(masterVolume, audioContext.currentTime, 0.01);
   }
+}
+
+function getSceneDefaultName(index) {
+  return `Scene ${index + 1}`;
+}
+
+function renderSceneSlots() {
+  scenesList.innerHTML = '';
+  scenes.forEach((scene, index) => {
+    const slot = document.createElement('div');
+    slot.className = 'scene-slot';
+    slot.id = `scene-slot-${index + 1}`;
+
+    const badge = document.createElement('span');
+    badge.className = 'scene-index';
+    badge.textContent = String(index + 1);
+
+    const nameInput = document.createElement('input');
+    nameInput.className = 'scene-name';
+    nameInput.type = 'text';
+    nameInput.placeholder = getSceneDefaultName(index);
+    nameInput.value = scene.name;
+    nameInput.setAttribute('aria-label', `Scene ${index + 1} name`);
+    nameInput.addEventListener('input', () => {
+      scene.name = nameInput.value.trim();
+    });
+
+    const saveButton = document.createElement('button');
+    saveButton.className = 'btn-secondary scene-save';
+    saveButton.textContent = 'Save';
+    saveButton.type = 'button';
+    saveButton.addEventListener('click', () => saveScene(index));
+
+    const triggerButton = document.createElement('button');
+    triggerButton.className = 'btn-primary scene-trigger';
+    triggerButton.textContent = 'Go';
+    triggerButton.type = 'button';
+    triggerButton.addEventListener('click', () => triggerScene(index));
+
+    slot.append(badge, nameInput, saveButton, triggerButton);
+    scenesList.appendChild(slot);
+  });
+}
+
+function refreshSceneButtons() {
+  scenes.forEach((scene, index) => {
+    const slot = document.getElementById(`scene-slot-${index + 1}`);
+    if (!slot) return;
+    slot.classList.toggle('active', scene.snapshot !== null && activeSceneIndex === index);
+
+    const nameInput = slot.querySelector('.scene-name');
+    const saveButton = slot.querySelector('.scene-save');
+    const triggerButton = slot.querySelector('.scene-trigger');
+
+    if (nameInput && nameInput !== document.activeElement) {
+      nameInput.value = scene.name;
+    }
+    if (saveButton) saveButton.disabled = loops.length === 0;
+    if (triggerButton) triggerButton.disabled = scene.snapshot === null;
+  });
+}
+
+function captureSceneSnapshot() {
+  return {
+    masterVolume,
+    loops: loops.map(loop => ({
+      id: loop.id,
+      muted: loop.muted,
+      soloed: loop.soloed,
+      volume: loop.volume,
+      pan: loop.pan,
+      playbackRate: loop.playbackRate,
+      reversed: loop.reversed,
+      playing: loop.playing,
+    })),
+  };
+}
+
+function saveScene(index) {
+  if (loops.length === 0) {
+    showInfo('Record at least one loop before saving a scene.');
+    return;
+  }
+  const scene = scenes[index];
+  scene.name = scene.name || getSceneDefaultName(index);
+  scene.snapshot = captureSceneSnapshot();
+  activeSceneIndex = index;
+  refreshSceneButtons();
+  setStatus(`Saved ${scene.name}.`);
+}
+
+function triggerScene(index) {
+  const scene = scenes[index];
+  if (!scene || !scene.snapshot) return false;
+
+  const snapshotByLoopId = new Map(scene.snapshot.loops.map(loop => [loop.id, loop]));
+
+  for (const loop of loops) {
+    const snapshot = snapshotByLoopId.get(loop.id);
+    if (!snapshot || !snapshot.playing || snapshot.reversed !== loop.reversed) {
+      stopLoop(loop);
+    }
+  }
+
+  masterVolume = scene.snapshot.masterVolume;
+  masterVolumeInput.value = String(masterVolume);
+  if (masterGainNode) {
+    masterGainNode.gain.setTargetAtTime(masterVolume, audioContext.currentTime, 0.01);
+  }
+
+  for (const loop of loops) {
+    const snapshot = snapshotByLoopId.get(loop.id);
+    if (!snapshot) {
+      setLoopMuted(loop, false);
+      setLoopSoloed(loop, false);
+      continue;
+    }
+    setLoopMuted(loop, snapshot.muted);
+    setLoopSoloed(loop, snapshot.soloed);
+    setLoopVolume(loop, snapshot.volume);
+    setLoopPan(loop, snapshot.pan);
+    setLoopPlaybackRate(loop, snapshot.playbackRate);
+    setLoopReversed(loop, snapshot.reversed, false);
+    syncLoopCardState(loop);
+  }
+
+  refreshAllGains();
+
+  for (const loop of loops) {
+    const snapshot = snapshotByLoopId.get(loop.id);
+    if (snapshot && snapshot.playing) {
+      playLoop(loop);
+    }
+  }
+
+  activeSceneIndex = index;
+  refreshSceneButtons();
+  setStatus(`Triggered ${scene.name || getSceneDefaultName(index)}.`);
+  return true;
 }
 
 // ─── Metronome ────────────────────────────────────────────────────────────────
@@ -810,6 +995,7 @@ function renderLoop(loop) {
   // Canvas sizing requires the element be in the DOM to measure offsetWidth.
   loopsList.appendChild(card);
   drawWaveform(canvas, loop.audioBuffer);
+  syncLoopCardState(loop);
 }
 
 function iconButton(cls, text, title, onClick) {
@@ -825,6 +1011,7 @@ function iconButton(cls, text, title, onClick) {
 function makeFader(label, min, max, step, value, formatValue, onInput) {
   const wrap = document.createElement('label');
   wrap.className = 'fader';
+  wrap.dataset.fader = label.toLowerCase();
 
   const title = document.createElement('span');
   title.className = 'fader-label';
@@ -949,6 +1136,7 @@ function onGlobalKeydown(e) {
       if (/^[1-9]$/.test(e.key)) {
         e.preventDefault();
         const idx = parseInt(e.key, 10) - 1;
+        if (triggerScene(idx)) return;
         const loop = loops[idx];
         if (loop) { loop.playing ? stopLoop(loop) : playLoop(loop); }
       }
