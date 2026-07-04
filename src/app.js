@@ -348,7 +348,8 @@ function quantizeBuffer(buffer) {
 
 /**
  * Create a Loop object from a decoded AudioBuffer and append it to the loop
- * list.  The new loop is rendered into the UI but not started.
+ * list.  The new loop is rendered into the UI; playback must be triggered
+ * separately by calling {@link playLoop}.
  *
  * @param {AudioBuffer} audioBuffer
  * @returns {void}
