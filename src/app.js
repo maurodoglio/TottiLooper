@@ -21,14 +21,14 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const FADE_TIME        = 0.015; // seconds – short fades to avoid clicks on start/stop
-const IMMEDIATE_START_THRESHOLD = 0.01;
+const IMMEDIATE_START_THRESHOLD = 0.01; // seconds – treat starts within 10 ms as "now" for UI state
 const METRONOME_VOLUME = 0.3;
 const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const DEFAULT_SONG_BARS = 8;
 const MAX_SONG_BARS     = 128;
-const SONG_START_DELAY  = 0.05;
+const SONG_START_DELAY  = 0.05; // seconds – small look-ahead so Web Audio can schedule bar-aligned starts
 const MAX_UNDO         = 20;
 
 // ─── State ────────────────────────────────────────────────────────────────────
