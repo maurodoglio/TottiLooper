@@ -127,6 +127,65 @@ describe('effectiveGain', () => {
     const loop = { muted: false, soloed: false, volume: 0 };
     expect(effectiveGain(loop, [loop])).toBe(0);
   });
+
+  // ── Group-aware behaviour ────────────────────────────────────────────────
+
+  it('multiplies loop volume by group volume', () => {
+    const group = { id: 1, volume: 0.5, muted: false, soloed: false };
+    const loop = { muted: false, soloed: false, volume: 0.8, groupId: 1 };
+    expect(effectiveGain(loop, [loop], [group])).toBeCloseTo(0.4);
+  });
+
+  it('returns 0 when the group is muted', () => {
+    const group = { id: 1, volume: 1, muted: true, soloed: false };
+    const loop = { muted: false, soloed: false, volume: 1, groupId: 1 };
+    expect(effectiveGain(loop, [loop], [group])).toBe(0);
+  });
+
+  it('loop mute still takes priority over a non-muted group', () => {
+    const group = { id: 1, volume: 1, muted: false, soloed: false };
+    const loop = { muted: true, soloed: false, volume: 1, groupId: 1 };
+    expect(effectiveGain(loop, [loop], [group])).toBe(0);
+  });
+
+  it('returns 0 for a loop outside the soloed group when a group is soloed', () => {
+    const group1 = { id: 1, volume: 1, muted: false, soloed: true };
+    const group2 = { id: 2, volume: 1, muted: false, soloed: false };
+    const loopInGroup1 = { muted: false, soloed: false, volume: 1, groupId: 1 };
+    const loopInGroup2 = { muted: false, soloed: false, volume: 1, groupId: 2 };
+    expect(effectiveGain(loopInGroup2, [loopInGroup1, loopInGroup2], [group1, group2])).toBe(0);
+  });
+
+  it('returns volume for a loop inside the soloed group', () => {
+    const group1 = { id: 1, volume: 0.8, muted: false, soloed: true };
+    const group2 = { id: 2, volume: 1, muted: false, soloed: false };
+    const loopInGroup1 = { muted: false, soloed: false, volume: 1, groupId: 1 };
+    const loopInGroup2 = { muted: false, soloed: false, volume: 1, groupId: 2 };
+    expect(effectiveGain(loopInGroup1, [loopInGroup1, loopInGroup2], [group1, group2])).toBeCloseTo(0.8);
+  });
+
+  it('loop solo still silences other loops even when a group is present', () => {
+    const group = { id: 1, volume: 1, muted: false, soloed: false };
+    const soloedLoop = { muted: false, soloed: true, volume: 1, groupId: 1 };
+    const otherLoop  = { muted: false, soloed: false, volume: 1, groupId: 1 };
+    expect(effectiveGain(otherLoop, [soloedLoop, otherLoop], [group])).toBe(0);
+  });
+
+  it('ungrouped loop (groupId null) is unaffected by group state', () => {
+    const group = { id: 1, volume: 0.5, muted: true, soloed: true };
+    const loop = { muted: false, soloed: false, volume: 0.9, groupId: null };
+    // No solo applies to the ungrouped loop, and group mute doesn't apply.
+    // The only active solo is from the group – but the loop has no group.
+    // Because anySolo is true (group is soloed) and the loop is neither soloed
+    // nor in a soloed group, its gain should be 0.
+    expect(effectiveGain(loop, [loop], [group])).toBe(0);
+  });
+
+  it('ungrouped loop plays normally when no solo is active', () => {
+    const group = { id: 1, volume: 0.5, muted: false, soloed: false };
+    const loop = { muted: false, soloed: false, volume: 0.9, groupId: null };
+    expect(effectiveGain(loop, [loop], [group])).toBeCloseTo(0.9);
+  });
 });
 
 // ─── writeString ─────────────────────────────────────────────────────────────

@@ -51,18 +51,27 @@ export function getSupportedMimeType() {
 // ─── Gain / mix logic ─────────────────────────────────────────────────────────
 
 /**
- * Compute the effective output gain for a loop, accounting for mute, solo, and
- * per-loop volume.
+ * Compute the effective output gain for a loop, accounting for mute, solo,
+ * per-loop volume, and the group the loop belongs to.
  *
- * @param {{ muted: boolean, soloed: boolean, volume: number }} loop
+ * @param {{ muted: boolean, soloed: boolean, volume: number, groupId?: number|null }} loop
  * @param {Array<{ soloed: boolean }>} loops - the complete list of loops
+ * @param {Array<{ id: number, volume: number, muted: boolean, soloed: boolean }>} [groups]
  * @returns {number}
  */
-export function effectiveGain(loop, loops) {
+export function effectiveGain(loop, loops, groups = []) {
   if (loop.muted) return 0;
-  const anySolo = loops.some(l => l.soloed);
-  if (anySolo && !loop.soloed) return 0;
-  return loop.volume;
+
+  const group = loop.groupId != null
+    ? (groups.find(g => g.id === loop.groupId) ?? null)
+    : null;
+
+  if (group && group.muted) return 0;
+
+  const anySolo = loops.some(l => l.soloed) || groups.some(g => g.soloed);
+  if (anySolo && !loop.soloed && (!group || !group.soloed)) return 0;
+
+  return loop.volume * (group ? group.volume : 1);
 }
 
 // ─── AudioBuffer utilities ────────────────────────────────────────────────────

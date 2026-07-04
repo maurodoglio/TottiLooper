@@ -70,12 +70,16 @@
 
     <!-- Loops list -->
     <section id="loops-section">
-      <h2>Loops</h2>
+      <div class="section-header">
+        <h2>Loops</h2>
+        <button id="btn-add-group" class="btn-secondary btn-sm">+ Group</button>
+      </div>
       <div id="loops-list">
         <div id="empty-state">
           <div class="icon">🎵</div>
           <p>No loops yet. Hit <strong>● REC</strong> to record your first loop!</p>
         </div>
+        <div id="ungrouped-loops"></div>
       </div>
     </section>
 
@@ -111,7 +115,18 @@
         <li><strong>⬇</strong> – download this loop as a WAV file.</li>
         <li><strong>✕</strong> – delete the loop. Use <strong>↶ Undo</strong> or <kbd>Ctrl</kbd>+<kbd>Z</kbd> to bring it back.</li>
         <li><strong>Vol / Pan / Speed</strong> sliders – mix each loop and warp its pitch via playback rate.</li>
+        <li><strong>Group</strong> selector – assign the loop to a named group for sub-mix control.</li>
         <li>Click the <strong>loop name</strong> field to rename it (e.g. "Bass", "Chords", "Beatbox").</li>
+      </ul>
+
+      <h3>Loop groups</h3>
+      <ul>
+        <li>Click <strong>+ Group</strong> to create a named sub-mix group (e.g. "Drums", "Vocals").</li>
+        <li>Use the <strong>Group</strong> selector on each loop card to assign loops to a group.</li>
+        <li>Each group has its own <strong>Vol</strong> slider, <strong>🔊 Mute</strong> and <strong>S Solo</strong> controls that apply to all loops in the group.</li>
+        <li>Group volume multiplies each member loop's individual volume.</li>
+        <li>Soloing a group silences all loops outside that group; soloing a loop overrides groups.</li>
+        <li>Delete a group with <strong>✕</strong> — its loops move back to the ungrouped list.</li>
       </ul>
 
       <h3>Master controls</h3>
