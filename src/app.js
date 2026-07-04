@@ -11,6 +11,7 @@ import {
   formatDuration,
   panText,
   audioBufferToWav,
+  clickTrackToMidi,
   getSupportedMimeType,
   effectiveGain as computeEffectiveGain,
   quantizeBuffer as _quantizeBuffer,
@@ -114,6 +115,7 @@ const masterControls     = $('master-controls');
 const btnPlayAll         = $('btn-play-all');
 const btnStopAll         = $('btn-stop-all');
 const btnExportMix       = $('btn-export-mix');
+const exportMidiToggle   = $('export-midi-toggle');
 const btnUndo            = $('btn-undo');
 const masterVolumeInput  = $('master-volume');
 const loopsSection       = $('loops-section');
@@ -771,8 +773,13 @@ async function exportMix() {
   try {
     const rendered = await offline.startRendering();
     const wavBlob = audioBufferToWav(rendered);
-    downloadBlob(wavBlob, `tottilooper-mix-${Date.now()}.wav`);
-    setStatus('Mix exported.');
+    const exportBase = `tottilooper-mix-${Date.now()}`;
+    downloadBlob(wavBlob, `${exportBase}.wav`);
+    if (exportMidiToggle.checked) {
+      const midiBlob = clickTrackToMidi({ bpm, beatsPerBar, durationSeconds: duration });
+      downloadBlob(midiBlob, `${exportBase}-click.mid`);
+    }
+    setStatus(exportMidiToggle.checked ? 'Mix + MIDI exported.' : 'Mix exported.');
   } catch (err) {
     showError('Export failed: ' + err.message);
     setStatus('Ready.');

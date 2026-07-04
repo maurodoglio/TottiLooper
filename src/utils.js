@@ -8,6 +8,13 @@
 
 'use strict';
 
+const MIDI_TICKS_PER_BEAT = 480;
+const MIDI_CLICK_NOTE_LENGTH = 60;
+const MIDI_DOWNBEAT_NOTE = 76;
+const MIDI_OFFBEAT_NOTE = 77;
+const MIDI_DOWNBEAT_VELOCITY = 110;
+const MIDI_OFFBEAT_VELOCITY = 84;
+
 // ─── Formatting ───────────────────────────────────────────────────────────────
 
 /**
@@ -156,6 +163,61 @@ export function reverseBuffer(buffer, audioContext) {
   return rev;
 }
 
+// ─── MIDI encoding ────────────────────────────────────────────────────────────
+
+/**
+ * Encode the current session tempo as a simple MIDI click track.
+ *
+ * @param {{ bpm: number, beatsPerBar: number, durationSeconds: number }} opts
+ * @returns {Blob}
+ */
+export function clickTrackToMidi({ bpm, beatsPerBar, durationSeconds }) {
+  const totalTicks = Math.max(1, Math.ceil((durationSeconds * bpm * MIDI_TICKS_PER_BEAT) / 60));
+  const beatCount = Math.floor((totalTicks - 1) / MIDI_TICKS_PER_BEAT) + 1;
+  const noteLength = Math.min(MIDI_CLICK_NOTE_LENGTH, MIDI_TICKS_PER_BEAT);
+  const tempoMicros = Math.round(60000000 / bpm);
+  const track = [];
+
+  appendMetaEvent(track, 0, 0x03, textBytes('Click Track'));
+  appendMetaEvent(track, 0, 0x51, [
+    (tempoMicros >> 16) & 0xff,
+    (tempoMicros >> 8) & 0xff,
+    tempoMicros & 0xff,
+  ]);
+  appendMetaEvent(track, 0, 0x58, [beatsPerBar, 2, 24, 8]);
+
+  let lastTick = 0;
+  for (let beat = 0; beat < beatCount; beat++) {
+    const startTick = beat * MIDI_TICKS_PER_BEAT;
+    const note = beat % beatsPerBar === 0 ? MIDI_DOWNBEAT_NOTE : MIDI_OFFBEAT_NOTE;
+    const velocity = beat % beatsPerBar === 0 ? MIDI_DOWNBEAT_VELOCITY : MIDI_OFFBEAT_VELOCITY;
+    appendMidiEvent(track, startTick - lastTick, [0x99, note, velocity]);
+    lastTick = startTick;
+
+    const endTick = Math.min(startTick + noteLength, totalTicks);
+    appendMidiEvent(track, endTick - lastTick, [0x89, note, 0]);
+    lastTick = endTick;
+  }
+
+  appendMetaEvent(track, totalTicks - lastTick, 0x2f, []);
+
+  const bytes = [
+    ...textBytes('MThd'),
+    0x00, 0x00, 0x00, 0x06,
+    0x00, 0x00,
+    0x00, 0x01,
+    (MIDI_TICKS_PER_BEAT >> 8) & 0xff, MIDI_TICKS_PER_BEAT & 0xff,
+    ...textBytes('MTrk'),
+    (track.length >>> 24) & 0xff,
+    (track.length >>> 16) & 0xff,
+    (track.length >>> 8) & 0xff,
+    track.length & 0xff,
+    ...track,
+  ];
+
+  return new Blob([new Uint8Array(bytes)], { type: 'audio/midi' });
+}
+
 // ─── WAV encoding ─────────────────────────────────────────────────────────────
 
 /**
@@ -214,4 +276,30 @@ export function audioBufferToWav(buffer) {
     }
   }
   return new Blob([ab], { type: 'audio/wav' });
+}
+
+function appendMetaEvent(track, delta, type, data) {
+  appendMidiEvent(track, delta, [0xff, type, data.length, ...data]);
+}
+
+function appendMidiEvent(track, delta, bytes) {
+  track.push(...encodeVarLen(delta), ...bytes);
+}
+
+function encodeVarLen(value) {
+  let buffer = value & 0x7f;
+  const bytes = [];
+  while ((value >>= 7)) {
+    buffer <<= 8;
+    buffer |= 0x80 | (value & 0x7f);
+  }
+  while (true) {
+    bytes.push(buffer & 0xff);
+    if (buffer & 0x80) buffer >>= 8;
+    else return bytes;
+  }
+}
+
+function textBytes(text) {
+  return Array.from(text, (ch) => ch.charCodeAt(0));
 }

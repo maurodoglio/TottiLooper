@@ -74,6 +74,10 @@
         <span>Master</span>
         <input id="master-volume" type="range" min="0" max="1.5" step="0.01" value="1" aria-label="Master volume" />
       </label>
+      <label class="toggle" title="Also export a MIDI click track at the current tempo">
+        <input id="export-midi-toggle" type="checkbox" />
+        <span>MIDI click</span>
+      </label>
       <button id="btn-export-mix" class="btn-secondary" title="Export mix as WAV">⬇ Export</button>
       <button id="btn-undo" class="btn-secondary" title="Undo delete (Ctrl+Z)" disabled>↶ Undo</button>
     </div>
@@ -129,7 +133,8 @@
       <ul>
         <li><strong>▶ Play All</strong> / <strong>■ Stop All</strong> – start or stop every loop at once.</li>
         <li><strong>Master</strong> slider – sets the overall output level.</li>
-        <li><strong>⬇ Export</strong> – render the current mix to a WAV file you can save or share.</li>
+        <li><strong>MIDI click</strong> – optionally export a click-track MIDI file at the current tempo for easy DAW alignment.</li>
+        <li><strong>⬇ Export</strong> – render the current mix to a WAV file, and optionally download the matching MIDI click track alongside it.</li>
       </ul>
 
       <h3>Keyboard shortcuts</h3>
