@@ -25,6 +25,7 @@ const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
+const DUCK_GAIN        = 0.35;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -50,6 +51,7 @@ let countInEnabled   = false;
 let quantizeEnabled  = false;
 let metronomeInterval = null;
 let metronomeBeatIdx  = 0;
+let leadLoopId        = null;
 
 // Undo stack for deleted loops
 const deletedStack = [];
@@ -345,9 +347,40 @@ function addLoop(audioBuffer) {
   updateEmptyState();
 }
 
-/** Effective gain for a loop accounting for mute/solo/volume. */
+/** Effective gain for a loop accounting for mute/solo/volume/ducking. */
 function effectiveGain(loop) {
-  return computeEffectiveGain(loop, loops);
+  return computeEffectiveGain(loop, loops, {
+    leadLoopId,
+    duckGain: DUCK_GAIN,
+  });
+}
+
+function isLeadLoop(loop) {
+  return leadLoopId != null && loop.id === leadLoopId;
+}
+
+function updateLeadButton(card, loop) {
+  const isLead = isLeadLoop(loop);
+  card.classList.toggle('lead', isLead);
+  const btn = card.querySelector('.btn-lead');
+  if (!btn) return;
+  btn.classList.toggle('active', isLead);
+  btn.setAttribute('aria-pressed', isLead ? 'true' : 'false');
+  btn.title = isLead ? 'Unset lead' : 'Set as lead';
+  btn.setAttribute('aria-label', isLead ? 'Unset lead loop' : 'Set as lead loop');
+}
+
+function refreshLeadUi() {
+  for (const loop of loops) {
+    const card = document.getElementById(`loop-card-${loop.id}`);
+    if (card) updateLeadButton(card, loop);
+  }
+}
+
+function toggleLead(loop) {
+  leadLoopId = isLeadLoop(loop) ? null : loop.id;
+  refreshLeadUi();
+  refreshAllGains();
 }
 
 function refreshAllGains() {
@@ -450,6 +483,7 @@ function stopLoop(loop) {
       btn.setAttribute('aria-label', 'Play loop');
     }
   }
+  refreshAllGains();
 }
 
 function deleteLoop(loopId) {
@@ -720,6 +754,7 @@ function renderLoop(loop) {
   card.id = `loop-card-${loop.id}`;
   if (loop.muted)  card.classList.add('muted');
   if (loop.soloed) card.classList.add('soloed');
+  if (isLeadLoop(loop)) card.classList.add('lead');
 
   // Top row: name / waveform / duration / action buttons
   const topRow = document.createElement('div');
@@ -772,6 +807,10 @@ function renderLoop(loop) {
   btnSolo.setAttribute('aria-pressed', loop.soloed ? 'true' : 'false');
   if (loop.soloed) btnSolo.classList.add('active');
 
+  const btnLead = iconButton('btn-lead', 'L', 'Set as lead', () => toggleLead(loop));
+  btnLead.setAttribute('aria-pressed', isLeadLoop(loop) ? 'true' : 'false');
+  if (isLeadLoop(loop)) btnLead.classList.add('active');
+
   const btnReverse = iconButton('btn-reverse', '⇄', 'Reverse', () => toggleReverse(loop));
   btnReverse.setAttribute('aria-pressed', loop.reversed ? 'true' : 'false');
   if (loop.reversed) btnReverse.classList.add('active');
@@ -785,7 +824,7 @@ function renderLoop(loop) {
   btnDelete.setAttribute('aria-label', 'Delete loop');
   btnDelete.addEventListener('click', () => deleteLoop(loop.id));
 
-  actions.append(btnPlay, btnMute, btnSolo, btnReverse, btnExport, btnDelete);
+  actions.append(btnPlay, btnMute, btnSolo, btnLead, btnReverse, btnExport, btnDelete);
   topRow.append(nameInput, waveformEl, durationEl, actions);
 
   // Bottom row: faders
@@ -809,6 +848,7 @@ function renderLoop(loop) {
 
   // Canvas sizing requires the element be in the DOM to measure offsetWidth.
   loopsList.appendChild(card);
+  updateLeadButton(card, loop);
   drawWaveform(canvas, loop.audioBuffer);
 }
 

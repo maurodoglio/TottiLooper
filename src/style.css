@@ -327,6 +327,11 @@ button:disabled {
   color: #222;
 }
 
+.btn-icon.btn-lead.active {
+  background: var(--blue);
+  color: #fff;
+}
+
 .btn-icon.btn-reverse.active {
   background: var(--purple);
   color: #fff;
@@ -371,6 +376,10 @@ button:disabled {
 
 .loop-card.soloed {
   border-color: var(--amber);
+}
+
+.loop-card.lead {
+  box-shadow: 0 0 0 1px var(--blue), var(--shadow);
 }
 
 .loop-card.muted {

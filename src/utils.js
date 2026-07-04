@@ -51,17 +51,31 @@ export function getSupportedMimeType() {
 // ─── Gain / mix logic ─────────────────────────────────────────────────────────
 
 /**
- * Compute the effective output gain for a loop, accounting for mute, solo, and
- * per-loop volume.
+ * Compute the effective output gain for a loop, accounting for mute, solo,
+ * per-loop volume, and optional lead-loop ducking.
  *
- * @param {{ muted: boolean, soloed: boolean, volume: number }} loop
- * @param {Array<{ soloed: boolean }>} loops - the complete list of loops
+ * @param {{ id?: number, muted: boolean, soloed: boolean, volume: number }} loop
+ * @param {Array<{ id?: number, soloed: boolean, playing?: boolean }>} loops - the complete list of loops
+ * @param {{ leadLoopId?: number|null, duckGain?: number }} [opts]
  * @returns {number}
  */
-export function effectiveGain(loop, loops) {
+export function effectiveGain(loop, loops, opts = {}) {
+  const {
+    leadLoopId = null,
+    duckGain = 0.35,
+  } = opts;
+
   if (loop.muted) return 0;
   const anySolo = loops.some(l => l.soloed);
   if (anySolo && !loop.soloed) return 0;
+
+  if (leadLoopId != null && loop.id !== leadLoopId) {
+    const leadLoop = loops.find(l => l.id === leadLoopId);
+    if (leadLoop && leadLoop.playing) {
+      return loop.volume * duckGain;
+    }
+  }
+
   return loop.volume;
 }
 
