@@ -106,6 +106,8 @@ const loopsSection       = $('loops-section');
 const loopsList          = $('loops-list');
 const emptyState         = $('empty-state');
 const btnThemeToggle     = $('btn-theme-toggle');
+const themeToggleIcon    = btnThemeToggle.querySelector('.theme-toggle-icon');
+const themeToggleLabel   = btnThemeToggle.querySelector('.theme-toggle-label');
 const btnHelp            = $('btn-help');
 const helpModal          = $('help-modal');
 const helpCloseButton    = $('help-close');
@@ -166,19 +168,22 @@ function getPreferredTheme() {
 }
 
 function applyTheme(theme, persist = false) {
-  document.documentElement.dataset.theme = theme;
-
-  btnThemeToggle.textContent = theme === 'dark' ? '☀️' : '🌙';
-  btnThemeToggle.title = theme === 'dark'
+  const nextTheme = theme === 'dark' ? 'dark' : 'light';
+  const toggleLabel = nextTheme === 'dark'
     ? 'Switch to light theme'
     : 'Switch to dark theme';
-  btnThemeToggle.setAttribute('aria-label', btnThemeToggle.title);
+
+  document.documentElement.dataset.theme = nextTheme;
+  themeToggleIcon.textContent = nextTheme === 'dark' ? '☀️' : '🌙';
+  themeToggleLabel.textContent = toggleLabel;
+  btnThemeToggle.title = toggleLabel;
+  btnThemeToggle.setAttribute('aria-label', toggleLabel);
 
   refreshWaveforms();
 
   if (persist) {
     try {
-      localStorage.setItem(THEME_STORAGE_KEY, theme);
+      localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
     } catch {
       // Ignore storage errors so theme switching still works for the session.
     }
@@ -186,7 +191,10 @@ function applyTheme(theme, persist = false) {
 }
 
 function toggleTheme() {
-  applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark', true);
+  const currentTheme = document.documentElement.dataset.theme === 'dark'
+    ? 'dark'
+    : getPreferredTheme();
+  applyTheme(currentTheme === 'dark' ? 'light' : 'dark', true);
 }
 
 function followSystemTheme() {
