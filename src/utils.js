@@ -252,13 +252,13 @@ export function timeStretchBuffer(buffer, factor, audioContext) {
  */
 export function transformBuffer(buffer, { speed, pitchSemitones, audioContext }) {
   const pitchRatio = 2 ** (pitchSemitones / 12);
-  const pitched = Math.abs(pitchRatio - 1) < 1e-6
-    ? cloneBuffer(buffer, audioContext)
-    : resampleBuffer(buffer, pitchRatio, audioContext);
+  let pitched = cloneBuffer(buffer, audioContext);
+  if (Math.abs(pitchRatio - 1) >= 1e-6) {
+    pitched = resampleBuffer(buffer, pitchRatio, audioContext);
+  }
   const stretchFactor = pitchRatio / speed;
-  return Math.abs(stretchFactor - 1) < 1e-6
-    ? pitched
-    : timeStretchBuffer(pitched, stretchFactor, audioContext);
+  if (Math.abs(stretchFactor - 1) < 1e-6) return pitched;
+  return timeStretchBuffer(pitched, stretchFactor, audioContext);
 }
 
 // ─── WAV encoding ─────────────────────────────────────────────────────────────
