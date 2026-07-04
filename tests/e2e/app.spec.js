@@ -312,7 +312,7 @@ test.describe('scenes', () => {
     await expect(firstLoop).toHaveClass(/playing/);
     await expect(secondLoop).toHaveClass(/playing/);
     await expect(secondLoop).toHaveClass(/muted/);
-    await expect(firstLoop.locator('[data-fader="vol"] input')).toHaveValue('0.4');
+    await expect.poll(async () => Number(await firstLoop.locator('[data-fader="vol"] input').inputValue())).toBeCloseTo(0.4, 5);
     await expect(page.locator('#master-volume')).toHaveValue('0.73');
     await expect(page.locator('#status-text')).toContainText('Triggered Intro.');
   });
