@@ -7,16 +7,16 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  formatDuration,
-  panText,
-  writeString,
   audioBufferToWav,
-  getSupportedMimeType,
-  effectiveGain,
   clampSceneCrossfadeBars,
+  effectiveGain,
+  formatDuration,
+  getSupportedMimeType,
+  panText,
   quantizeBuffer,
   reverseBuffer,
   sceneCrossfadeDuration,
+  writeString,
 } from '../../src/utils.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
