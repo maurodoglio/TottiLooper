@@ -283,10 +283,11 @@ test.describe('mobile layout', () => {
 
   test('stacks the mixer without horizontal overflow on portrait phone screens', async ({ page }) => {
     const mobileLayout = await page.locator('.loop-faders').evaluate((el) => {
+      const view = el.ownerDocument.defaultView;
       return {
-        flexDirection: window.getComputedStyle(el).flexDirection,
-        scrollWidth: document.documentElement.scrollWidth,
-        innerWidth: window.innerWidth,
+        flexDirection: view.getComputedStyle(el).flexDirection,
+        scrollWidth: el.ownerDocument.documentElement.scrollWidth,
+        innerWidth: view.innerWidth,
       };
     });
 
