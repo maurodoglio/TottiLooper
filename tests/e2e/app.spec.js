@@ -329,7 +329,7 @@ test.describe('preset loop length', () => {
   });
 
   test('recording auto-stops at the selected bar count', async ({ page }) => {
-    const expectedAutoStopMs = 1000;
+    const oneBarDurationMs = 1000;
 
     await page.locator('#bpm-input').fill('240');
     await page.locator('#bpm-input').press('Tab');
@@ -340,7 +340,7 @@ test.describe('preset loop length', () => {
     await expect(page.locator('#btn-record')).toContainText('STOP');
     await expect(page.locator('#loop-length-bars')).toBeDisabled();
 
-    await expect(page.locator('#btn-record')).toContainText('REC', { timeout: expectedAutoStopMs + 1500 });
+    await expect(page.locator('#btn-record')).toContainText('REC', { timeout: oneBarDurationMs + 1500 });
     await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
     await expect(page.locator('.loop-duration')).toHaveText('0:01');
     await expect(page.locator('#loop-length-bars')).toBeEnabled();

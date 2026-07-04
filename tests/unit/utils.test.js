@@ -369,7 +369,7 @@ describe('fitBufferToBars', () => {
       bpm,
       beatsPerBar,
       audioContext: ctx,
-    })).toThrow('bars must be at least 1');
+    })).toThrow('bars must be at least 1, got 0');
   });
 });
 

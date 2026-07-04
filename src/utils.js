@@ -91,7 +91,7 @@ export function quantizeBuffer(buffer, { bpm, beatsPerBar, audioContext }) {
  */
 export function fitBufferToBars(buffer, { bars, bpm, beatsPerBar, audioContext }) {
   if (!Number.isFinite(bars) || bars < 1) {
-    throw new Error('bars must be at least 1');
+    throw new Error(`bars must be at least 1, got ${bars}`);
   }
 
   const beatSeconds = 60 / bpm;
