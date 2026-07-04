@@ -267,6 +267,7 @@ test.describe('key detection', () => {
     await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
 
     await page.evaluate(() => {
+      // E major scale
       globalThis.__testDecodeMidis = [64, 66, 68, 69, 71, 73, 75, 76];
     });
 

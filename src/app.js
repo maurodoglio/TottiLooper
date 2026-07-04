@@ -994,8 +994,8 @@ function setStatus(msg) {
 }
 
 let toastTimeout = null;
-function showError(msg) { showToast(msg, false); }
-function showInfo(msg)  { showToast(msg, true); }
+function showError(msg) { showToast(msg, 'error'); }
+function showInfo(msg)  { showToast(msg, 'info'); }
 function showWarning(msg) { showToast(msg, 'warning'); }
 
 function showToast(msg, variant) {
@@ -1007,7 +1007,7 @@ function showToast(msg, variant) {
   }
   toast.textContent = msg;
   toast.classList.remove('fade-out');
-  toast.classList.toggle('info', variant === true);
+  toast.classList.toggle('info', variant === 'info');
   toast.classList.toggle('warning', variant === 'warning');
   clearTimeout(toastTimeout);
   toastTimeout = setTimeout(() => {

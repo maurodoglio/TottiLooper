@@ -44,6 +44,7 @@ function frequencyForMidi(midi) {
 }
 
 function makeMelodyBuffer(midis, sampleRate = 44100, noteDuration = 0.12) {
+  const FADE_SAMPLES = 256;
   const samplesPerNote = Math.floor(sampleRate * noteDuration);
   const totalSamples = samplesPerNote * midis.length;
   const data = new Float32Array(totalSamples);
@@ -53,7 +54,7 @@ function makeMelodyBuffer(midis, sampleRate = 44100, noteDuration = 0.12) {
     const start = noteIndex * samplesPerNote;
     for (let i = 0; i < samplesPerNote; i++) {
       const t = i / sampleRate;
-      const fade = Math.min(1, i / 256, (samplesPerNote - i) / 256);
+      const fade = Math.min(1, i / FADE_SAMPLES, (samplesPerNote - i) / FADE_SAMPLES);
       data[start + i] = Math.sin(2 * Math.PI * freq * t) * 0.5 * fade;
     }
   });
