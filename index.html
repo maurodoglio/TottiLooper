@@ -98,6 +98,15 @@
         <span>Beats/bar</span>
         <input id="beats-per-bar-input" type="number" min="1" max="12" value="4" />
       </label>
+      <label class="field">
+        <span>Subdivision</span>
+        <select id="metronome-subdivision-input">
+          <option value="1">Quarter</option>
+          <option value="2">8ths</option>
+          <option value="4">16ths</option>
+          <option value="3">Triplets</option>
+        </select>
+      </label>
       <label class="toggle">
         <input id="metronome-toggle" type="checkbox" />
         <span>Metronome</span>
@@ -244,7 +253,7 @@
         <li>If you have multiple audio inputs or are using an audio interface, choose the right <strong>Input</strong> and <strong>Channel</strong>.</li>
         <li>Plug in headphones — without them your mic will re-record whatever is already playing back.</li>
         <li>(Optional) Turn on <strong>Monitor input</strong> if you want to hear yourself live, then nudge <strong>Latency offset</strong> if your overdubs land a little early or late.</li>
-        <li>(Optional) Set your <strong>BPM</strong> manually or with <strong>Tap Tempo</strong>, enable <strong>Metronome</strong>, <strong>Count-in</strong> and <strong>Quantize</strong> to keep layered loops locked to a bar.</li>
+        <li>(Optional) Set your <strong>BPM</strong> manually or with <strong>Tap Tempo</strong>, choose a <strong>Subdivision</strong>, enable <strong>Metronome</strong>, <strong>Count-in</strong> and <strong>Quantize</strong> to keep layered loops locked to a bar.</li>
         <li>(Optional) Pick a <strong>Drum style</strong> and click <strong>🥁 Generate drums</strong> to add a backing beat that follows your BPM.</li>
       </ol>
 

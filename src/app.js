@@ -51,6 +51,12 @@ import {
 const FADE_TIME        = 0.015; // seconds – short fades to avoid clicks on start/stop
 const LOOP_RESTART_DELAY_MS = Math.ceil(FADE_TIME * 1000 * 6);
 const METRONOME_VOLUME = 0.3;
+const METRONOME_DOWNBEAT_FREQ = 1760;
+const METRONOME_BEAT_FREQ = 1175;
+const METRONOME_SUBDIVISION_FREQ = 880;
+const METRONOME_DOWNBEAT_VOLUME_MULTIPLIER = 1.5;
+const METRONOME_SUBDIVISION_VOLUME_MULTIPLIER = 0.5;
+const VALID_METRONOME_SUBDIVISIONS = [1, 2, 3, 4];
 const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
@@ -125,6 +131,8 @@ let beatsPerBar      = 4;
 let metronomeEnabled = false;
 let countInEnabled   = false;
 let quantizeEnabled  = false;
+// Number of clicks per beat: 1=quarter, 2=8ths, 3=triplets, 4=16ths.
+let metronomeSubdivision = 1;
 let metronomeInterval = null;
 let metronomeBeatIdx  = 0;
 let tapTempoTimes     = [];
@@ -204,6 +212,7 @@ const drumControls       = $('drum-controls');
 const bpmInput           = $('bpm-input');
 const btnTapTempo        = $('btn-tap-tempo');
 const beatsPerBarInput   = $('beats-per-bar-input');
+const metronomeSubdivisionInput = $('metronome-subdivision-input');
 const drumStyleSelect    = $('drum-style');
 const btnGenerateDrums   = $('btn-generate-drums');
 const metronomeToggle    = $('metronome-toggle');
@@ -344,6 +353,7 @@ function init() {
   bpmInput.addEventListener('change', onBpmChange);
   btnTapTempo.addEventListener('click', onTapTempo);
   beatsPerBarInput.addEventListener('change', onBeatsPerBarChange);
+  metronomeSubdivisionInput.addEventListener('change', onMetronomeSubdivisionChange);
   metronomeToggle.addEventListener('change', onMetronomeToggle);
   countInToggle.addEventListener('change', (e) => { countInEnabled = e.target.checked; });
   quantizeToggle.addEventListener('change', (e) => { quantizeEnabled = e.target.checked; });
@@ -720,7 +730,7 @@ function doCountIn() {
     const intervalMs = 60000 / bpm;
     let beat = 1;
     setStatus(`Count-in… ${beat}`);
-    playClick(true);
+    playClick('downbeat');
     const id = setInterval(() => {
       beat++;
       if (beat > beatsPerBar) {
@@ -728,7 +738,7 @@ function doCountIn() {
         resolve();
         return;
       }
-      playClick(false);
+      playClick('beat');
       setStatus(`Count-in… ${beat}`);
     }, intervalMs);
   });
@@ -1830,15 +1840,28 @@ function onMetronomeToggle(e) {
   if (metronomeEnabled) startMetronome(); else stopMetronome();
 }
 
+function onMetronomeSubdivisionChange() {
+  let v = parseInt(metronomeSubdivisionInput.value, 10);
+  if (!VALID_METRONOME_SUBDIVISIONS.includes(v)) v = 1;
+  metronomeSubdivision = v;
+  metronomeSubdivisionInput.value = String(v);
+  if (metronomeEnabled) {
+    stopMetronome();
+    startMetronome();
+  }
+}
+
 function startMetronome() {
   if (metronomeInterval || !audioContext) return;
+  const subdivisionsPerBar = beatsPerBar * metronomeSubdivision;
   metronomeBeatIdx = 0;
-  playClick(true);
+  playClick('downbeat');
   metronomeBeatIdx = 1;
-  const intervalMs = 60000 / bpm;
+  const intervalMs = 60000 / bpm / metronomeSubdivision;
   metronomeInterval = setInterval(() => {
-    const isDown = metronomeBeatIdx % beatsPerBar === 0;
-    playClick(isDown);
+    const isDownbeat = metronomeBeatIdx % subdivisionsPerBar === 0;
+    const isBeat = metronomeBeatIdx % metronomeSubdivision === 0;
+    playClick(isDownbeat ? 'downbeat' : (isBeat ? 'beat' : 'subdivision'));
     metronomeBeatIdx++;
   }, intervalMs);
 }
@@ -1954,21 +1977,30 @@ async function generateDrumLoop() {
   }
 }
 
-function playClick(isDownbeat) {
+function playClick(type) {
   if (!audioContext) return;
   const t = audioContext.currentTime;
   const osc = audioContext.createOscillator();
   const gain = audioContext.createGain();
-  osc.frequency.value = isDownbeat ? 1500 : 1000;
+  const isDownbeat = type === 'downbeat';
+  const isSubdivision = type === 'subdivision';
+  osc.type = isDownbeat ? 'square' : 'sine';
+  osc.frequency.value = isDownbeat
+    ? METRONOME_DOWNBEAT_FREQ
+    : (isSubdivision ? METRONOME_SUBDIVISION_FREQ : METRONOME_BEAT_FREQ);
+  const peak = isDownbeat
+    ? (METRONOME_VOLUME * METRONOME_DOWNBEAT_VOLUME_MULTIPLIER)
+    : (isSubdivision ? (METRONOME_VOLUME * METRONOME_SUBDIVISION_VOLUME_MULTIPLIER) : METRONOME_VOLUME);
+  const duration = isDownbeat ? 0.08 : 0.05;
   gain.gain.setValueAtTime(0, t);
-  gain.gain.linearRampToValueAtTime(METRONOME_VOLUME, t + 0.001);
-  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+  gain.gain.linearRampToValueAtTime(peak, t + 0.001);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
   osc.connect(gain);
   // Route clicks directly to the destination so the master volume / mixer
   // can't accidentally silence them and so they're never part of the mixdown.
   gain.connect(audioContext.destination);
   osc.start(t);
-  osc.stop(t + 0.06);
+  osc.stop(t + duration + 0.01);
 }
 
 // ─── Export (mixdown to WAV) ─────────────────────────────────────────────────

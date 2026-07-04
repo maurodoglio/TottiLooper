@@ -232,6 +232,7 @@ main {
 }
 
 #tempo-controls input[type="number"],
+#tempo-controls select,
 #drum-controls select {
   width: 64px;
   background: var(--surface-raised);
