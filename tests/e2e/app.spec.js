@@ -124,6 +124,11 @@ test.describe('after microphone access', () => {
     await expect(page.locator('#loops-section')).toBeVisible();
   });
 
+  test('shows the scenes section with a 1-bar default crossfade', async ({ page }) => {
+    await expect(page.locator('#scenes-section')).toBeVisible();
+    await expect(page.locator('#scene-crossfade-bars')).toHaveValue('1');
+  });
+
   test('shows the empty-state placeholder', async ({ page }) => {
     await expect(page.locator('#empty-state')).toBeVisible();
   });
@@ -250,6 +255,99 @@ test.describe('loop controls', () => {
     await page.locator('.btn-danger').click();
     await page.keyboard.press('Control+z');
     await expect(page.locator('.loop-card')).toBeVisible();
+  });
+});
+
+// ─── Scenes ───────────────────────────────────────────────────────────────────
+
+test.describe('scenes', () => {
+  async function recordLoop(page, expectedCount) {
+    await page.click('#btn-record');
+    await page.waitForTimeout(600);
+    await page.click('#btn-record');
+    await expect(page.locator('.loop-card')).toHaveCount(expectedCount, { timeout: 8000 });
+  }
+
+  async function recordTwoLoops(page) {
+    await recordLoop(page, 1);
+    await recordLoop(page, 2);
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.click('#btn-request-mic');
+    await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('number keys trigger saved scenes before toggling loops', async ({ page }) => {
+    await recordTwoLoops(page);
+
+    const firstLoopPlay = page.locator('.loop-card').nth(0).locator('.btn-play');
+    const secondLoopPlay = page.locator('.loop-card').nth(1).locator('.btn-play');
+
+    await firstLoopPlay.click();
+    await page.click('#scene-slot-1 .btn-scene-save');
+
+    await firstLoopPlay.click();
+    await secondLoopPlay.click();
+    await page.click('#scene-slot-2 .btn-scene-save');
+
+    await page.keyboard.press('1');
+    await expect(firstLoopPlay).toContainText('⏹');
+    await expect(secondLoopPlay).toContainText('▶');
+
+    await page.keyboard.press('2');
+    await expect(firstLoopPlay).toContainText('▶');
+    await expect(secondLoopPlay).toContainText('⏹');
+  });
+
+  test('scene transitions honor the selected crossfade duration', async ({ page }) => {
+    await page.addInitScript(() => {
+      globalThis.__gainEvents = [];
+      const patchContext = (Ctor) => {
+        if (!Ctor || Ctor.prototype.__gainPatched) return;
+        const originalCreateGain = Ctor.prototype.createGain;
+        Ctor.prototype.createGain = function(...args) {
+          const ctx = this;
+          const gainNode = originalCreateGain.apply(this, args);
+          const originalRamp = gainNode.gain.linearRampToValueAtTime.bind(gainNode.gain);
+          gainNode.gain.linearRampToValueAtTime = (value, endTime) => {
+            globalThis.__gainEvents.push({ value, delta: endTime - ctx.currentTime });
+            return originalRamp(value, endTime);
+          };
+          return gainNode;
+        };
+        Ctor.prototype.__gainPatched = true;
+      };
+
+      patchContext(globalThis.AudioContext);
+      patchContext(globalThis.webkitAudioContext);
+    });
+
+    await page.goto('/');
+    await page.click('#btn-request-mic');
+    await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+    await recordTwoLoops(page);
+
+    const firstLoopPlay = page.locator('.loop-card').nth(0).locator('.btn-play');
+    const secondLoopPlay = page.locator('.loop-card').nth(1).locator('.btn-play');
+
+    await page.locator('#bpm-input').fill('120');
+    await page.locator('#bpm-input').press('Tab');
+    await page.selectOption('#scene-crossfade-bars', '2');
+
+    await firstLoopPlay.click();
+    await page.click('#scene-slot-1 .btn-scene-save');
+
+    await firstLoopPlay.click();
+    await secondLoopPlay.click();
+    await page.click('#scene-slot-2 .btn-scene-save');
+    await page.click('#scene-slot-1 .btn-scene-trigger');
+    await page.click('#scene-slot-2 .btn-scene-trigger');
+
+    await page.waitForTimeout(100);
+    const deltas = await page.evaluate(() => globalThis.__gainEvents.map((event) => event.delta));
+    expect(deltas.some((delta) => Math.abs(delta - 4) < 0.25)).toBeTruthy();
   });
 });
 

@@ -19,6 +19,7 @@ them on top of each other – your one-man band for busking starts here.
 - 🎚️ **Master volume** for overall level
 - 🔇 **Mute**, **S** Solo, and **⇄ Reverse** toggles on every loop
 - ▶ **Play / Stop** each loop independently or **Play All / Stop All** together
+- 🎬 **Scenes** to save and recall live loop combinations with a **1–4 bar crossfade**
 - 🖊️ **Rename loops** (e.g. "Bass", "Chords", "Beatbox")
 - 📊 **Waveform preview** for each recorded loop
 - ✨ Click-free start/stop with short automatic fades
@@ -45,8 +46,9 @@ them on top of each other – your one-man band for busking starts here.
 6. Click **▶** on a loop card to start it playing (it will loop continuously).
 7. Drag **Vol / Pan / Speed** sliders to mix, **S** to solo, **⇄** to reverse.
 8. Record more riffs and stack them up to build your sound.
-9. Use **▶ Play All / ■ Stop All** to control everything at once.
-10. Click **⬇ Export** to save the current mix as a WAV file.
+9. Save favorite mixes into **Scenes** and trigger them with keys <kbd>1</kbd>…<kbd>9</kbd>.
+10. Use **▶ Play All / ■ Stop All** to control everything at once.
+11. Click **⬇ Export** to save the current mix as a WAV file.
 
 Click the **?** button in the top-right corner (or press <kbd>?</kbd>) at any
 time to open the in-app tutorial.
@@ -58,7 +60,7 @@ time to open the in-app tutorial.
 | <kbd>Space</kbd> | Start / stop recording |
 | <kbd>Enter</kbd> | Play all loops |
 | <kbd>Esc</kbd> | Stop all loops |
-| <kbd>1</kbd> … <kbd>9</kbd> | Toggle loops 1 through 9 |
+| <kbd>1</kbd> … <kbd>9</kbd> | Trigger saved scenes first, otherwise toggle loops 1 through 9 |
 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>⌘</kbd>+<kbd>Z</kbd> | Undo the last delete |
 | <kbd>?</kbd> | Open the Help modal |
 

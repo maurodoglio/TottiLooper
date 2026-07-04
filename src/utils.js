@@ -65,6 +65,29 @@ export function effectiveGain(loop, loops) {
   return loop.volume;
 }
 
+/**
+ * Clamp the scene crossfade duration to the supported 1–4 bar range.
+ *
+ * @param {number} bars
+ * @returns {number}
+ */
+export function clampSceneCrossfadeBars(bars) {
+  if (!Number.isFinite(bars)) return 1;
+  return Math.max(1, Math.min(4, Math.round(bars)));
+}
+
+/**
+ * Convert a scene crossfade length in bars into seconds at the current tempo.
+ *
+ * @param {number} bpm
+ * @param {number} beatsPerBar
+ * @param {number} bars
+ * @returns {number}
+ */
+export function sceneCrossfadeDuration(bpm, beatsPerBar, bars) {
+  return (60 / bpm) * beatsPerBar * clampSceneCrossfadeBars(bars);
+}
+
 // ─── AudioBuffer utilities ────────────────────────────────────────────────────
 
 /**

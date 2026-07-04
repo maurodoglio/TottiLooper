@@ -68,6 +68,24 @@
       <button id="btn-undo" class="btn-secondary" title="Undo delete (Ctrl+Z)" disabled>↶ Undo</button>
     </div>
 
+    <!-- Scenes / setlist -->
+    <section id="scenes-section">
+      <h2>Scenes</h2>
+      <div class="panel scene-panel">
+        <label class="field scene-crossfade-field">
+          <span>Crossfade</span>
+          <select id="scene-crossfade-bars" aria-label="Scene crossfade duration">
+            <option value="1">1 bar</option>
+            <option value="2">2 bars</option>
+            <option value="3">3 bars</option>
+            <option value="4">4 bars</option>
+          </select>
+        </label>
+        <span class="scene-hint">Save a mix snapshot, then trigger it live with keys 1–9.</span>
+      </div>
+      <div id="scene-slots"></div>
+    </section>
+
     <!-- Loops list -->
     <section id="loops-section">
       <h2>Loops</h2>
@@ -121,12 +139,18 @@
         <li><strong>⬇ Export</strong> – render the current mix to a WAV file you can save or share.</li>
       </ul>
 
+      <h3>Scenes</h3>
+      <ul>
+        <li><strong>Save</strong> stores the current set of playing loops plus mute / solo / volume / pan settings.</li>
+        <li><strong>Trigger</strong> recalls that scene and crossfades to it over the selected 1–4 bar duration.</li>
+      </ul>
+
       <h3>Keyboard shortcuts</h3>
       <ul class="shortcuts">
         <li><kbd>Space</kbd> – start / stop recording</li>
         <li><kbd>Enter</kbd> – play all loops</li>
         <li><kbd>Esc</kbd> – stop all loops</li>
-        <li><kbd>1</kbd>…<kbd>9</kbd> – toggle loops 1 through 9</li>
+        <li><kbd>1</kbd>…<kbd>9</kbd> – trigger saved scenes first, otherwise toggle loops 1 through 9</li>
         <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> (or <kbd>⌘</kbd>+<kbd>Z</kbd>) – undo the last delete</li>
         <li><kbd>?</kbd> – open this help</li>
       </ul>

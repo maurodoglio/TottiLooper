@@ -13,8 +13,10 @@ import {
   audioBufferToWav,
   getSupportedMimeType,
   effectiveGain,
+  clampSceneCrossfadeBars,
   quantizeBuffer,
   reverseBuffer,
+  sceneCrossfadeDuration,
 } from '../../src/utils.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -126,6 +128,36 @@ describe('effectiveGain', () => {
   it('returns 0 for every loop when volume is 0', () => {
     const loop = { muted: false, soloed: false, volume: 0 };
     expect(effectiveGain(loop, [loop])).toBe(0);
+  });
+});
+
+// ─── scenes ───────────────────────────────────────────────────────────────────
+
+describe('clampSceneCrossfadeBars', () => {
+  it('defaults invalid values to 1 bar', () => {
+    expect(clampSceneCrossfadeBars(NaN)).toBe(1);
+  });
+
+  it('clamps values below the supported range', () => {
+    expect(clampSceneCrossfadeBars(0)).toBe(1);
+  });
+
+  it('clamps values above the supported range', () => {
+    expect(clampSceneCrossfadeBars(8)).toBe(4);
+  });
+
+  it('rounds fractional values to the nearest supported bar count', () => {
+    expect(clampSceneCrossfadeBars(2.6)).toBe(3);
+  });
+});
+
+describe('sceneCrossfadeDuration', () => {
+  it('returns the correct duration in seconds for the given tempo', () => {
+    expect(sceneCrossfadeDuration(120, 4, 2)).toBe(4);
+  });
+
+  it('uses the clamped bar count when computing the duration', () => {
+    expect(sceneCrossfadeDuration(100, 4, 9)).toBeCloseTo(9.6);
   });
 });
 
