@@ -20,6 +20,7 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const FADE_TIME        = 0.015; // seconds – short fades to avoid clicks on start/stop
+const LOOP_RESTART_DELAY_MS = Math.ceil(FADE_TIME * 1000 * 6);
 const METRONOME_VOLUME = 0.3;
 const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
@@ -545,7 +546,7 @@ function toggleReverse(loop) {
   const wasPlaying = loop.playing;
   if (wasPlaying) {
     stopLoop(loop);
-    setTimeout(() => playLoop(loop), Math.ceil(FADE_TIME * 1000 * 6));
+    setTimeout(() => playLoop(loop), LOOP_RESTART_DELAY_MS);
   }
   const card = document.getElementById(`loop-card-${loop.id}`);
   if (card) {
@@ -574,7 +575,7 @@ function requantizeLoop(loop) {
 
   if (wasPlaying) {
     stopLoop(loop);
-    setTimeout(() => playLoop(loop), Math.ceil(FADE_TIME * 1000 * 6));
+    setTimeout(() => playLoop(loop), LOOP_RESTART_DELAY_MS);
   }
 
   setStatus(`Re-quantized "${loop.name}".`);

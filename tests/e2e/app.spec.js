@@ -235,6 +235,7 @@ test.describe('loop controls', () => {
   });
 
   test('existing loop can be re-quantized to the current BPM grid', async ({ page }) => {
+    await expect(page.locator('.loop-card')).toBeVisible();
     await expect(page.locator('.loop-duration')).toHaveText('0:00');
     await page.locator('#bpm-input').fill('240');
     await page.locator('#bpm-input').press('Tab');
