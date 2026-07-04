@@ -23,6 +23,7 @@ import {
   clickTrackToMidi,
   getSupportedMimeType,
   effectiveGain,
+  normalizeSongTimeline,
   getLoopPlaybackRate,
   fitBufferToBars,
   getBeatSeconds,
@@ -453,6 +454,26 @@ describe('getLoopPlaybackRate', () => {
 
   it('falls back to the manual playback rate when the base BPM is invalid', () => {
     expect(getLoopPlaybackRate({ playbackRate: 1.1, followTempo: true, tempoBaseBpm: 0 }, 160)).toBe(1.1);
+  });
+});
+
+// ─── normalizeSongTimeline ─────────────────────────────────────────────────────
+
+describe('normalizeSongTimeline', () => {
+  it('defaults invalid values to a one-bar window inside the song', () => {
+    expect(normalizeSongTimeline(0, 0, 0)).toEqual({ startBar: 1, barCount: 1 });
+  });
+
+  it('clamps the start bar to the song length', () => {
+    expect(normalizeSongTimeline(99, 2, 8)).toEqual({ startBar: 8, barCount: 1 });
+  });
+
+  it('keeps a valid range unchanged', () => {
+    expect(normalizeSongTimeline(5, 4, 8)).toEqual({ startBar: 5, barCount: 4 });
+  });
+
+  it('shrinks the bar count when the range would run past the end', () => {
+    expect(normalizeSongTimeline(7, 4, 8)).toEqual({ startBar: 7, barCount: 2 });
   });
 });
 

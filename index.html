@@ -132,6 +132,14 @@
         <input id="quantize-toggle" type="checkbox" />
         <span>Quantize</span>
       </label>
+      <label class="toggle">
+        <input id="song-mode-toggle" type="checkbox" />
+        <span>Song mode</span>
+      </label>
+      <label class="field">
+        <span>Song bars</span>
+        <input id="song-bars-input" type="number" min="1" max="128" value="8" />
+      </label>
     </div>
 
     <div id="tempo-suggestion" class="panel hidden" aria-live="polite">
@@ -323,6 +331,7 @@
       <h3>Master controls</h3>
       <ul>
         <li><strong>▶ Play All</strong> / <strong>■ Stop All</strong> – start or stop every loop at once.</li>
+        <li><strong>Song mode</strong> – switch Play All into a bar-based song arrangement. Each loop gets its own <strong>Start</strong> and <strong>Bars</strong> timeline fields.</li>
         <li><strong>Now playing</strong> – shows the current bar and beat shared by the active loops.</li>
         <li><strong>Master</strong> slider – sets the overall output level.</li>
         <li><strong>MIDI click</strong> – optionally export a click-track MIDI file at the current tempo for easy DAW alignment.</li>
@@ -361,6 +370,7 @@
       <h3>Tips</h3>
       <ul>
         <li>Enable <strong>Quantize</strong> for tight, bar-aligned layers that never drift.</li>
+        <li>Use <strong>Song mode</strong> plus the per-loop timeline fields to sketch a verse / chorus arrangement without turning loops on and off by hand.</li>
         <li>Enable <strong>Follow tempo</strong> on a loop before changing BPM if you want it to stay locked to the new tempo.</li>
         <li>Set <strong>Loop bars</strong> to 1, 2, 4, or more when you want hands-free, bar-perfect takes.</li>
         <li>Use <strong>Count-in</strong> so your first note isn't chopped off.</li>

@@ -29,6 +29,7 @@ import {
   estimateTempo,
   packSharedSession,
   effectiveGain as computeEffectiveGain,
+  normalizeSongTimeline,
   getLoopPlaybackRate as computeLoopPlaybackRate,
   fitBufferToBars as _fitBufferToBars,
   quantizeBuffer as _quantizeBuffer,
@@ -53,6 +54,7 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const FADE_TIME        = 0.015; // seconds – short fades to avoid clicks on start/stop
+const IMMEDIATE_START_THRESHOLD = 0.05; // seconds – starts within 50 ms flip the UI to "playing" right away; later (song-mode) starts defer until they actually begin
 const LOOP_RESTART_DELAY_MS = Math.ceil(FADE_TIME * 1000 * 6);
 const METRONOME_VOLUME = 0.3;
 const METRONOME_DOWNBEAT_FREQ = 1760;
@@ -64,6 +66,9 @@ const VALID_METRONOME_SUBDIVISIONS = [1, 2, 3, 4];
 const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
+const DEFAULT_SONG_BARS = 8;
+const MAX_SONG_BARS     = 128;
+const SONG_START_DELAY  = 0.05; // seconds – small look-ahead so Web Audio can schedule bar-aligned starts
 const MIN_LOOP_LENGTH_BARS = 1;
 const MAX_LOOP_LENGTH_BARS = 32;
 const TAP_TEMPO_TIMEOUT_MS = 2000;
@@ -145,6 +150,9 @@ let beatUnit         = 4;
 let metronomeEnabled = false;
 let countInEnabled   = false;
 let quantizeEnabled  = false;
+let songModeEnabled  = false;
+let songBars         = DEFAULT_SONG_BARS;
+let songEndTimeout    = null;
 // Number of clicks per beat: 1=quarter, 2=8ths, 3=triplets, 4=16ths.
 let metronomeSubdivision = 1;
 let metronomeInterval = null;
@@ -204,6 +212,8 @@ let activeSceneIndex = -1;
  * @property {number} fadeOut
  * @property {number} pitchSemitones
  * @property {boolean} reversed
+ * @property {number} songStartBar
+ * @property {number} songBarCount
  * @property {number|null} groupId
  * @property {{ name: string, signature: number } | null} detectedKey
  * @property {number} playStartTime
@@ -254,6 +264,8 @@ const btnGenerateDrums   = $('btn-generate-drums');
 const metronomeToggle    = $('metronome-toggle');
 const countInToggle      = $('count-in-toggle');
 const quantizeToggle     = $('quantize-toggle');
+const songModeToggle     = $('song-mode-toggle');
+const songBarsInput      = $('song-bars-input');
 const tempoSuggestion    = $('tempo-suggestion');
 const tempoSuggestionText = $('tempo-suggestion-text');
 const btnApplyDetectedTempo = $('btn-apply-detected-tempo');
@@ -400,6 +412,8 @@ function init() {
   metronomeToggle.addEventListener('change', onMetronomeToggle);
   countInToggle.addEventListener('change', (e) => { countInEnabled = e.target.checked; });
   quantizeToggle.addEventListener('change', (e) => { quantizeEnabled = e.target.checked; });
+  songModeToggle.addEventListener('change', onSongModeToggle);
+  songBarsInput.addEventListener('change', onSongBarsChange);
   btnApplyDetectedTempo.addEventListener('click', acceptDetectedTempo);
   btnDismissDetectedTempo.addEventListener('click', dismissDetectedTempo);
   monitoringToggle.addEventListener('change', onMonitoringToggle);
@@ -1006,6 +1020,8 @@ function addLoop(audioBuffer, options = {}) {
     fadeOut: options.fadeOut ?? 0,
     pitchSemitones: options.pitchSemitones ?? 0,
     reversed: !!options.reversed,
+    songStartBar: options.songStartBar ?? 1,
+    songBarCount: options.songBarCount ?? songBars,
     groupId: options.groupId ?? null,
     detectedKey: options.detectedKey ?? null,
     playStartTime: 0,
@@ -1221,6 +1237,10 @@ function reverseBuffer(buffer) {
   return _reverseBuffer(buffer, audioContext);
 }
 
+function hasActiveOrScheduledPlayback(loop) {
+  return loop.playing || !!loop.node;
+}
+
 function getLoopPlaybackRate(loop) {
   return computeLoopPlaybackRate(loop, bpm);
 }
@@ -1310,9 +1330,12 @@ function updatePlaybackPosition() {
 
 function playLoop(loop, arg = {}) {
   const options = typeof arg === 'number' ? { startOffset: arg } : (arg || {});
-  if (!audioContext || loop.playing) return;
+  if (!audioContext || hasActiveOrScheduledPlayback(loop)) return;
   if (audioContext.state === 'suspended') audioContext.resume();
-  const startAt = options.startAt ?? (audioContext.currentTime + 0.02);
+  // Song mode schedules a bar-aligned start (options.when) and an automatic
+  // stop after a set duration (options.stopAfter); both fall back gracefully.
+  const startAt = options.when ?? options.startAt ?? (audioContext.currentTime + 0.02);
+  const stopAfter = typeof options.stopAfter === 'number' ? options.stopAfter : null;
   const isNewTransport = transportStartTime === null;
   if (isNewTransport) {
     transportStartTime = startAt;
@@ -1350,43 +1373,69 @@ function playLoop(loop, arg = {}) {
   let offset;
   if (options.startOffset != null) {
     offset = normalizeLoopOffset(loop, options.startOffset);
-  } else if (options.startAt != null) {
+  } else if (options.when != null || options.startAt != null) {
     offset = normalizeLoopOffset(loop, getLoopStartOffset(loop, buffer, startAt));
   } else {
     offset = normalizeLoopOffset(loop, loop.playOffset);
   }
   sourceNode.start(startAt, offset);
+  if (stopAfter !== null) {
+    sourceNode.stop(startAt + stopAfter);
+  }
 
   loop.node = sourceNode;
   loop.gainNode = gainNode;
   loop.pannerNode = pannerNode;
   loop.eqNodes = eqNodes;
-  loop.playing = true;
-  loop.playStartTime = audioContext.currentTime;
+  loop.playStartTime = startAt;
   loop.playOffset = offset;
 
-  const card = document.getElementById(`loop-card-${loop.id}`);
-  if (card) {
-    card.classList.add('playing');
-    const btn = card.querySelector('.btn-play');
-    if (btn) {
-      btn.textContent = '⏹';
-      btn.classList.add('active');
-      btn.title = 'Stop loop';
-      btn.setAttribute('aria-label', 'Stop loop');
+  // Reset loop state when a scheduled (song-mode) stop fires.
+  sourceNode.onended = () => {
+    if (loop.node !== sourceNode) return;
+    if (loop.playScheduleTimer) {
+      clearTimeout(loop.playScheduleTimer);
+      loop.playScheduleTimer = null;
     }
+    loop.node = null;
+    loop.gainNode = null;
+    loop.pannerNode = null;
+    setLoopPlayingState(loop, false);
+    stopLoopPlayheadAnimation(loop);
+    refreshAllGains();
+    if (!hasActiveLoops()) {
+      transportStartTime = null;
+      stopPlaybackPositionTimer();
+    }
+    updatePlaybackPosition();
+  };
+
+  // Flip the loop into its "playing" UI state. Song mode can schedule a loop to
+  // begin a bar or more in the future, so defer this until the start actually
+  // arrives; near-immediate starts flip synchronously.
+  const activatePlayingState = () => {
+    if (loop.node !== sourceNode) return;
+    loop.playScheduleTimer = null;
+    setLoopPlayingState(loop, true);
+    updateLoopPlayhead(loop, offset);
+    startLoopPlayheadAnimation(loop);
+    refreshAllGains();
+    startPlaybackPositionTimer();
+    updatePlaybackPosition();
+  };
+
+  const startDelay = startAt - audioContext.currentTime;
+  if (startDelay <= IMMEDIATE_START_THRESHOLD) {
+    activatePlayingState();
+  } else {
+    loop.playScheduleTimer = setTimeout(activatePlayingState, startDelay * 1000);
   }
-  updateLoopPlayhead(loop, offset);
-  startLoopPlayheadAnimation(loop);
-  refreshAllGains();
-  startPlaybackPositionTimer();
-  updatePlaybackPosition();
 }
 
 function stopLoop(loop, options = {}) {
   const { immediate = false, preserveOffset = false, preserveRestart = false } = options;
   if (!preserveRestart) loop.restartToken = (loop.restartToken || 0) + 1;
-  if (!loop.playing) {
+  if (!hasActiveOrScheduledPlayback(loop)) {
     loop.playOffset = preserveOffset ? loop.playOffset : 0;
     updateLoopPlayhead(loop, loop.playOffset);
     return;
@@ -1394,6 +1443,11 @@ function stopLoop(loop, options = {}) {
   const node = loop.node;
   const gain = loop.gainNode;
   const nextOffset = preserveOffset ? getLoopPlaybackPosition(loop) : 0;
+
+  if (loop.playScheduleTimer) {
+    clearTimeout(loop.playScheduleTimer);
+    loop.playScheduleTimer = null;
+  }
 
   if (gain && !immediate) {
     const t = audioContext.currentTime;
@@ -1979,6 +2033,10 @@ function renderGroup(group) {
 }
 
 function playAllLoops() {
+  if (songModeEnabled) {
+    playSongArrangement();
+    return;
+  }
   if (!audioContext) return;
   if (audioContext.state === 'suspended') audioContext.resume();
   const startAt = audioContext.currentTime + 0.02;
@@ -1989,6 +2047,8 @@ function playAllLoops() {
 }
 
 function stopAllLoops() {
+  clearTimeout(songEndTimeout);
+  songEndTimeout = null;
   loops.forEach(loop => stopLoop(loop));
 }
 
@@ -2389,6 +2449,56 @@ function onLoopLengthBarsChange() {
 function onMetronomeToggle(e) {
   metronomeEnabled = e.target.checked;
   if (metronomeEnabled) startMetronome(); else stopMetronome();
+}
+
+function onSongModeToggle(e) {
+  songModeEnabled = e.target.checked;
+  if (loops.some(loop => hasActiveOrScheduledPlayback(loop))) {
+    stopAllLoops();
+  }
+}
+
+function onSongBarsChange() {
+  let v = parseInt(songBarsInput.value, 10);
+  if (isNaN(v) || v < 1) v = DEFAULT_SONG_BARS;
+  if (v > MAX_SONG_BARS) v = MAX_SONG_BARS;
+  songBars = v;
+  songBarsInput.value = String(v);
+  if (loops.some(loop => hasActiveOrScheduledPlayback(loop))) {
+    stopAllLoops();
+  }
+  loops.forEach((loop) => {
+    applySongTimeline(loop, loop.songStartBar, loop.songBarCount);
+  });
+}
+
+function applySongTimeline(loop, startBar, barCount) {
+  const normalized = normalizeSongTimeline(startBar, barCount, songBars);
+  loop.songStartBar = normalized.startBar;
+  loop.songBarCount = normalized.barCount;
+  syncLoopSongInputs(loop);
+}
+
+function playSongArrangement() {
+  if (!audioContext || loops.length === 0) return;
+  stopAllLoops();
+
+  const barSeconds = (60 / bpm) * beatsPerBar;
+  const startTime = audioContext.currentTime + SONG_START_DELAY;
+
+  loops.forEach((loop) => {
+    applySongTimeline(loop, loop.songStartBar, loop.songBarCount);
+    playLoop(loop, {
+      when: startTime + ((loop.songStartBar - 1) * barSeconds),
+      stopAfter: loop.songBarCount * barSeconds,
+    });
+  });
+
+  songEndTimeout = setTimeout(() => {
+    songEndTimeout = null;
+    setStatus('Song arrangement finished.');
+  }, Math.ceil((SONG_START_DELAY + (songBars * barSeconds)) * 1000));
+  setStatus('Playing song arrangement…');
 }
 
 function onMetronomeSubdivisionChange() {
@@ -3167,6 +3277,7 @@ function renderLoop(loop) {
 
   card.appendChild(topRow);
   card.appendChild(faderRow);
+  card.appendChild(makeSongTimelineFields(loop));
   card.appendChild(midiRow);
 
   // Canvas sizing requires the element be in the DOM to measure offsetWidth.
@@ -3174,6 +3285,7 @@ function renderLoop(loop) {
   const container = getLoopContainer(loop.groupId);
   container.appendChild(card);
   updateLeadButton(card, loop);
+  syncLoopSongInputs(loop);
 
   function updateDuration() {
     durationEl.textContent = formatDuration(loop.duration);
@@ -3352,6 +3464,59 @@ function makeFader(label, ariaLabel, min, max, step, value, formatValue, formatV
   return wrap;
 }
 
+function makeSongTimelineFields(loop) {
+  const row = document.createElement('div');
+  row.className = 'loop-song-fields';
+
+  const startField = document.createElement('label');
+  startField.className = 'loop-song-field';
+  const startLabel = document.createElement('span');
+  startLabel.textContent = 'Start';
+  const startInput = document.createElement('input');
+  startInput.className = 'loop-song-start';
+  startInput.type = 'number';
+  startInput.min = '1';
+  startInput.value = String(loop.songStartBar);
+  startInput.setAttribute('aria-label', 'Song start bar');
+  startInput.addEventListener('change', () => {
+    applySongTimeline(loop, parseInt(startInput.value, 10), loop.songBarCount);
+  });
+  startField.append(startLabel, startInput);
+
+  const barsField = document.createElement('label');
+  barsField.className = 'loop-song-field';
+  const barsLabel = document.createElement('span');
+  barsLabel.textContent = 'Bars';
+  const barsInput = document.createElement('input');
+  barsInput.className = 'loop-song-bars';
+  barsInput.type = 'number';
+  barsInput.min = '1';
+  barsInput.value = String(loop.songBarCount);
+  barsInput.setAttribute('aria-label', 'Song bar count');
+  barsInput.addEventListener('change', () => {
+    applySongTimeline(loop, loop.songStartBar, parseInt(barsInput.value, 10));
+  });
+  barsField.append(barsLabel, barsInput);
+
+  row.append(startField, barsField);
+  return row;
+}
+
+function syncLoopSongInputs(loop) {
+  const card = document.getElementById(`loop-card-${loop.id}`);
+  if (!card) return;
+  const startInput = card.querySelector('.loop-song-start');
+  const barsInput = card.querySelector('.loop-song-bars');
+  if (startInput) {
+    startInput.max = String(songBars);
+    startInput.value = String(loop.songStartBar);
+  }
+  if (barsInput) {
+    barsInput.max = String(songBars);
+    barsInput.value = String(loop.songBarCount);
+  }
+}
+
 function formatFadeTime(seconds) {
   if (seconds < 1) return `${Math.round(seconds * 1000)}ms`;
   return `${seconds.toFixed(2)}s`;
@@ -3453,6 +3618,19 @@ function refreshWaveforms() {
 
 function updateEmptyState() {
   emptyState.style.display = loops.length === 0 ? 'block' : 'none';
+}
+
+function setLoopPlayingState(loop, isPlaying) {
+  loop.playing = isPlaying;
+  const card = document.getElementById(`loop-card-${loop.id}`);
+  if (!card) return;
+  card.classList.toggle('playing', isPlaying);
+  const btn = card.querySelector('.btn-play');
+  if (!btn) return;
+  btn.textContent = isPlaying ? '⏹' : '▶';
+  btn.classList.toggle('active', isPlaying);
+  btn.title = isPlaying ? 'Stop loop' : 'Play loop';
+  btn.setAttribute('aria-label', isPlaying ? 'Stop loop' : 'Play loop');
 }
 
 // ─── Timer ────────────────────────────────────────────────────────────────────
