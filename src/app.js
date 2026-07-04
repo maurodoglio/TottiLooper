@@ -27,6 +27,7 @@ const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
 const POSITION_UPDATE_INTERVAL_MS = 50;
+const IDLE_PLAYBACK_POSITION = 'Now playing: —';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -120,6 +121,7 @@ function init() {
   masterControls.classList.add('hidden');
   loopsSection.classList.add('hidden');
   tempoControls.classList.add('hidden');
+  updatePlaybackPosition();
 
   btnRequestMic.addEventListener('click', requestMicrophoneAccess);
   btnRecord.addEventListener('click', handleRecordButton);
@@ -402,7 +404,7 @@ function stopPlaybackPositionTimer() {
 function updatePlaybackPosition() {
   if (!playbackPosition) return;
   if (!audioContext || transportStartTime === null || !hasActiveLoops()) {
-    playbackPosition.textContent = 'Now playing: —';
+    playbackPosition.textContent = IDLE_PLAYBACK_POSITION;
     return;
   }
   const elapsed = Math.max(0, audioContext.currentTime - transportStartTime);

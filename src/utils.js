@@ -43,8 +43,8 @@ export function getBarBeatPosition(elapsedSeconds, bpm, beatsPerBar) {
   const safeBpm = Math.max(1, bpm || 0);
   const safeBeatsPerBar = Math.max(1, Math.floor(beatsPerBar || 0));
   const beatSeconds = 60 / safeBpm;
-  // Nudge boundary values forward slightly so 1.999999999 s at a beat edge
-  // still resolves to the expected next beat instead of rounding down.
+  // Nudge values by a tiny epsilon to avoid floating-point underflow at beat
+  // boundaries (for example, 1.999999999 s instead of an exact 2.0 s).
   const totalBeats = Math.max(0, Math.floor(((elapsedSeconds || 0) + 1e-9) / beatSeconds));
   return {
     bar: Math.floor(totalBeats / safeBeatsPerBar) + 1,
