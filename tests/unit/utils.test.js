@@ -31,6 +31,9 @@ import {
   quantizeBuffer,
   offsetBuffer,
   reverseBuffer,
+  resampleBuffer,
+  timeStretchBuffer,
+  transformBuffer,
   unpackSharedSession,
 } from '../../src/utils.js';
 
@@ -760,6 +763,83 @@ describe('reverseBuffer', () => {
     const once = reverseBuffer(src, ctx);
     const twice = reverseBuffer(once, ctx);
     expect(Array.from(twice.getChannelData(0))).toEqual(Array.from(samples));
+  });
+});
+
+// ─── resampleBuffer / timeStretchBuffer / transformBuffer ────────────────────
+
+describe('independent speed and pitch transforms', () => {
+  const ctx = makeMockAudioContext(8000);
+  const sampleRate = ctx.sampleRate;
+
+  function makeSineBuffer({ frequency = 220, durationSeconds = 1 } = {}) {
+    const length = Math.round(durationSeconds * sampleRate);
+    const out = ctx.createBuffer(1, length, sampleRate);
+    const data = out.getChannelData(0);
+    for (let i = 0; i < length; i++) {
+      data[i] = Math.sin((2 * Math.PI * frequency * i) / sampleRate);
+    }
+    return out;
+  }
+
+  function countZeroCrossings(buffer) {
+    const data = buffer.getChannelData(0);
+    let crossings = 0;
+    for (let i = 1; i < data.length; i++) {
+      if ((data[i - 1] <= 0 && data[i] > 0) || (data[i - 1] >= 0 && data[i] < 0)) {
+        crossings++;
+      }
+    }
+    return crossings;
+  }
+
+  function crossingDensity(buffer) {
+    return countZeroCrossings(buffer) / buffer.length;
+  }
+
+  it('resampleBuffer changes duration according to the pitch ratio', () => {
+    const src = makeSineBuffer();
+    const upOctave = resampleBuffer(src, 2, ctx);
+    const downOctave = resampleBuffer(src, 0.5, ctx);
+
+    expect(upOctave.length).toBe(Math.round(src.length / 2));
+    expect(downOctave.length).toBe(Math.round(src.length / 0.5));
+  });
+
+  it('timeStretchBuffer changes duration without returning silence', () => {
+    const src = makeSineBuffer();
+    const stretched = timeStretchBuffer(src, 1.5, ctx);
+    const compressed = timeStretchBuffer(src, 0.5, ctx);
+
+    expect(stretched.length).toBe(Math.round(src.length * 1.5));
+    expect(compressed.length).toBe(Math.round(src.length * 0.5));
+    expect(stretched.getChannelData(0).some((sample) => Math.abs(sample) > 0.01)).toBe(true);
+    expect(compressed.getChannelData(0).some((sample) => Math.abs(sample) > 0.01)).toBe(true);
+  });
+
+  it('transformBuffer can raise pitch while keeping the original duration', () => {
+    const src = makeSineBuffer();
+    const shifted = transformBuffer(src, {
+      speed: 1,
+      pitchSemitones: 12,
+      audioContext: ctx,
+    });
+
+    expect(shifted.length).toBeCloseTo(src.length, -2);
+    expect(countZeroCrossings(shifted)).toBeGreaterThan(countZeroCrossings(src) * 1.6);
+  });
+
+  it('transformBuffer can change speed while roughly preserving pitch', () => {
+    const src = makeSineBuffer();
+    const faster = transformBuffer(src, {
+      speed: 2,
+      pitchSemitones: 0,
+      audioContext: ctx,
+    });
+
+    expect(faster.length).toBeCloseTo(src.length / 2, -2);
+    expect(crossingDensity(faster)).toBeGreaterThan(crossingDensity(src) * 0.7);
+    expect(crossingDensity(faster)).toBeLessThan(crossingDensity(src) * 1.3);
   });
 });
 

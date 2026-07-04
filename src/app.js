@@ -29,6 +29,7 @@ import {
   quantizeBuffer as _quantizeBuffer,
   offsetBuffer as _offsetBuffer,
   reverseBuffer as _reverseBuffer,
+  transformBuffer as _transformBuffer,
   unpackSharedSession,
 } from './utils.js';
 import {
@@ -124,6 +125,8 @@ const redoStack = [];
  * @property {string} name
  * @property {AudioBuffer} audioBuffer
  * @property {AudioBuffer|null} reversedBuffer
+ * @property {AudioBuffer|null} transformedBuffer
+ * @property {AudioBuffer|null} transformedReversedBuffer
  * @property {number} duration
  * @property {AudioBufferSourceNode|null} node
  * @property {GainNode|null} gainNode
@@ -134,6 +137,7 @@ const redoStack = [];
  * @property {number} volume
  * @property {number} pan
  * @property {number} playbackRate
+ * @property {number} pitchSemitones
  * @property {boolean} reversed
  * @property {{ name: string, signature: number } | null} detectedKey
  * @property {number} playStartTime
@@ -247,6 +251,13 @@ function formatPanValueText(v) {
 function formatPlaybackRateValueText(v) {
   const speed = Number(v.toFixed(2));
   return speed === 1 ? 'Normal speed' : `${speed} times speed`;
+}
+
+function formatPitchValueText(v) {
+  const semitones = Math.round(v);
+  if (semitones === 0) return 'No pitch shift';
+  const abs = Math.abs(semitones);
+  return `${abs} semitone${abs === 1 ? '' : 's'} ${semitones > 0 ? 'up' : 'down'}`;
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -792,6 +803,8 @@ function addLoop(audioBuffer, options = {}) {
     name,
     audioBuffer,
     reversedBuffer: null,
+    transformedBuffer: null,
+    transformedReversedBuffer: null,
     duration: audioBuffer.duration,
     node: null,
     gainNode: null,
@@ -802,6 +815,7 @@ function addLoop(audioBuffer, options = {}) {
     volume: options.volume ?? 1,
     pan: options.pan ?? 0,
     playbackRate: options.playbackRate ?? 1,
+    pitchSemitones: options.pitchSemitones ?? 0,
     reversed: !!options.reversed,
     detectedKey: options.detectedKey ?? null,
     playStartTime: 0,
@@ -863,11 +877,12 @@ function refreshAllGains() {
 }
 
 function getPlaybackBuffer(loop) {
-  if (!loop.reversed) return loop.audioBuffer;
-  if (!loop.reversedBuffer) {
-    loop.reversedBuffer = reverseBuffer(loop.audioBuffer);
+  const baseBuffer = getTransformedBuffer(loop);
+  if (!loop.reversed) return baseBuffer;
+  if (!loop.transformedReversedBuffer) {
+    loop.transformedReversedBuffer = reverseBuffer(baseBuffer);
   }
-  return loop.reversedBuffer;
+  return loop.transformedReversedBuffer;
 }
 
 function normalizeLoopOffset(loop, offset) {
@@ -909,6 +924,36 @@ function startLoopPlayheadAnimation(loop) {
 
 function reverseBuffer(buffer) {
   return _reverseBuffer(buffer, audioContext);
+}
+
+function transformBuffer(buffer, speed, pitchSemitones) {
+  return _transformBuffer(buffer, { speed, pitchSemitones, audioContext });
+}
+
+function invalidateLoopProcessing(loop) {
+  loop.transformedBuffer = null;
+  loop.transformedReversedBuffer = null;
+}
+
+function getTransformedBuffer(loop) {
+  if (!loop.transformedBuffer) {
+    if (Math.abs(loop.playbackRate - 1) < 1e-6 && Math.abs(loop.pitchSemitones) < 1e-6) {
+      loop.transformedBuffer = loop.audioBuffer;
+    } else {
+      loop.transformedBuffer = transformBuffer(loop.audioBuffer, loop.playbackRate, loop.pitchSemitones);
+    }
+  }
+  return loop.transformedBuffer;
+}
+
+function restartLoopPlayback(loop) {
+  if (!loop.playing) return;
+  loop.restartToken = (loop.restartToken || 0) + 1;
+  const restartToken = loop.restartToken;
+  stopLoop(loop, { preserveRestart: true });
+  setTimeout(() => {
+    if (loop.restartToken === restartToken) playLoop(loop);
+  }, Math.ceil(FADE_TIME * 1000 * 6));
 }
 
 function getLoopStartOffset(loop, buffer, startTime) {
@@ -966,7 +1011,7 @@ function playLoop(loop, arg = {}) {
   const buffer = getPlaybackBuffer(loop);
   sourceNode.buffer = buffer;
   sourceNode.loop = true;
-  sourceNode.playbackRate.value = loop.playbackRate;
+  sourceNode.playbackRate.value = 1;
 
   if (pannerNode) {
     sourceNode.connect(pannerNode);
@@ -1012,7 +1057,8 @@ function playLoop(loop, arg = {}) {
 }
 
 function stopLoop(loop, options = {}) {
-  const { immediate = false, preserveOffset = false } = options;
+  const { immediate = false, preserveOffset = false, preserveRestart = false } = options;
+  if (!preserveRestart) loop.restartToken = (loop.restartToken || 0) + 1;
   if (!loop.playing) {
     loop.playOffset = preserveOffset ? loop.playOffset : 0;
     updateLoopPlayhead(loop, loop.playOffset);
@@ -1219,23 +1265,20 @@ function setLoopPan(loop, value) {
 }
 
 function setLoopPlaybackRate(loop, value) {
-  const position = loop.playing ? getLoopPlaybackPosition(loop) : loop.playOffset;
   loop.playbackRate = value;
-  if (loop.node) {
-    loop.playOffset = position;
-    loop.playStartTime = audioContext.currentTime;
-    loop.node.playbackRate.setTargetAtTime(value, audioContext.currentTime, 0.01);
-  }
-  updateLoopPlayhead(loop, position);
+  invalidateLoopProcessing(loop);
+  restartLoopPlayback(loop);
+}
+
+function setLoopPitch(loop, value) {
+  loop.pitchSemitones = value;
+  invalidateLoopProcessing(loop);
+  restartLoopPlayback(loop);
 }
 
 function toggleReverse(loop) {
   loop.reversed = !loop.reversed;
-  const wasPlaying = loop.playing;
-  if (wasPlaying) {
-    stopLoop(loop, { preserveOffset: true });
-    setTimeout(() => playLoop(loop, loop.playOffset), LOOP_RESTART_DELAY_MS);
-  }
+  restartLoopPlayback(loop);
   const card = document.getElementById(`loop-card-${loop.id}`);
   if (card) {
     const btn = card.querySelector('.btn-reverse');
@@ -1641,7 +1684,7 @@ async function exportMix() {
 
   const sampleRate = audioContext.sampleRate;
   // Render a chunk that's long enough to hear every loop repeat a few times.
-  const maxLoopDur = loops.reduce((m, l) => Math.max(m, l.duration / l.playbackRate), 0);
+  const maxLoopDur = loops.reduce((m, l) => Math.max(m, getPlaybackBuffer(l).duration), 0);
   const duration   = Math.max(4, Math.min(60, Math.ceil(maxLoopDur * 4)));
 
   const offline = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
@@ -1656,7 +1699,7 @@ async function exportMix() {
     const src = offline.createBufferSource();
     src.buffer = getPlaybackBuffer(l);
     src.loop = true;
-    src.playbackRate.value = l.playbackRate;
+    src.playbackRate.value = 1;
 
     const gNode = offline.createGain();
     gNode.gain.value = g;
@@ -1982,6 +2025,10 @@ function renderLoop(loop) {
       (v) => `${v.toFixed(2)}×`,
       formatPlaybackRateValueText,
       (v) => setLoopPlaybackRate(loop, v)),
+    makeFader('Pitch', 'Loop pitch', -12, 12, 1, loop.pitchSemitones,
+      (v) => `${v > 0 ? '+' : ''}${Math.round(v)} st`,
+      formatPitchValueText,
+      (v) => setLoopPitch(loop, v)),
   );
 
   const midiRow = document.createElement('div');

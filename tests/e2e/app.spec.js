@@ -639,6 +639,11 @@ test.describe('loop controls', () => {
     await expect(page.locator('.loop-duration')).toBeVisible();
   });
 
+  test('loop card exposes independent speed and pitch sliders', async ({ page }) => {
+    await expect(page.locator('.fader:has-text("Speed") input[aria-label="Loop speed"]')).toBeVisible();
+    await expect(page.locator('.fader:has-text("Pitch") input[aria-label="Loop pitch"]')).toBeVisible();
+  });
+
   test('loop controls expose descriptive slider labels and value text', async ({ page }) => {
     const nameInput = page.locator('.loop-name');
     const volumeSlider = page.locator('.loop-faders input[type="range"]').nth(0);
