@@ -234,6 +234,16 @@ test.describe('loop controls', () => {
     await expect(page.locator('.loop-duration')).toBeVisible();
   });
 
+  test('existing loop can be re-quantized to the current BPM grid', async ({ page }) => {
+    await expect(page.locator('.loop-duration')).toHaveText('0:00');
+    await page.locator('#bpm-input').fill('240');
+    await page.locator('#bpm-input').press('Tab');
+    await expect(page.locator('#bpm-input')).toHaveValue('240');
+    await page.locator('.btn-quantize').click();
+    await expect(page.locator('.loop-duration')).toHaveText('0:01');
+    await expect(page.locator('#status-text')).toContainText('Re-quantized');
+  });
+
   test('undo button becomes enabled after a loop is deleted', async ({ page }) => {
     await page.locator('.btn-danger').click();
     await expect(page.locator('#btn-undo')).toBeEnabled();
