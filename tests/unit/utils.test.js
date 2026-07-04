@@ -457,7 +457,11 @@ describe('packSharedSession / unpackSharedSession', () => {
     const out = new Uint8Array(4 + manifest.length);
     new DataView(out.buffer).setUint32(0, manifest.length, true);
     out.set(manifest, 4);
-    const packed = Buffer.from(out).toString('base64url');
+    const packed = Buffer.from(out)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/g, '');
 
     expect(() => unpackSharedSession(packed)).toThrow(/not supported/i);
   });
