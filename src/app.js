@@ -27,6 +27,7 @@ const MIN_BPM          = 40;
 const MAX_BPM          = 240;
 const MAX_UNDO         = 20;
 const LOOP_EDIT_RESOLUTION = 1000;
+const LOOP_RESTART_DELAY_MULTIPLIER = 6; // wait a few fade time-constants before restarting a loop
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -412,7 +413,10 @@ function refreshLoopBuffer(loop) {
   if (wasPlaying) stopLoop(loop);
   rebuildLoopBuffer(loop);
   if (wasPlaying) {
-    setTimeout(() => playLoop(loop), Math.ceil(FADE_TIME * 1000 * 6));
+    setTimeout(
+      () => playLoop(loop),
+      Math.ceil(FADE_TIME * 1000 * LOOP_RESTART_DELAY_MULTIPLIER),
+    );
   }
 }
 
@@ -601,7 +605,10 @@ function toggleReverse(loop) {
   const wasPlaying = loop.playing;
   if (wasPlaying) {
     stopLoop(loop);
-    setTimeout(() => playLoop(loop), Math.ceil(FADE_TIME * 1000 * 6));
+    setTimeout(
+      () => playLoop(loop),
+      Math.ceil(FADE_TIME * 1000 * LOOP_RESTART_DELAY_MULTIPLIER),
+    );
   }
   const card = document.getElementById(`loop-card-${loop.id}`);
   if (card) {
