@@ -226,6 +226,13 @@ export function effectiveGain(loop, loops, opts = {}) {
   return loop.volume;
 }
 
+export function getLoopPlaybackRate(loop, bpm) {
+  if (!loop.followTempo) return loop.playbackRate;
+  const baseBpm = loop.tempoBaseBpm;
+  if (!Number.isFinite(baseBpm) || baseBpm <= 0) return loop.playbackRate;
+  return loop.playbackRate * (bpm / baseBpm);
+}
+
 // ─── Key detection ─────────────────────────────────────────────────────────────
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];

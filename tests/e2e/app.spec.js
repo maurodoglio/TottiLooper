@@ -651,6 +651,12 @@ test.describe('loop controls', () => {
     await expect(page.locator('.loop-duration')).toBeVisible();
   });
 
+  test('follow tempo can be enabled per loop', async ({ page }) => {
+    await page.locator('.follow-tempo-toggle input').check();
+    await expect(page.locator('.follow-tempo-toggle input')).toBeChecked();
+    await expect(page.locator('.loop-tempo-factor')).toHaveText('Tempo 1.00×');
+  });
+
   test('loop trim handles can shorten the waveform selection', async ({ page }) => {
     const duration = page.locator('.loop-duration');
     const before = await duration.getAttribute('title');
@@ -1162,6 +1168,33 @@ test.describe('tempo controls', () => {
   test('quantize toggle can be enabled', async ({ page }) => {
     await page.locator('#quantize-toggle').check();
     await expect(page.locator('#quantize-toggle')).toBeChecked();
+  });
+
+  test('BPM changes do not stretch loops unless follow tempo is enabled', async ({ page }) => {
+    await page.click('#btn-record');
+    await page.waitForTimeout(600);
+    await page.click('#btn-record');
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+
+    await page.locator('#bpm-input').fill('120');
+    await page.locator('#bpm-input').press('Tab');
+
+    await expect(page.locator('.loop-tempo-factor')).toHaveText('Tempo off');
+  });
+
+  test('BPM changes stretch loops that have follow tempo enabled', async ({ page }) => {
+    await page.click('#btn-record');
+    await page.waitForTimeout(600);
+    await page.click('#btn-record');
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+
+    await page.locator('.follow-tempo-toggle input').check();
+    await expect(page.locator('.loop-tempo-factor')).toHaveText('Tempo 1.00×');
+
+    await page.locator('#bpm-input').fill('120');
+    await page.locator('#bpm-input').press('Tab');
+
+    await expect(page.locator('.loop-tempo-factor')).toHaveText('Tempo 1.20×');
   });
 
   test('loop bars can be updated via the input', async ({ page }) => {

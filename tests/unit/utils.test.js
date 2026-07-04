@@ -23,6 +23,7 @@ import {
   clickTrackToMidi,
   getSupportedMimeType,
   effectiveGain,
+  getLoopPlaybackRate,
   fitBufferToBars,
   getBeatSeconds,
   applyLoopEdits,
@@ -373,6 +374,26 @@ describe('key clash helpers', () => {
   it('warns only when every known existing key appears incompatible', () => {
     expect(shouldWarnAboutKeyClash(eMajor, [cMajor, gMajor])).toBe(true);
     expect(shouldWarnAboutKeyClash(gMajor, [cMajor, eMajor])).toBe(false);
+  });
+});
+
+// ─── getLoopPlaybackRate ──────────────────────────────────────────────────────
+
+describe('getLoopPlaybackRate', () => {
+  it('returns the manual playback rate when follow tempo is disabled', () => {
+    expect(getLoopPlaybackRate({ playbackRate: 0.8, followTempo: false, tempoBaseBpm: 100 }, 140)).toBe(0.8);
+  });
+
+  it('multiplies the playback rate by the BPM ratio when follow tempo is enabled', () => {
+    expect(getLoopPlaybackRate({ playbackRate: 1, followTempo: true, tempoBaseBpm: 100 }, 150)).toBe(1.5);
+  });
+
+  it('preserves manual speed adjustments while following tempo', () => {
+    expect(getLoopPlaybackRate({ playbackRate: 0.75, followTempo: true, tempoBaseBpm: 120 }, 180)).toBe(1.125);
+  });
+
+  it('falls back to the manual playback rate when the base BPM is invalid', () => {
+    expect(getLoopPlaybackRate({ playbackRate: 1.1, followTempo: true, tempoBaseBpm: 0 }, 160)).toBe(1.1);
   });
 });
 

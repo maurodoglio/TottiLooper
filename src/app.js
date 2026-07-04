@@ -29,6 +29,7 @@ import {
   estimateTempo,
   packSharedSession,
   effectiveGain as computeEffectiveGain,
+  getLoopPlaybackRate as computeLoopPlaybackRate,
   fitBufferToBars as _fitBufferToBars,
   quantizeBuffer as _quantizeBuffer,
   offsetBuffer as _offsetBuffer,
@@ -190,6 +191,8 @@ const redoStack = [];
  * @property {number} midEq
  * @property {number} highEq
  * @property {number} playbackRate
+ * @property {boolean} followTempo
+ * @property {number} tempoBaseBpm
  * @property {number} trimStart
  * @property {number} trimEnd
  * @property {number} fadeIn
@@ -966,6 +969,8 @@ function addLoop(audioBuffer, options = {}) {
     midEq: options.midEq ?? 0,
     highEq: options.highEq ?? 0,
     playbackRate: options.playbackRate ?? 1,
+    followTempo: !!options.followTempo,
+    tempoBaseBpm: options.tempoBaseBpm ?? bpm,
     trimStart: options.trimStart ?? 0,
     trimEnd: options.trimEnd ?? audioBuffer.duration,
     fadeIn: options.fadeIn ?? 0,
@@ -1185,6 +1190,32 @@ function reverseBuffer(buffer) {
   return _reverseBuffer(buffer, audioContext);
 }
 
+function getLoopPlaybackRate(loop) {
+  return computeLoopPlaybackRate(loop, bpm);
+}
+
+function updateLoopPlaybackRate(loop) {
+  if (loop.node) {
+    const factor = loop.followTempo && loop.tempoBaseBpm > 0 ? bpm / loop.tempoBaseBpm : 1;
+    loop.node.playbackRate.setTargetAtTime(factor, audioContext.currentTime, 0.01);
+  }
+}
+
+function updateLoopTempoUi(loop) {
+  const card = document.getElementById(`loop-card-${loop.id}`);
+  if (!card) return;
+
+  const toggle = card.querySelector('.follow-tempo-toggle input');
+  if (toggle) toggle.checked = loop.followTempo;
+
+  const valueEl = card.querySelector('.loop-tempo-factor');
+  if (valueEl) {
+    valueEl.textContent = loop.followTempo
+      ? `Tempo ${getLoopPlaybackRate(loop).toFixed(2)}×`
+      : 'Tempo off';
+  }
+}
+
 function transformBuffer(buffer, speed, pitchSemitones) {
   return _transformBuffer(buffer, { speed, pitchSemitones, audioContext });
 }
@@ -1270,7 +1301,9 @@ function playLoop(loop, arg = {}) {
   const buffer = getPlaybackBuffer(loop);
   sourceNode.buffer = buffer;
   sourceNode.loop = true;
-  sourceNode.playbackRate.value = 1;
+  sourceNode.playbackRate.value = loop.followTempo && loop.tempoBaseBpm > 0
+    ? bpm / loop.tempoBaseBpm
+    : 1;
   const eqNodes = createEqNodes(audioContext, loop);
 
   if (pannerNode) {
@@ -1556,6 +1589,14 @@ function setLoopPlaybackRate(loop, value) {
   invalidateLoopProcessing(loop);
   restartLoopPlayback(loop);
   syncLoopPlaybackRateControls(loop);
+  updateLoopTempoUi(loop);
+}
+
+function toggleFollowTempo(loop, enabled) {
+  loop.followTempo = enabled;
+  if (enabled) loop.tempoBaseBpm = bpm;
+  updateLoopPlaybackRate(loop);
+  updateLoopTempoUi(loop);
 }
 
 function isPlaybackRate(value, target) {
@@ -1959,11 +2000,19 @@ function getBeatIntervalMs() {
 }
 
 function applyBpmValue(value) {
+  const prevBpm = bpm;
   let v = parseInt(value, 10);
   if (isNaN(v)) v = DEFAULT_BPM;
   v = Math.max(MIN_BPM, Math.min(MAX_BPM, v));
   bpm = v;
   bpmInput.value = String(v);
+  if (prevBpm !== bpm) {
+    loops.forEach((loop) => {
+      if (!loop.followTempo) return;
+      updateLoopPlaybackRate(loop);
+      updateLoopTempoUi(loop);
+    });
+  }
   updatePlaybackPosition();
   if (metronomeEnabled) {
     stopMetronome();
@@ -2099,7 +2148,7 @@ async function exportMix() {
 
   const sampleRate = audioContext.sampleRate;
   // Render a chunk that's long enough to hear every loop repeat a few times.
-  const maxLoopDur = loops.reduce((m, l) => Math.max(m, getPlaybackBuffer(l).duration), 0);
+  const maxLoopDur = loops.reduce((m, l) => Math.max(m, getPlaybackBuffer(l).duration / (l.followTempo && l.tempoBaseBpm > 0 ? bpm / l.tempoBaseBpm : 1)), 0);
   const duration   = Math.max(4, Math.min(60, Math.ceil(maxLoopDur * 4)));
 
   const offline = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
@@ -2114,7 +2163,7 @@ async function exportMix() {
     const src = offline.createBufferSource();
     src.buffer = getPlaybackBuffer(l);
     src.loop = true;
-    src.playbackRate.value = 1;
+    src.playbackRate.value = l.followTempo && l.tempoBaseBpm > 0 ? bpm / l.tempoBaseBpm : 1;
 
     const eqNodes = createEqNodes(offline, l);
     const gNode = offline.createGain();
@@ -2626,6 +2675,25 @@ function renderLoop(loop) {
     fadeOutFader,
   );
 
+  const followTempoToggle = document.createElement('label');
+  followTempoToggle.className = 'fader loop-follow-tempo follow-tempo-toggle';
+
+  const followTempoLabel = document.createElement('span');
+  followTempoLabel.className = 'fader-label';
+  followTempoLabel.textContent = 'Follow tempo';
+
+  const followTempoInput = document.createElement('input');
+  followTempoInput.type = 'checkbox';
+  followTempoInput.checked = loop.followTempo;
+  followTempoInput.setAttribute('aria-label', 'Follow tempo');
+  followTempoInput.addEventListener('change', () => toggleFollowTempo(loop, followTempoInput.checked));
+
+  const followTempoValue = document.createElement('span');
+  followTempoValue.className = 'fader-value loop-tempo-factor';
+
+  followTempoToggle.append(followTempoLabel, followTempoInput, followTempoValue);
+  faderRow.appendChild(followTempoToggle);
+
   const midiRow = document.createElement('div');
   midiRow.className = 'loop-midi';
   midiRow.innerHTML = `
@@ -2750,6 +2818,7 @@ function renderLoop(loop) {
   syncLoopPlaybackRateControls(loop);
   updateLoopPlayhead(loop, loop.playOffset);
   updateAllMidiBindingLabels();
+  updateLoopTempoUi(loop);
   updateLoopEditor();
 }
 
