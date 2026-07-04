@@ -21,6 +21,12 @@ import {
 
 const FADE_TIME        = 0.015; // seconds – short fades to avoid clicks on start/stop
 const METRONOME_VOLUME = 0.3;
+const METRONOME_DOWNBEAT_FREQ = 1760;
+const METRONOME_BEAT_FREQ = 1175;
+const METRONOME_SUBDIVISION_FREQ = 880;
+const METRONOME_DOWNBEAT_VOLUME_MULTIPLIER = 1.5;
+const METRONOME_SUBDIVISION_VOLUME_MULTIPLIER = 0.5;
+const VALID_METRONOME_SUBDIVISIONS = [1, 2, 3, 4];
 const DEFAULT_BPM      = 100;
 const MIN_BPM          = 40;
 const MAX_BPM          = 240;
@@ -48,6 +54,7 @@ let beatsPerBar      = 4;
 let metronomeEnabled = false;
 let countInEnabled   = false;
 let quantizeEnabled  = false;
+// Number of clicks per beat: 1=quarter, 2=8ths, 3=triplets, 4=16ths.
 let metronomeSubdivision = 1;
 let metronomeInterval = null;
 let metronomeBeatIdx  = 0;
@@ -609,7 +616,7 @@ function onMetronomeToggle(e) {
 
 function onMetronomeSubdivisionChange() {
   let v = parseInt(metronomeSubdivisionInput.value, 10);
-  if (![1, 2, 3, 4].includes(v)) v = 1;
+  if (!VALID_METRONOME_SUBDIVISIONS.includes(v)) v = 1;
   metronomeSubdivision = v;
   metronomeSubdivisionInput.value = String(v);
   if (metronomeEnabled) {
@@ -648,8 +655,12 @@ function playClick(type) {
   const isDownbeat = type === 'downbeat';
   const isSubdivision = type === 'subdivision';
   osc.type = isDownbeat ? 'square' : 'sine';
-  osc.frequency.value = isDownbeat ? 1760 : (isSubdivision ? 880 : 1175);
-  const peak = isDownbeat ? (METRONOME_VOLUME * 1.5) : (isSubdivision ? (METRONOME_VOLUME * 0.5) : METRONOME_VOLUME);
+  osc.frequency.value = isDownbeat
+    ? METRONOME_DOWNBEAT_FREQ
+    : (isSubdivision ? METRONOME_SUBDIVISION_FREQ : METRONOME_BEAT_FREQ);
+  const peak = isDownbeat
+    ? (METRONOME_VOLUME * METRONOME_DOWNBEAT_VOLUME_MULTIPLIER)
+    : (isSubdivision ? (METRONOME_VOLUME * METRONOME_SUBDIVISION_VOLUME_MULTIPLIER) : METRONOME_VOLUME);
   const duration = isDownbeat ? 0.08 : 0.05;
   gain.gain.setValueAtTime(0, t);
   gain.gain.linearRampToValueAtTime(peak, t + 0.001);
