@@ -30,6 +30,11 @@ const LOW_EQ_FREQUENCY = 200;
 const MID_EQ_FREQUENCY = 1200;
 const MID_EQ_Q         = 0.8;
 const HIGH_EQ_FREQUENCY = 3200;
+const EQ_FILTER_BY_BAND = {
+  lowEq: 'lowShelf',
+  midEq: 'midPeak',
+  highEq: 'highShelf',
+};
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -579,10 +584,8 @@ function setLoopEq(loop, band, value) {
   loop[band] = value;
   if (!loop.eqNodes) return;
 
-  let filterNode = null;
-  if (band === 'lowEq') filterNode = loop.eqNodes.lowShelf;
-  else if (band === 'midEq') filterNode = loop.eqNodes.midPeak;
-  else if (band === 'highEq') filterNode = loop.eqNodes.highShelf;
+  const filterKey = EQ_FILTER_BY_BAND[band];
+  const filterNode = filterKey ? loop.eqNodes[filterKey] : null;
 
   if (filterNode) {
     filterNode.gain.setTargetAtTime(value, audioContext.currentTime, PARAM_TRANSITION);
@@ -899,6 +902,7 @@ function formatEqGain(value) {
 function makeFader(label, min, max, step, value, formatValue, onInput) {
   const wrap = document.createElement('label');
   wrap.className = 'fader';
+  wrap.dataset.fader = label.toLowerCase();
 
   const title = document.createElement('span');
   title.className = 'fader-label';

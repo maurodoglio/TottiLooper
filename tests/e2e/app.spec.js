@@ -240,13 +240,13 @@ test.describe('loop controls', () => {
     await expect(page.getByLabel('High')).toHaveValue('0');
 
     await expect(
-      page.getByLabel('Low').locator('xpath=ancestor::label[1]').locator('.fader-value'),
+      page.locator('.fader[data-fader="low"] .fader-value'),
     ).toHaveText('0dB');
     await expect(
-      page.getByLabel('Mid').locator('xpath=ancestor::label[1]').locator('.fader-value'),
+      page.locator('.fader[data-fader="mid"] .fader-value'),
     ).toHaveText('0dB');
     await expect(
-      page.getByLabel('High').locator('xpath=ancestor::label[1]').locator('.fader-value'),
+      page.locator('.fader[data-fader="high"] .fader-value'),
     ).toHaveText('0dB');
   });
 
@@ -257,7 +257,7 @@ test.describe('loop controls', () => {
     });
 
     await expect(
-      page.getByLabel('Mid').locator('xpath=ancestor::label[1]').locator('.fader-value'),
+      page.locator('.fader[data-fader="mid"] .fader-value'),
     ).toHaveText('+6dB');
   });
 
