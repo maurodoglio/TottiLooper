@@ -11,10 +11,12 @@ import {
   panText,
   writeString,
   audioBufferToWav,
+  clickTrackToMidi,
   getSupportedMimeType,
   effectiveGain,
   packSharedSession,
   quantizeBuffer,
+  offsetBuffer,
   reverseBuffer,
   unpackSharedSession,
 } from '../../src/utils.js';
@@ -233,6 +235,44 @@ describe('audioBufferToWav', () => {
   });
 });
 
+// ─── clickTrackToMidi ──────────────────────────────────────────────────────────
+
+describe('clickTrackToMidi', () => {
+  async function midiBytes(opts) {
+    return new Uint8Array(await clickTrackToMidi(opts).arrayBuffer());
+  }
+
+  it('returns a Blob with the audio/midi MIME type', () => {
+    const blob = clickTrackToMidi({ bpm: 120, beatsPerBar: 4, durationSeconds: 4 });
+    expect(blob.type).toBe('audio/midi');
+  });
+
+  it('writes a standard MIDI header with one track', async () => {
+    const bytes = await midiBytes({ bpm: 120, beatsPerBar: 4, durationSeconds: 4 });
+    expect(String.fromCharCode(...bytes.slice(0, 4))).toBe('MThd');
+    expect(String.fromCharCode(...bytes.slice(14, 18))).toBe('MTrk');
+    expect(bytes[11]).toBe(1);
+    expect(bytes[12]).toBe(0x01);
+    expect(bytes[13]).toBe(0xe0);
+  });
+
+  it('stores tempo and time-signature metadata for the session settings', async () => {
+    const bytes = await midiBytes({ bpm: 100, beatsPerBar: 3, durationSeconds: 4 });
+    const data = Array.from(bytes);
+    expect(data).toEqual(expect.arrayContaining([0xff, 0x51, 0x03, 0x09, 0x27, 0xc0]));
+    expect(data).toEqual(expect.arrayContaining([0xff, 0x58, 0x04, 0x03, 0x02, 0x18, 0x08]));
+  });
+
+  it('creates one click note per beat across the exported duration', async () => {
+    const bytes = await midiBytes({ bpm: 120, beatsPerBar: 4, durationSeconds: 4 });
+    const data = Array.from(bytes);
+    expect(data.filter((byte) => byte === 0x99)).toHaveLength(8);
+    // 76 = accented downbeat click, 77 = regular click.
+    expect(data.filter((byte, idx) => byte === 76 && data[idx - 1] === 0x99)).toHaveLength(2);
+    expect(data.filter((byte, idx) => byte === 77 && data[idx - 1] === 0x99)).toHaveLength(6);
+  });
+});
+
 // ─── getSupportedMimeType ─────────────────────────────────────────────────────
 
 describe('getSupportedMimeType', () => {
@@ -320,6 +360,47 @@ describe('quantizeBuffer', () => {
     expect(outData[srcLen - 1]).toBeCloseTo(0.5);
     // Tail that was zero-padded should be 0
     expect(outData[srcLen]).toBe(0);
+  });
+});
+
+// ─── offsetBuffer ──────────────────────────────────────────────────────────────
+
+describe('offsetBuffer', () => {
+  const ctx = makeMockAudioContext();
+
+  it('returns the original buffer when the offset is zero', () => {
+    const samples = new Float32Array([1, 2, 3]);
+    const src = {
+      numberOfChannels: 1,
+      length: 3,
+      sampleRate: 1000,
+      getChannelData: () => samples,
+    };
+    expect(offsetBuffer(src, 0, ctx)).toBe(src);
+  });
+
+  it('adds silence at the start for a positive delay shift', () => {
+    const samples = new Float32Array([1, 2, 3, 4]);
+    const src = {
+      numberOfChannels: 1,
+      length: 4,
+      sampleRate: 1000,
+      getChannelData: () => samples,
+    };
+    const out = offsetBuffer(src, 0.002, ctx);
+    expect(Array.from(out.getChannelData(0))).toEqual([0, 0, 1, 2]);
+  });
+
+  it('trims the start for a negative advance shift and pads the tail with silence', () => {
+    const samples = new Float32Array([1, 2, 3, 4]);
+    const src = {
+      numberOfChannels: 1,
+      length: 4,
+      sampleRate: 1000,
+      getChannelData: () => samples,
+    };
+    const out = offsetBuffer(src, -0.002, ctx);
+    expect(Array.from(out.getChannelData(0))).toEqual([3, 4, 0, 0]);
   });
 });
 
