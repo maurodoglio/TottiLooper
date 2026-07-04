@@ -388,6 +388,10 @@ function reverseBuffer(buffer) {
   return _reverseBuffer(buffer, audioContext);
 }
 
+function hasActiveOrScheduledPlayback(loop) {
+  return loop.playing || !!loop.node;
+}
+
 function playLoop(loop, options = {}) {
   if (!audioContext || loop.node) return;
   if (audioContext.state === 'suspended') audioContext.resume();
@@ -446,7 +450,7 @@ function playLoop(loop, options = {}) {
 }
 
 function stopLoop(loop) {
-  if (!loop.node && !loop.playing) return;
+  if (!hasActiveOrScheduledPlayback(loop)) return;
   const node = loop.node;
   const gain = loop.gainNode;
 
@@ -625,7 +629,7 @@ function onMetronomeToggle(e) {
 
 function onSongModeToggle(e) {
   songModeEnabled = e.target.checked;
-  if (loops.some(loop => loop.playing || loop.node)) {
+  if (loops.some(loop => hasActiveOrScheduledPlayback(loop))) {
     stopAllLoops();
   }
 }
@@ -636,7 +640,7 @@ function onSongBarsChange() {
   if (v > MAX_SONG_BARS) v = MAX_SONG_BARS;
   songBars = v;
   songBarsInput.value = String(v);
-  if (loops.some(loop => loop.playing || loop.node)) {
+  if (loops.some(loop => hasActiveOrScheduledPlayback(loop))) {
     stopAllLoops();
   }
   loops.forEach((loop) => {
