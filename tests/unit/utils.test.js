@@ -8,11 +8,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   formatDuration,
+  formatBarBeatPosition,
   panText,
   writeString,
   audioBufferToWav,
   getSupportedMimeType,
   effectiveGain,
+  getBarBeatPosition,
   quantizeBuffer,
   reverseBuffer,
 } from '../../src/utils.js';
@@ -90,6 +92,32 @@ describe('panText', () => {
   it('rounds the percentage to the nearest integer', () => {
     expect(panText(0.333)).toBe('R33');
     expect(panText(-0.666)).toBe('L67');
+  });
+});
+
+// ─── bar / beat position ──────────────────────────────────────────────────────
+
+describe('getBarBeatPosition', () => {
+  it('starts at bar 1 beat 1', () => {
+    expect(getBarBeatPosition(0, 120, 4)).toEqual({ bar: 1, beat: 1 });
+  });
+
+  it('advances beats based on the BPM', () => {
+    expect(getBarBeatPosition(0.5, 120, 4)).toEqual({ bar: 1, beat: 2 });
+  });
+
+  it('wraps to the next bar after the final beat', () => {
+    expect(getBarBeatPosition(2, 120, 4)).toEqual({ bar: 2, beat: 1 });
+  });
+
+  it('handles custom beats-per-bar values', () => {
+    expect(getBarBeatPosition(2, 120, 3)).toEqual({ bar: 2, beat: 2 });
+  });
+});
+
+describe('formatBarBeatPosition', () => {
+  it('formats the computed transport position', () => {
+    expect(formatBarBeatPosition(1.5, 120, 4)).toBe('Bar 1 • Beat 4');
   });
 });
 

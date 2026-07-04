@@ -9,6 +9,7 @@
 
 import {
   formatDuration,
+  formatBarBeatPosition,
   panText,
   audioBufferToWav,
   getSupportedMimeType,
@@ -36,6 +37,8 @@ let isRecording    = false;
 let timerInterval  = null;
 let recordStartTime = 0;
 let loopCounter    = 0;
+let playbackPositionInterval = null;
+let transportStartTime = null;
 
 let masterGainNode = null;
 let masterVolume   = 1;
@@ -101,6 +104,7 @@ const btnStopAll         = $('btn-stop-all');
 const btnExportMix       = $('btn-export-mix');
 const btnUndo            = $('btn-undo');
 const masterVolumeInput  = $('master-volume');
+const playbackPosition   = $('playback-position');
 const loopsSection       = $('loops-section');
 const loopsList          = $('loops-list');
 const emptyState         = $('empty-state');
@@ -171,6 +175,7 @@ async function requestMicrophoneAccess() {
     recordControls.classList.remove('hidden');
     masterControls.classList.remove('hidden');
     loopsSection.classList.remove('hidden');
+    updatePlaybackPosition();
     setStatus('Ready. Press ● REC to start recording.');
   } catch (err) {
     showError('Microphone access denied. Please allow microphone access and reload.');
@@ -372,14 +377,50 @@ function reverseBuffer(buffer) {
   return _reverseBuffer(buffer, audioContext);
 }
 
-function playLoop(loop) {
+function getLoopStartOffset(loop, buffer, startTime) {
+  if (transportStartTime === null || buffer.duration <= 0) return 0;
+  const elapsed = Math.max(0, startTime - transportStartTime);
+  return (elapsed * loop.playbackRate) % buffer.duration;
+}
+
+function hasActiveLoops() {
+  return loops.some(loop => loop.playing);
+}
+
+function startPlaybackPositionTimer() {
+  if (playbackPositionInterval || !playbackPosition) return;
+  playbackPositionInterval = setInterval(updatePlaybackPosition, 50);
+}
+
+function stopPlaybackPositionTimer() {
+  if (!playbackPositionInterval) return;
+  clearInterval(playbackPositionInterval);
+  playbackPositionInterval = null;
+}
+
+function updatePlaybackPosition() {
+  if (!playbackPosition) return;
+  if (!audioContext || transportStartTime === null || !hasActiveLoops()) {
+    playbackPosition.textContent = 'Now playing: —';
+    return;
+  }
+  const elapsed = Math.max(0, audioContext.currentTime - transportStartTime);
+  playbackPosition.textContent = `Now playing: ${formatBarBeatPosition(elapsed, bpm, beatsPerBar)}`;
+}
+
+function playLoop(loop, options = {}) {
   if (!audioContext || loop.playing) return;
   if (audioContext.state === 'suspended') audioContext.resume();
+  const startAt = options.startAt ?? (audioContext.currentTime + 0.02);
+  const isNewTransport = transportStartTime === null;
+  if (isNewTransport) {
+    transportStartTime = startAt;
+  }
 
   const gainNode = audioContext.createGain();
   const targetGain = effectiveGain(loop);
   gainNode.gain.value = 0;
-  gainNode.gain.setTargetAtTime(targetGain, audioContext.currentTime, FADE_TIME);
+  gainNode.gain.setTargetAtTime(targetGain, startAt, FADE_TIME);
 
   const pannerNode = audioContext.createStereoPanner
     ? audioContext.createStereoPanner()
@@ -387,7 +428,8 @@ function playLoop(loop) {
   if (pannerNode) pannerNode.pan.value = loop.pan;
 
   const sourceNode = audioContext.createBufferSource();
-  sourceNode.buffer = getPlaybackBuffer(loop);
+  const buffer = getPlaybackBuffer(loop);
+  sourceNode.buffer = buffer;
   sourceNode.loop = true;
   sourceNode.playbackRate.value = loop.playbackRate;
 
@@ -399,7 +441,7 @@ function playLoop(loop) {
   }
   gainNode.connect(masterGainNode);
 
-  sourceNode.start();
+  sourceNode.start(startAt, isNewTransport ? 0 : getLoopStartOffset(loop, buffer, startAt));
 
   loop.node = sourceNode;
   loop.gainNode = gainNode;
@@ -418,6 +460,8 @@ function playLoop(loop) {
     }
   }
   refreshAllGains();
+  startPlaybackPositionTimer();
+  updatePlaybackPosition();
 }
 
 function stopLoop(loop) {
@@ -450,6 +494,11 @@ function stopLoop(loop) {
       btn.setAttribute('aria-label', 'Play loop');
     }
   }
+  if (!hasActiveLoops()) {
+    transportStartTime = null;
+    stopPlaybackPositionTimer();
+  }
+  updatePlaybackPosition();
 }
 
 function deleteLoop(loopId) {
@@ -563,7 +612,13 @@ function renameLoop(loop, newName) {
 }
 
 function playAllLoops() {
-  loops.forEach(loop => playLoop(loop));
+  if (!audioContext) return;
+  if (audioContext.state === 'suspended') audioContext.resume();
+  const startAt = audioContext.currentTime + 0.02;
+  if (!hasActiveLoops()) {
+    transportStartTime = startAt;
+  }
+  loops.forEach(loop => playLoop(loop, { startAt }));
 }
 
 function stopAllLoops() {
@@ -585,6 +640,7 @@ function onBpmChange() {
   v = Math.max(MIN_BPM, Math.min(MAX_BPM, v));
   bpm = v;
   bpmInput.value = String(v);
+  updatePlaybackPosition();
   if (metronomeEnabled) {
     stopMetronome();
     startMetronome();
@@ -597,6 +653,7 @@ function onBeatsPerBarChange() {
   if (v > 12) v = 12;
   beatsPerBar = v;
   beatsPerBarInput.value = String(v);
+  updatePlaybackPosition();
 }
 
 function onMetronomeToggle(e) {
