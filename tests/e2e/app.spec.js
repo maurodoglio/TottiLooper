@@ -253,6 +253,48 @@ test.describe('loop controls', () => {
   });
 });
 
+// ─── Mobile layout ────────────────────────────────────────────────────────────
+
+test.describe('mobile layout', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await page.click('#btn-request-mic');
+    await expect(page.locator('#record-controls')).toBeVisible({ timeout: 5000 });
+    await page.click('#btn-record');
+    await page.waitForTimeout(600);
+    await page.click('#btn-record');
+    await expect(page.locator('.loop-card')).toBeVisible({ timeout: 8000 });
+  });
+
+  test('uses touch-friendly controls on portrait phone screens', async ({ page }) => {
+    const sizes = await page.locator('#btn-record, .loop-actions button').evaluateAll((buttons) => {
+      return buttons.map((button) => {
+        const rect = button.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      });
+    });
+
+    for (const size of sizes) {
+      expect(size.width).toBeGreaterThanOrEqual(44);
+      expect(size.height).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  test('stacks the mixer without horizontal overflow on portrait phone screens', async ({ page }) => {
+    const mobileLayout = await page.locator('.loop-faders').evaluate((el) => {
+      return {
+        flexDirection: window.getComputedStyle(el).flexDirection,
+        scrollWidth: document.documentElement.scrollWidth,
+        innerWidth: window.innerWidth,
+      };
+    });
+
+    expect(mobileLayout.flexDirection).toBe('column');
+    expect(mobileLayout.scrollWidth).toBeLessThanOrEqual(mobileLayout.innerWidth + 1);
+  });
+});
+
 // ─── Tempo controls ───────────────────────────────────────────────────────────
 
 test.describe('tempo controls', () => {
